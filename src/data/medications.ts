@@ -1,0 +1,206 @@
+export const medicationsDatabase: Record<string, any[]> = {
+  antibiotics: [
+    {
+      id: "med1",
+      name: "Amoxicillin",
+      contraindications: ["penicillin allergy", "infectious mononucleosis"],
+      sideEffects: ["Nausea", "Vomiting", "Diarrhea", "Rash"],
+      interactions: ["Methotrexate", "Oral contraceptives", "Allopurinol"],
+      forms: [
+        { id: "form1", name: "250mg capsule", minDose: 250, maxDose: 500 },
+        { id: "form2", name: "500mg capsule", minDose: 500, maxDose: 875 },
+        { id: "form3", name: "125mg/5ml suspension", minDose: 125, maxDose: 250 },
+      ],
+    },
+    {
+      id: "med2",
+      name: "Azithromycin",
+      contraindications: ["liver disease", "QT prolongation"],
+      sideEffects: ["Diarrhea", "Nausea", "Abdominal pain", "Headache"],
+      interactions: ["Antacids", "Digoxin", "Warfarin"],
+      forms: [
+        { id: "form4", name: "250mg tablet", minDose: 250, maxDose: 500 },
+        { id: "form5", name: "500mg tablet", minDose: 500, maxDose: 1000 },
+        { id: "form6", name: "200mg/5ml suspension", minDose: 200, maxDose: 400 },
+      ],
+    },
+    {
+      id: "med3",
+      name: "Ciprofloxacin",
+      contraindications: ["myasthenia gravis", "tendinitis"],
+      sideEffects: ["Nausea", "Diarrhea", "Dizziness", "Tendon rupture (rare)"],
+      interactions: ["Theophylline", "Tizanidine", "Antacids with Mg/Al"],
+      forms: [
+        { id: "form7", name: "250mg tablet", minDose: 250, maxDose: 500 },
+        { id: "form8", name: "500mg tablet", minDose: 500, maxDose: 1000 },
+        { id: "form9", name: "750mg tablet", minDose: 750, maxDose: 1500 },
+      ],
+    },
+  ],
+  analgesics: [
+    {
+      id: "med4",
+      name: "Ibuprofen",
+      contraindications: ["renal impairment", "gastric ulcer"],
+      sideEffects: ["Stomach pain", "Heartburn", "Nausea", "Dizziness"],
+      interactions: ["Aspirin", "Anticoagulants", "Lithium"],
+      forms: [
+        { id: "form10", name: "200mg tablet", minDose: 200, maxDose: 400 },
+        { id: "form11", name: "400mg tablet", minDose: 400, maxDose: 800 },
+        { id: "form12", name: "600mg tablet", minDose: 600, maxDose: 1200 },
+        { id: "form13", name: "100mg/5ml suspension", minDose: 100, maxDose: 200 },
+      ],
+    },
+    {
+      id: "med5",
+      name: "Acetaminophen",
+      contraindications: ["liver failure", "alcoholism"],
+      sideEffects: ["Nausea", "Stomach pain", "Loss of appetite", "Liver damage (high doses)"],
+      interactions: ["Warfarin", "Isoniazid", "Carbamazepine"],
+      forms: [
+        { id: "form14", name: "325mg tablet", minDose: 325, maxDose: 650 },
+        { id: "form15", name: "500mg tablet", minDose: 500, maxDose: 1000 },
+        { id: "form16", name: "160mg/5ml suspension", minDose: 160, maxDose: 320 },
+      ],
+    },
+    {
+      id: "med6",
+      name: "Naproxen",
+      contraindications: ["aspirin allergy", "severe heart failure"],
+      sideEffects: ["Indigestion", "Nausea", "Stomach pain", "Drowsiness"],
+      interactions: ["Antidepressants", "Blood pressure medications", "Lithium"],
+      forms: [
+        { id: "form17", name: "220mg tablet", minDose: 220, maxDose: 440 },
+        { id: "form18", name: "375mg tablet", minDose: 375, maxDose: 750 },
+        { id: "form19", name: "500mg tablet", minDose: 500, maxDose: 1000 },
+      ],
+    },
+  ],
+  cardiovascular: [
+    {
+      id: "med7",
+      name: "Lisinopril",
+      contraindications: ["pregnancy", "angioedema"],
+      sideEffects: ["Dry cough", "Dizziness", "Headache", "High potassium"],
+      interactions: ["Diuretics", "Potassium supplements", "NSAIDs"],
+      forms: [
+        { id: "form20", name: "5mg tablet", minDose: 5, maxDose: 40 },
+        { id: "form21", name: "10mg tablet", minDose: 10, maxDose: 40 },
+        { id: "form22", name: "20mg tablet", minDose: 20, maxDose: 40 },
+      ],
+    },
+    {
+      id: "med8",
+      name: "Atorvastatin",
+      contraindications: ["active liver disease", "pregnancy"],
+      sideEffects: ["Muscle pain", "Diarrhea", "Nausea", "Joint pain"],
+      interactions: ["Grapefruit juice", "Cyclosporine", "Gemfibrozil"],
+      forms: [
+        { id: "form23", name: "10mg tablet", minDose: 10, maxDose: 80 },
+        { id: "form24", name: "20mg tablet", minDose: 20, maxDose: 80 },
+        { id: "form25", name: "40mg tablet", minDose: 40, maxDose: 80 },
+      ],
+    },
+    {
+      id: "med9",
+      name: "Metoprolol",
+      contraindications: ["bradycardia", "decompensated heart failure"],
+      sideEffects: ["Fatigue", "Dizziness", "Depression", "Slow heart rate"],
+      interactions: ["Amiodarone", "Clonidine", "Diltiazem"],
+      forms: [
+        { id: "form26", name: "25mg tablet", minDose: 25, maxDose: 200 },
+        { id: "form27", name: "50mg tablet", minDose: 50, maxDose: 200 },
+        { id: "form28", name: "100mg tablet", minDose: 100, maxDose: 200 },
+      ],
+    },
+  ],
+  respiratory: [
+    {
+      id: "med10",
+      name: "Albuterol",
+      contraindications: ["cardiac arrhythmias", "hypertension"],
+      sideEffects: ["Tremor", "Nervousness", "Headache", "Palpitations"],
+      interactions: ["Beta-blockers", "Diuretics", "Digoxin"],
+      forms: [
+        { id: "form29", name: "90mcg inhaler", minDose: 90, maxDose: 180 },
+        { id: "form30", name: "2mg tablet", minDose: 2, maxDose: 4 },
+        { id: "form31", name: "2mg/5ml syrup", minDose: 2, maxDose: 4 },
+      ],
+    },
+    {
+      id: "med11",
+      name: "Fluticasone",
+      contraindications: ["untreated infections", "nasal trauma"],
+      sideEffects: ["Nosebleeds", "Headache", "Sore throat", "Cough"],
+      interactions: ["Ritonavir", "Ketoconazole", "Itraconazole"],
+      forms: [
+        { id: "form32", name: "50mcg nasal spray", minDose: 50, maxDose: 200 },
+        { id: "form33", name: "100mcg inhaler", minDose: 100, maxDose: 500 },
+        { id: "form34", name: "250mcg inhaler", minDose: 250, maxDose: 1000 },
+      ],
+    },
+    {
+      id: "med12",
+      name: "Montelukast",
+      contraindications: ["neuropsychiatric events", "aspirin-sensitive asthma"],
+      sideEffects: ["Stomach pain", "Diarrhea", "Fever", "Headache"],
+      interactions: ["Phenobarbital", "Rifampin", "Gemfibrozil"],
+      forms: [
+        { id: "form35", name: "4mg chewable tablet", minDose: 4, maxDose: 10 },
+        { id: "form36", name: "5mg chewable tablet", minDose: 5, maxDose: 10 },
+        { id: "form37", name: "10mg tablet", minDose: 10, maxDose: 10 },
+      ],
+    },
+  ],
+  antidiabetics: [
+    {
+      id: "med13",
+      name: "Metformin",
+      contraindications: ["renal impairment", "metabolic acidosis"],
+      sideEffects: ["Diarrhea", "Nausea", "Vomiting", "Flatulence"],
+      interactions: ["Contrast agents", "Alcohol", "Cimetidine"],
+      forms: [
+        { id: "form38", name: "500mg tablet", minDose: 500, maxDose: 2000 },
+        { id: "form39", name: "850mg tablet", minDose: 850, maxDose: 2550 },
+        { id: "form40", name: "1000mg tablet", minDose: 1000, maxDose: 2000 },
+      ],
+    },
+    {
+      id: "med14",
+      name: "Glipizide",
+      contraindications: ["type 1 diabetes", "diabetic ketoacidosis"],
+      sideEffects: ["Hypoglycemia", "Dizziness", "Nausea", "Weight gain"],
+      interactions: ["Fluconazole", "Beta-blockers", "NSAIDs"],
+      forms: [
+        { id: "form41", name: "5mg tablet", minDose: 5, maxDose: 20 },
+        { id: "form42", name: "10mg tablet", minDose: 10, maxDose: 20 },
+      ],
+    },
+  ],
+  antidepressants: [
+    {
+      id: "med15",
+      name: "Sertraline",
+      contraindications: ["MAO inhibitor use", "pimozide use"],
+      sideEffects: ["Nausea", "Insomnia", "Diarrhea", "Dry mouth"],
+      interactions: ["MAO inhibitors", "Warfarin", "NSAIDs"],
+      forms: [
+        { id: "form43", name: "25mg tablet", minDose: 25, maxDose: 200 },
+        { id: "form44", name: "50mg tablet", minDose: 50, maxDose: 200 },
+        { id: "form45", name: "100mg tablet", minDose: 100, maxDose: 200 },
+      ],
+    },
+    {
+      id: "med16",
+      name: "Fluoxetine",
+      contraindications: ["MAO inhibitor use", "thioridazine use"],
+      sideEffects: ["Nausea", "Insomnia", "Anxiety", "Weight loss"],
+      interactions: ["MAO inhibitors", "Tryptophan", "Warfarin"],
+      forms: [
+        { id: "form46", name: "10mg capsule", minDose: 10, maxDose: 80 },
+        { id: "form47", name: "20mg capsule", minDose: 20, maxDose: 80 },
+        { id: "form48", name: "40mg capsule", minDose: 40, maxDose: 80 },
+      ],
+    },
+  ],
+};

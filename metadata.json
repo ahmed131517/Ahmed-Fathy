@@ -1,5 +1,5 @@
 {
   "name": "HiClinic EMR System",
   "description": "A comprehensive Electronic Medical Record (EMR) system for clinics, featuring appointment management, patient records, and clinical intelligence.",
-  "requestFramePermissions": ["microphone"]
+  "requestFramePermissions": ["microphone", "geolocation"]
 }
