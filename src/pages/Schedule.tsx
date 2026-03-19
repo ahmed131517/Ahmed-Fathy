@@ -130,9 +130,9 @@ export function Schedule() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      <div className="flex flex-col xl:grid xl:grid-cols-4 gap-6">
         {/* Calendar Grid */}
-        <div className="lg:col-span-3 card-panel p-0 overflow-hidden">
+        <div className="xl:col-span-3 card-panel p-0 overflow-hidden">
           <div className="grid grid-cols-7 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50">
             {days.map((day) => (
               <div key={day} className="py-3 text-center text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest border-r border-slate-100 dark:border-slate-800 last:border-0">

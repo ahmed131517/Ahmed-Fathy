@@ -4,15 +4,47 @@ export interface PatientRecord {
   id?: string;
   localId?: number;
   name: string;
+  firstName?: string;
+  lastName?: string;
+  dob?: string;
   age: number;
+  nationalId?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
   gender: string;
   bloodType: string;
+  referralSource?: string;
+  insuranceProvider?: string;
+  policyNumber?: string;
+  groupNumber?: string;
+  insuranceFront?: string;
+  insuranceBack?: string;
+  emergencyName?: string;
+  emergencyPhone?: string;
+  emergencyRelationship?: string;
+  hasAllergies?: string;
+  allergies?: string; // JSON string of allergies
+  hasConditions?: string;
+  conditions?: string; // JSON string of conditions
+  otherConditions?: string;
+  hasMedications?: string;
+  medications?: string; // JSON string of medications
+  hasSurgeries?: string;
+  surgeries?: string;
+  familyHistory?: string; // JSON string of family history
+  familyHistoryNotes?: string;
+  photo?: string;
+  signature?: string;
+  consentTreatment?: boolean;
+  consentPrivacy?: boolean;
+  consentFinancial?: boolean;
+  communication?: string; // JSON string of communication preferences
   lastVisit: string;
   status: string;
   lastModified: number;
   isDeleted: number;
   isSynced: number;
-  allergies?: string; // JSON string of allergies
 }
 
 export interface Appointment {
@@ -194,6 +226,77 @@ export interface PhysicalExamRecord {
   isSynced: number;
 }
 
+export interface PharmacyInventoryItem {
+  id?: string;
+  localId?: number;
+  medicationName: string;
+  category?: string;
+  stock: number;
+  minStock: number;
+  unit: string;
+  price: number;
+  lastModified: number;
+  isDeleted: number;
+  isSynced: number;
+}
+
+export interface Notification {
+  id?: string;
+  localId?: number;
+  title: string;
+  message: string;
+  type: 'info' | 'success' | 'warning' | 'error';
+  category: 'appointment' | 'lab' | 'prescription' | 'system' | 'patient';
+  isRead: number; // 0 for false, 1 for true
+  link?: string;
+  createdAt: number;
+  lastModified: number;
+  isDeleted: number;
+  isSynced: number;
+}
+
+export interface User {
+  id?: string;
+  localId?: number;
+  name: string;
+  email: string;
+  role: 'doctor' | 'pharmacist' | 'admin';
+  lastModified: number;
+  isDeleted: number;
+  isSynced: number;
+}
+
+export interface LabRequest {
+  id?: string;
+  localId?: number;
+  patientId: string;
+  patientName: string;
+  tests: any[]; // JSON string of tests
+  priority: 'standard' | 'urgent';
+  physician: string;
+  requestDate: string;
+  status: 'pending' | 'collecting' | 'processing' | 'reviewing' | 'completed';
+  clinicalInfo: string;
+  notes: string;
+  results?: any[]; // JSON string of results
+  aiAnalysis?: string;
+  signature?: string;
+  notifyPatient: boolean;
+  lastModified: number;
+  isDeleted: number;
+  isSynced: number;
+}
+
+export interface AuditLog {
+  id?: string;
+  localId?: number;
+  userId: string;
+  action: string;
+  entity: string;
+  entityId: string;
+  timestamp: number;
+}
+
 export class AppDatabase extends Dexie {
   patients!: Table<PatientRecord>;
   appointments!: Table<Appointment>;
@@ -201,8 +304,13 @@ export class AppDatabase extends Dexie {
   prescription_items!: Table<PrescriptionItem>;
   diagnoses!: Table<Diagnosis>;
   lab_results!: Table<LabResult>;
+  lab_requests!: Table<LabRequest>;
+  users!: Table<User>;
   vitals!: Table<Vitals>;
   physical_exams!: Table<PhysicalExamRecord>;
+  pharmacy_inventory!: Table<PharmacyInventoryItem>;
+  notifications!: Table<Notification>;
+  audit_logs!: Table<AuditLog>;
   
   // Medication Tables
   drugs!: Table<Drug>;
@@ -217,15 +325,20 @@ export class AppDatabase extends Dexie {
 
   constructor() {
     super('MedicalAppDB');
-    this.version(6).stores({
+    this.version(9).stores({
       patients: '++localId, id, name, lastModified, isDeleted, isSynced',
       appointments: '++localId, id, patientId, date, lastModified, isDeleted, isSynced',
       prescriptions: '++localId, id, patientId, lastModified, isDeleted, isSynced',
       prescription_items: '++localId, id, prescriptionId',
       diagnoses: '++localId, id, patientId, appointmentId, lastModified, isDeleted, isSynced',
       lab_results: '++localId, id, patientId, appointmentId, lastModified, isDeleted, isSynced',
+      lab_requests: '++localId, id, patientId, status, lastModified, isDeleted, isSynced',
+      users: '++localId, id, email, role, lastModified, isDeleted, isSynced',
       vitals: '++localId, id, patientId, appointmentId, lastModified, isDeleted, isSynced',
       physical_exams: '++localId, id, patientId, status, lastModified, isDeleted, isSynced',
+      pharmacy_inventory: '++localId, id, medicationName, lastModified, isDeleted, isSynced',
+      notifications: '++localId, id, type, category, isRead, createdAt, lastModified, isDeleted, isSynced',
+      audit_logs: '++localId, id, userId, timestamp',
       drugs: '++id, generic_name, atc_code',
       drug_brands: '++id, drug_id, brand_name',
       dosage_forms: '++id, form_name',
@@ -235,6 +348,39 @@ export class AppDatabase extends Dexie {
       drug_contraindications: '++id, drug_id, condition',
       drug_side_effects: '++id, drug_id',
       drug_indications: '++id, drug_id, disease'
+    });
+
+    // Audit Hooks
+    const tablesToAudit = ['patients', 'prescriptions', 'diagnoses', 'lab_results', 'vitals', 'physical_exams'];
+    tablesToAudit.forEach(tableName => {
+      const table = (this as any)[tableName];
+      table.hook('creating', (primKey: any, obj: any) => {
+        this.audit_logs.add({
+          userId: 'current-user', // Should be dynamic
+          action: 'create',
+          entity: tableName,
+          entityId: primKey,
+          timestamp: Date.now()
+        });
+      });
+      table.hook('updating', (modifications: any, primKey: any) => {
+        this.audit_logs.add({
+          userId: 'current-user',
+          action: 'update',
+          entity: tableName,
+          entityId: primKey,
+          timestamp: Date.now()
+        });
+      });
+      table.hook('deleting', (primKey: any) => {
+        this.audit_logs.add({
+          userId: 'current-user',
+          action: 'delete',
+          entity: tableName,
+          entityId: primKey,
+          timestamp: Date.now()
+        });
+      });
     });
   }
 }

@@ -4,37 +4,36 @@ import { Check } from "lucide-react";
 
 export function GeneralSettings() {
   const { 
-    compactMode: globalCompactMode, 
-    showPatientIds: globalShowPatientIds, 
+    compactMode, 
+    showPatientIds, 
     practiceName: globalPracticeName,
     practiceAddress: globalPracticeAddress,
     practiceCity: globalPracticeCity,
     practiceState: globalPracticeState,
     practiceZip: globalPracticeZip,
     practicePhone: globalPracticePhone,
+    patientIdPrefix: globalPatientIdPrefix,
     updateSettings 
   } = useSettings();
   
-  const [compactMode, setCompactMode] = useState(globalCompactMode);
-  const [showPatientIds, setShowPatientIds] = useState(globalShowPatientIds);
   const [practiceName, setPracticeName] = useState(globalPracticeName);
   const [practiceAddress, setPracticeAddress] = useState(globalPracticeAddress);
   const [practiceCity, setPracticeCity] = useState(globalPracticeCity);
   const [practiceState, setPracticeState] = useState(globalPracticeState);
   const [practiceZip, setPracticeZip] = useState(globalPracticeZip);
   const [practicePhone, setPracticePhone] = useState(globalPracticePhone);
+  const [patientIdPrefix, setPatientIdPrefix] = useState(globalPatientIdPrefix);
   const [isSaved, setIsSaved] = useState(false);
 
   const handleSave = () => {
     updateSettings({
-      compactMode,
-      showPatientIds,
       practiceName,
       practiceAddress,
       practiceCity,
       practiceState,
       practiceZip,
       practicePhone,
+      patientIdPrefix,
     });
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 3000);
@@ -69,6 +68,10 @@ export function GeneralSettings() {
             <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Phone</label>
             <input type="text" value={practicePhone} onChange={(e) => setPracticePhone(e.target.value)} className="w-full p-2 border rounded-lg dark:bg-slate-800 dark:border-slate-700" />
           </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Patient ID Prefix</label>
+            <input type="text" value={patientIdPrefix} onChange={(e) => setPatientIdPrefix(e.target.value)} className="w-full p-2 border rounded-lg dark:bg-slate-800 dark:border-slate-700" placeholder="e.g. PAT" />
+          </div>
         </div>
       </div>
       
@@ -81,7 +84,7 @@ export function GeneralSettings() {
               <p className="text-sm text-slate-500 dark:text-slate-400">Reduce spacing in tables and lists to show more content.</p>
             </div>
             <button 
-              onClick={() => setCompactMode(!compactMode)}
+              onClick={() => updateSettings({ compactMode: !compactMode })}
               className={`w-11 h-6 rounded-full relative cursor-pointer transition-colors ${compactMode ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'}`}
             >
               <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 shadow-sm transition-transform ${compactMode ? 'right-0.5 translate-x-0' : 'left-0.5 dark:bg-slate-400'}`}></div>
@@ -94,7 +97,7 @@ export function GeneralSettings() {
               <p className="text-sm text-slate-500 dark:text-slate-400">Display patient IDs next to their names in lists.</p>
             </div>
             <button 
-              onClick={() => setShowPatientIds(!showPatientIds)}
+              onClick={() => updateSettings({ showPatientIds: !showPatientIds })}
               className={`w-11 h-6 rounded-full relative cursor-pointer transition-colors ${showPatientIds ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'}`}
             >
               <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 shadow-sm transition-transform ${showPatientIds ? 'right-0.5 translate-x-0' : 'left-0.5 dark:bg-slate-400'}`}></div>

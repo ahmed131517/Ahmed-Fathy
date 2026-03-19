@@ -1,7 +1,22 @@
 import { supabase } from './supabase';
-import { db, type PatientRecord, type Appointment } from './db';
+import { db, type Notification } from './db';
 
 const SYNC_INTERVAL = 30000; // 30 seconds
+
+async function addNotification(title: string, message: string, type: 'info' | 'success' | 'warning' | 'error', category: Notification['category']) {
+  const now = Date.now();
+  await db.notifications.add({
+    title,
+    message,
+    type,
+    category,
+    isRead: 0,
+    createdAt: now,
+    lastModified: now,
+    isDeleted: 0,
+    isSynced: 0
+  });
+}
 
 export async function pushLocalChanges() {
   const patientsToSync = await db.patients.where('isSynced').equals(0).toArray();
@@ -79,7 +94,6 @@ export async function pushLocalChanges() {
         const remoteRxId = data[0].id;
         await db.prescriptions.update(rx.localId!, { isSynced: 1, id: remoteRxId });
 
-        // Sync items for this prescription
         const items = await db.prescription_items.where('prescriptionId').equals(rx.id || rx.localId!.toString()).toArray();
         for (const item of items) {
           await supabase.from('prescription_items').upsert({
@@ -182,7 +196,6 @@ export async function pushLocalChanges() {
 }
 
 export async function pullRemoteChanges() {
-  // Get latest local modification time
   const lastLocalPatient = await db.patients.orderBy('lastModified').last();
   const lastLocalAppointment = await db.appointments.orderBy('lastModified').last();
   const lastLocalPrescription = await db.prescriptions.orderBy('lastModified').last();
@@ -197,7 +210,6 @@ export async function pullRemoteChanges() {
   const lastLabResultPull = lastLocalLabResult?.lastModified || 0;
   const lastVitalsPull = lastLocalVitals?.lastModified || 0;
 
-  // Sync Patients
   const { data: remotePatients, error: patientError } = await supabase
     .from('patients')
     .select('*')
@@ -223,7 +235,6 @@ export async function pullRemoteChanges() {
     }
   }
 
-  // Sync Appointments
   const { data: remoteAppointments, error: appointmentError } = await supabase
     .from('appointments')
     .select('*')
@@ -250,7 +261,6 @@ export async function pullRemoteChanges() {
     }
   }
 
-  // Sync Prescriptions
   const { data: remotePrescriptions, error: rxError } = await supabase
     .from('prescriptions')
     .select('*')
@@ -274,7 +284,6 @@ export async function pullRemoteChanges() {
           isSynced: 1
         });
 
-        // Pull items for this prescription
         const { data: remoteItems } = await supabase
           .from('prescription_items')
           .select('*')
@@ -299,7 +308,6 @@ export async function pullRemoteChanges() {
     }
   }
 
-  // Sync Diagnoses
   const { data: remoteDiagnoses, error: diagError } = await supabase
     .from('diagnoses')
     .select('*')
@@ -324,7 +332,6 @@ export async function pullRemoteChanges() {
     }
   }
 
-  // Sync Lab Results
   const { data: remoteLabResults, error: labError } = await supabase
     .from('lab_results')
     .select('*')
@@ -348,11 +355,14 @@ export async function pullRemoteChanges() {
           isDeleted: remote.is_deleted ? 1 : 0,
           isSynced: 1
         });
+        
+        if (remote.status === 'completed') {
+          await addNotification('Lab Result Completed', `Lab result for ${remote.test_name} is ready.`, 'success', 'lab');
+        }
       }
     }
   }
 
-  // Sync Vitals
   const { data: remoteVitals, error: vitalsError } = await supabase
     .from('vitals')
     .select('*')
@@ -400,8 +410,30 @@ export async function syncAll() {
   }
 }
 
+export function startRealtimeSync() {
+  const channel = supabase
+    .channel('schema-db-changes')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'lab_results' },
+      (payload) => {
+        console.log('Lab result change:', payload);
+        syncAll();
+      }
+    )
+    .subscribe();
+    
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}
+
 export function startSyncEngine() {
   const interval = setInterval(syncAll, SYNC_INTERVAL);
   syncAll(); // Initial sync
-  return () => clearInterval(interval);
+  const unsubscribeRealtime = startRealtimeSync();
+  return () => {
+    clearInterval(interval);
+    unsubscribeRealtime();
+  };
 }

@@ -10,9 +10,11 @@ import { ICD10Search } from "../components/ICD10Search";
 import { ICD10Code } from "../data/icd10";
 import { usePatient } from "../lib/PatientContext";
 import { useSymptom } from "../lib/SymptomContext";
+import { useUser } from "../lib/UserContext";
 import { GoogleGenAI } from "@google/genai";
 import { db } from "../lib/db";
 import { cn } from "../lib/utils";
+import { Textarea } from "@/components/ui/textarea";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 
@@ -52,9 +54,22 @@ interface AIDiagnosis {
 }
 
 export function FinalDiagnosis() {
+  const { hasRole } = useUser();
   const navigate = useNavigate();
   const { selectedPatient, setConfirmedDiagnosis } = usePatient();
   const { symptoms } = useSymptom();
+  
+  if (!hasRole('doctor')) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center">
+          <Shield className="w-16 h-16 text-red-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-slate-900">Access Denied</h2>
+          <p className="text-slate-500">You do not have permission to access this page.</p>
+        </div>
+      </div>
+    );
+  }
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [suggestions, setSuggestions] = useState<AIDiagnosis[] | null>(null);
   const [selectedDiagnosis, setSelectedDiagnosis] = useState<ICD10Code | null>(null);
@@ -534,12 +549,12 @@ export function FinalDiagnosis() {
                       <Mic className="w-3 h-3" /> AI Scribe
                     </button>
                   </div>
-                  <textarea 
-                    value={reasoning}
+                  <Textarea 
+                    value={reasoning || ""}
                     onChange={(e) => setReasoning(e.target.value)}
                     className="w-full flex-1 min-h-[200px] px-4 py-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none resize-none bg-slate-50 focus:bg-white transition-colors text-sm leading-relaxed" 
                     placeholder="Document your clinical reasoning, excluding or including AI suggestions..."
-                  ></textarea>
+                  ></Textarea>
                 </div>
               </div>
             </div>

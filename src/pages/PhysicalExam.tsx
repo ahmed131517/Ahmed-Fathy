@@ -890,7 +890,7 @@ export function NeurologicalTab({ findings, onChange }: { findings: any, onChang
 
       <div className="space-y-1.5">
         <Label className="text-sm">Notes</Label>
-        <Textarea placeholder="Enter detailed neurological findings..." value={notes} onChange={e => onChange('notes', e.target.value)} />
+        <Textarea placeholder="Enter detailed neurological findings..." value={notes || ""} onChange={e => onChange('notes', e.target.value)} />
       </div>
     </div>
   );
@@ -1147,7 +1147,7 @@ export function SkinTab({ findings, onChange }: { findings: any, onChange: (fiel
                 <div className="space-y-1">
                   <Label className="text-xs">Assessment / Notes</Label>
                   <Textarea className="text-xs min-h-[50px]" placeholder="e.g., Suspicious for BCC, likely Seborrheic Keratosis..."
-                    value={lesion.description} onChange={e => updateLesion(lesion.id, "description", e.target.value)} />
+                    value={lesion.description || ""} onChange={e => updateLesion(lesion.id, "description", e.target.value)} />
                 </div>
               </div>
             ))}
@@ -1157,7 +1157,7 @@ export function SkinTab({ findings, onChange }: { findings: any, onChange: (fiel
 
       <div className="space-y-1.5">
         <Label className="text-sm">Notes</Label>
-        <Textarea placeholder="Enter detailed skin examination findings..." value={notes} onChange={e => onChange('notes', e.target.value)} />
+        <Textarea placeholder="Enter detailed skin examination findings..." value={notes || ""} onChange={e => onChange('notes', e.target.value)} />
       </div>
     </div>
   );
@@ -1503,7 +1503,7 @@ export function HeentTab({ findings, onChange }: { findings: any, onChange: (fie
 
       <div className="space-y-1.5">
         <Label className="text-sm">Notes</Label>
-        <Textarea placeholder="Enter detailed notes about HEENT findings..." value={notes} onChange={e => onChange('notes', e.target.value)} className="min-h-[80px]" />
+        <Textarea placeholder="Enter detailed notes about HEENT findings..." value={notes || ""} onChange={e => onChange('notes', e.target.value)} className="min-h-[80px]" />
       </div>
     </div>
   );
@@ -1634,7 +1634,7 @@ export function SseTab({ findings, onChange }: { findings: any, onChange: (field
 
       <div className="space-y-1.5">
         <Label className="text-sm">Notes</Label>
-        <Textarea placeholder="Enter detailed SSE findings..." value={notes} onChange={e => onChange('notes', e.target.value)} />
+        <Textarea placeholder="Enter detailed SSE findings..." value={notes || ""} onChange={e => onChange('notes', e.target.value)} />
       </div>
     </div>
   );
@@ -2030,7 +2030,7 @@ export function CardiovascularTab({ findings, onChange }: { findings: any, onCha
 
       <div className="space-y-1.5">
         <Label className="text-sm">Notes</Label>
-        <Textarea placeholder="Enter detailed cardiovascular findings..." value={notes} onChange={e => onChange('notes', e.target.value)} />
+        <Textarea placeholder="Enter detailed cardiovascular findings..." value={notes || ""} onChange={e => onChange('notes', e.target.value)} />
       </div>
     </div>
   );
@@ -2451,7 +2451,7 @@ export function RespiratoryTab({ findings, onChange }: { findings: any, onChange
         <Label className="text-sm">Notes</Label>
         <Textarea
           placeholder="Enter detailed notes about respiratory findings..."
-          value={notes}
+          value={notes || ""}
           onChange={e => onChange('notes', e.target.value)}
         />
       </div>
@@ -2841,7 +2841,7 @@ export function GastrointestinalTab({ findings, onChange }: { findings: any, onC
 
       <div className="space-y-1.5">
         <Label className="text-sm">Notes</Label>
-        <Textarea placeholder="Enter detailed GI findings..." value={notes} onChange={e => onChange('notes', e.target.value)} />
+        <Textarea placeholder="Enter detailed GI findings..." value={notes || ""} onChange={e => onChange('notes', e.target.value)} />
       </div>
     </div>
   );
@@ -2943,7 +2943,7 @@ export function PsychiatricTab({ findings, onChange }: { findings: any, onChange
 
       <div className="space-y-1.5">
         <Label className="text-sm">Notes</Label>
-        <Textarea placeholder="Enter detailed psychiatric assessment..." value={notes} onChange={e => onChange('notes', e.target.value)} />
+        <Textarea placeholder="Enter detailed psychiatric assessment..." value={notes || ""} onChange={e => onChange('notes', e.target.value)} />
       </div>
     </div>
   );
@@ -3034,7 +3034,7 @@ export function GeriatricTab({ findings, onChange }: { findings: any, onChange: 
 
       <div className="space-y-1.5">
         <Label className="text-sm">Notes</Label>
-        <Textarea placeholder="Enter detailed geriatric assessment..." value={notes} onChange={e => onChange('notes', e.target.value)} />
+        <Textarea placeholder="Enter detailed geriatric assessment..." value={notes || ""} onChange={e => onChange('notes', e.target.value)} />
       </div>
     </div>
   );
@@ -3666,6 +3666,42 @@ Format the output as a professional medical note under the heading "Physical Exa
             </div>
           </div>
           <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-600">Weight (kg)</label>
+            <div className="relative">
+              <Scale className="w-4 h-4 absolute left-2.5 top-2.5 text-slate-400" />
+              <input 
+                type="number" 
+                value={vitals.weight}
+                onChange={(e) => handleVitalChange('weight', e.target.value)}
+                className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" 
+                placeholder="70" 
+              />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-600">Height (cm)</label>
+            <div className="relative">
+              <Ruler className="w-4 h-4 absolute left-2.5 top-2.5 text-slate-400" />
+              <input 
+                type="number" 
+                value={vitals.height}
+                onChange={(e) => handleVitalChange('height', e.target.value)}
+                className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" 
+                placeholder="170" 
+              />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-600">BMI</label>
+            <input 
+              type="text" 
+              value={vitals.bmi}
+              readOnly
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50 text-slate-500 outline-none" 
+              placeholder="--" 
+            />
+          </div>
+          <div className="space-y-1.5">
             <label className="text-xs font-medium text-slate-600">SpO2 (%)</label>
             <div className="relative">
               <Droplets className="w-4 h-4 absolute left-2.5 top-2.5 text-slate-400" />
@@ -3716,7 +3752,7 @@ Format the output as a professional medical note under the heading "Physical Exa
               {vitals.oxygenInvasive && (
                 <>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-slate-600">Device Type</label>
+                    <label className="text-xs font-medium text-slate-600">Mode Types</label>
                     <select
                       value={vitals.oxygenDeviceType}
                       onChange={(e) => handleVitalChange('oxygenDeviceType', e.target.value)}
@@ -3736,15 +3772,21 @@ Format the output as a professional medical note under the heading "Physical Exa
                         </>
                       ) : (
                         <>
-                          <option value="ett">Endotracheal Tube (ETT)</option>
-                          <option value="tracheostomy">Tracheostomy</option>
+                          <option value="ac_vc">Assist-Control Volume (AC-VC)</option>
+                          <option value="ac_pc">Assist-Control Pressure (AC-PC)</option>
+                          <option value="simv">SIMV</option>
+                          <option value="psv">Pressure Support (PSV)</option>
+                          <option value="prvc">PRVC</option>
+                          <option value="aprv">APRV</option>
                           <option value="other">Other</option>
                         </>
                       )}
                     </select>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-slate-600">Details/Settings</label>
+                    <label className="text-xs font-medium text-slate-600">
+                      {vitals.oxygenInvasive === 'invasive' ? 'MV parameters' : 'Details/Settings'}
+                    </label>
                     <div className="grid grid-cols-2 gap-2">
                       {vitals.oxygenInvasive === 'invasive' ? (
                         <>
@@ -3762,42 +3804,6 @@ Format the output as a professional medical note under the heading "Physical Exa
               )}
             </>
           )}
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-slate-600">Weight (kg)</label>
-            <div className="relative">
-              <Scale className="w-4 h-4 absolute left-2.5 top-2.5 text-slate-400" />
-              <input 
-                type="number" 
-                value={vitals.weight}
-                onChange={(e) => handleVitalChange('weight', e.target.value)}
-                className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" 
-                placeholder="70" 
-              />
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-slate-600">Height (cm)</label>
-            <div className="relative">
-              <Ruler className="w-4 h-4 absolute left-2.5 top-2.5 text-slate-400" />
-              <input 
-                type="number" 
-                value={vitals.height}
-                onChange={(e) => handleVitalChange('height', e.target.value)}
-                className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" 
-                placeholder="170" 
-              />
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-slate-600">BMI</label>
-            <input 
-              type="text" 
-              value={vitals.bmi}
-              readOnly
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50 text-slate-500 outline-none" 
-              placeholder="--" 
-            />
-          </div>
         </div>
       </div>
 
@@ -3914,12 +3920,12 @@ Format the output as a professional medical note under the heading "Physical Exa
             {isGenerating ? 'Generating...' : 'Auto-Generate with AI'}
           </button>
         </div>
-        <textarea 
-          value={examSummary}
+        <Textarea 
+          value={examSummary || ""}
           onChange={(e) => setExamSummary(e.target.value)}
           className="w-full flex-1 p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none resize-none bg-slate-50 focus:bg-white transition-colors"
           placeholder="Enter your overall assessment and examination summary..."
-        ></textarea>
+        />
       </div>
     </div>
   </div>
@@ -4103,12 +4109,12 @@ function GeneralTab({ findings, onChange, onDictation, listeningField }: General
                 <Mic className="w-4 h-4" />
               </button>
             </div>
-            <textarea 
+            <Textarea 
               className="w-full h-32 p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none resize-none bg-slate-50 focus:bg-white transition-colors"
               placeholder="Enter detailed notes about general appearance..."
-              value={findings.notes}
+              value={findings.notes || ""}
               onChange={(e) => onChange('notes', e.target.value)}
-            ></textarea>
+            />
           </div>
         </div>
       </div>

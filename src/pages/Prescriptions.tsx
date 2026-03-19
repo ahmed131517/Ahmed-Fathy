@@ -1,3 +1,4 @@
+import { checkInteractions } from "@/services/interactionService";
 import { useState, useMemo, useEffect } from "react";
 import { 
   FileText, Plus, Layout, Cpu, History, Eye, CheckCircle, 
@@ -5,6 +6,7 @@ import {
   Hash, Clock, Calendar, Info, Sparkles, Loader2, RefreshCw
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Textarea } from "@/components/ui/textarea";
 import { medicationsDatabase } from "@/data/medications";
 import { prescriptionTemplates } from "@/data/templates";
 import { usePatient } from "@/lib/PatientContext";
@@ -28,6 +30,8 @@ export function Prescriptions() {
   const [currentPrescription, setCurrentPrescription] = useState<any[]>([]);
   const [prescriptionNotes, setPrescriptionNotes] = useState("");
   const [refills, setRefills] = useState("0");
+  const [interactionAlerts, setInteractionAlerts] = useState<string[]>([]);
+  const [isCheckingInteractions, setIsCheckingInteractions] = useState(false);
   
   // State for user-created templates
   const [userTemplates, setUserTemplates] = useState<any[]>(() => {
@@ -43,6 +47,21 @@ export function Prescriptions() {
   useEffect(() => {
     localStorage.setItem('userTemplates', JSON.stringify(userTemplates));
   }, [userTemplates]);
+
+  useEffect(() => {
+    const check = async () => {
+      const meds = currentPrescription.map(item => item.medication);
+      if (meds.length < 2) {
+        setInteractionAlerts([]);
+        return;
+      }
+      setIsCheckingInteractions(true);
+      const alerts = await checkInteractions(meds);
+      setInteractionAlerts(alerts);
+      setIsCheckingInteractions(false);
+    };
+    check();
+  }, [currentPrescription]);
 
   // Modals and UI states
   const [selectedMedForForms, setSelectedMedForForms] = useState<any | null>(null);
@@ -698,6 +717,16 @@ export function Prescriptions() {
 
           <div className="flex-1 p-6 flex flex-col overflow-y-auto bg-white">
             <div className="flex-1 mb-6">
+              {interactionAlerts.length > 0 && (
+                <div className="bg-red-50 border border-red-200 p-4 rounded-xl mb-6">
+                  <h4 className="text-red-800 font-semibold flex items-center gap-2 mb-2">
+                    <AlertCircle className="w-5 h-5" /> Potential Drug Interactions
+                  </h4>
+                  <ul className="list-disc list-inside text-sm text-red-700 space-y-1">
+                    {interactionAlerts.map((alert, i) => <li key={i}>{alert}</li>)}
+                  </ul>
+                </div>
+              )}
               {currentPrescription.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-xl text-slate-400 p-8 text-center bg-slate-50/50">
                   <ShoppingCart className="w-12 h-12 text-slate-300 mb-4" />
@@ -787,12 +816,12 @@ export function Prescriptions() {
             <div className="border-t-2 border-slate-100 pt-6">
               <div className="mb-6">
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Clinical Notes / Instructions</label>
-                <textarea 
-                  value={prescriptionNotes}
+                <Textarea 
+                  value={prescriptionNotes || ""}
                   onChange={(e) => setPrescriptionNotes(e.target.value)}
                   placeholder="Enter specific instructions for the patient or pharmacist..."
                   className="w-full p-3 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none min-h-[80px] transition-all bg-slate-50 focus:bg-white"
-                ></textarea>
+                ></Textarea>
               </div>
               
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">

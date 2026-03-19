@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
+import { useLiveQuery } from "dexie-react-hooks";
 import { 
   FilePlus, Search, Droplet, Box, LifeBuoy, PieChart, Zap, Database, 
   Activity, Filter, Shield, FlaskConical, Image as ImageIcon, Heart, 
@@ -7,6 +8,7 @@ import {
   PenTool, TrendingUp, History, Bell, ClipboardCheck, ArrowRight, Beaker, Loader2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Textarea } from "@/components/ui/textarea";
 import { usePatient } from "@/lib/PatientContext";
 import { LAB_REFERENCE_DATA, ALL_TESTS, LabTest } from "@/data/labReferenceData";
 import { GoogleGenAI } from "@google/genai";
@@ -45,7 +47,8 @@ interface SelectedTest extends LabTest {
 }
 
 interface LabRequest {
-  id: string;
+  id?: string;
+  localId?: number;
   patientId: string;
   patientName: string;
   tests: SelectedTest[];
@@ -59,6 +62,9 @@ interface LabRequest {
   aiAnalysis?: string;
   signature?: string;
   notifyPatient: boolean;
+  lastModified: number;
+  isDeleted: number;
+  isSynced: number;
 }
 
 export function LabRequests() {
@@ -90,40 +96,7 @@ export function LabRequests() {
     { date: '2023-10', glucose: 110, hgb: 11.5 },
   ];
 
-  // Mock data for pending and completed tests
-  const [requests, setRequests] = useState<LabRequest[]>([
-    {
-      id: "REQ-1234",
-      patientId: "P-001",
-      patientName: "Sarah Johnson",
-      tests: [{ name: "CBC", category: "hematology", instructions: "", preparation: "No special preparation required." } as SelectedTest],
-      priority: "standard",
-      physician: "Dr. Ahmed Fathy",
-      requestDate: "2023-10-25",
-      status: "completed",
-      clinicalInfo: "Routine checkup",
-      notes: "",
-      notifyPatient: true,
-      results: [
-        { test: "Hemoglobin", value: 11.5, unit: "g/dL", range: "12.0-15.5", status: "low" },
-        { test: "WBC", value: 12.5, unit: "K/uL", range: "4.5-11.0", status: "high" },
-        { test: "Platelets", value: 250, unit: "K/uL", range: "150-450", status: "normal" }
-      ]
-    },
-    {
-      id: "REQ-5678",
-      patientId: "P-001",
-      patientName: "Sarah Johnson",
-      tests: [{ name: "Lipid Profile", category: "lipids", instructions: "", preparation: "Fasting for 12 hours required." } as SelectedTest],
-      priority: "urgent",
-      physician: "Dr. Ahmed Fathy",
-      requestDate: "2023-11-02",
-      status: "processing",
-      clinicalInfo: "Chest pain follow-up",
-      notes: "Stat processing requested",
-      notifyPatient: true
-    }
-  ]);
+  const requests = useLiveQuery(() => db.lab_requests.toArray()) || [];
 
   const filteredTests = useMemo(() => {
     if (searchQuery.length >= 2) {
@@ -190,7 +163,7 @@ export function LabRequests() {
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!selectedPatient) return;
     if (selectedTests.length === 0) return;
 
@@ -206,10 +179,13 @@ export function LabRequests() {
       clinicalInfo,
       notes: additionalNotes,
       signature: signatureData || undefined,
-      notifyPatient
+      notifyPatient,
+      lastModified: Date.now(),
+      isDeleted: 0,
+      isSynced: 0
     };
 
-    setRequests(prev => [newRequest, ...prev]);
+    await db.lab_requests.add(newRequest);
     setSelectedTests([]);
     setClinicalInfo("");
     setAdditionalNotes("");
@@ -244,7 +220,7 @@ export function LabRequests() {
       });
       const text = response.text;
       
-      setRequests(prev => prev.map(r => r.id === request.id ? { ...r, aiAnalysis: text } : r));
+      await db.lab_requests.update(request.localId!, { aiAnalysis: text });
     } catch (error) {
       console.error("AI Analysis failed:", error);
     } finally {
@@ -521,7 +497,7 @@ export function LabRequests() {
                           Suggest Relevant Tests
                         </button>
                       </div>
-                      <textarea 
+                      <Textarea 
                         value={clinicalInfo || ""}
                         onChange={(e) => setClinicalInfo(e.target.value)}
                         rows={3}
@@ -604,7 +580,7 @@ export function LabRequests() {
 
                       <div className="space-y-2">
                         <label className="text-sm font-medium text-slate-700">Additional Instructions</label>
-                        <textarea 
+                        <Textarea 
                           value={additionalNotes || ""}
                           onChange={(e) => setAdditionalNotes(e.target.value)}
                           rows={4}
@@ -772,8 +748,26 @@ export function LabRequests() {
 
                         <div className="flex items-center justify-between text-[11px] text-slate-500 pt-3 border-t border-slate-100">
                           <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> Est. 24-48h</span>
-                          <button className="text-indigo-600 font-medium hover:underline flex items-center gap-1">
-                            View Form <ArrowRight className="w-3 h-3" />
+                          <button 
+                            onClick={() => {
+                              // Open modal to enter results
+                              // For now, just simulate entering results
+                              const results = [
+                                { test: "Hemoglobin", value: 13.5, unit: "g/dL", range: "12.0-15.5", status: "normal" },
+                                { test: "WBC", value: 7.5, unit: "K/uL", range: "4.5-11.0", status: "normal" }
+                              ];
+                              db.lab_requests.update(req.localId!, { 
+                                status: 'completed', 
+                                results: results,
+                                lastModified: Date.now()
+                              }).then(() => {
+                                syncToRecords({ ...req, results, status: 'completed' });
+                                toast.success("Results entered and synced.");
+                              });
+                            }}
+                            className="text-indigo-600 font-medium hover:underline flex items-center gap-1"
+                          >
+                            Enter Results <ArrowRight className="w-3 h-3" />
                           </button>
                         </div>
                       </div>

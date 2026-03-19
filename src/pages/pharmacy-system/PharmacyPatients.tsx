@@ -1,24 +1,35 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Search, Eye } from "lucide-react";
-
-interface Patient {
-  id: string;
-  name: string;
-  lastRx: string;
-  orders: number;
-  status: "Active" | "Inactive";
-}
-
-const initialPatients: Patient[] = [
-  { name: "John Smith", id: "PT12345", lastRx: "Sep 20, 2023", orders: 12, status: "Active" },
-  { name: "Emily Davis", id: "PT23456", lastRx: "Sep 18, 2023", orders: 5, status: "Active" },
-  { name: "Michael Brown", id: "PT34567", lastRx: "Sep 15, 2023", orders: 8, status: "Active" },
-  { name: "Sarah Wilson", id: "PT45678", lastRx: "Sep 10, 2023", orders: 2, status: "Inactive" }
-];
+import { useLiveQuery } from "dexie-react-hooks";
+import { db } from "../../lib/db";
 
 export function PharmacyPatients() {
   const [searchQuery, setSearchQuery] = useState("");
-  const [patients, setPatients] = useState<Patient[]>(initialPatients);
+
+  const patientsData = useLiveQuery(() => db.patients.toArray());
+  const prescriptionsData = useLiveQuery(() => db.prescriptions.toArray());
+
+  const patients = useMemo(() => {
+    if (!patientsData) return [];
+
+    return patientsData.map(patient => {
+      const patientPrescriptions = prescriptionsData?.filter(p => p.patientId === patient.id || p.patientId === String(patient.localId)) || [];
+      
+      // Sort prescriptions by createdAt descending to find the latest
+      const sortedPrescriptions = [...patientPrescriptions].sort((a, b) => b.createdAt - a.createdAt);
+      const lastRx = sortedPrescriptions.length > 0 
+        ? new Date(sortedPrescriptions[0].createdAt).toLocaleDateString() 
+        : "No prescriptions";
+
+      return {
+        id: patient.id || String(patient.localId),
+        name: patient.name,
+        lastRx,
+        orders: patientPrescriptions.length,
+        status: patient.status === "active" ? "Active" : "Inactive"
+      };
+    });
+  }, [patientsData, prescriptionsData]);
 
   const filteredPatients = patients.filter(p => 
     p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -52,26 +63,34 @@ export function PharmacyPatients() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredPatients.map((patient) => (
-                <tr key={patient.id} className="hover:bg-slate-50">
-                  <td className="px-6 py-4 font-bold text-slate-900">{patient.name}</td>
-                  <td className="px-6 py-4 font-mono text-slate-500 text-xs">{patient.id}</td>
-                  <td className="px-6 py-4 text-slate-600">{patient.lastRx}</td>
-                  <td className="px-6 py-4 text-slate-600">{patient.orders}</td>
-                  <td className="px-6 py-4">
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
-                      patient.status === "Active" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"
-                    }`}>
-                      {patient.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <button className="text-indigo-600 hover:text-indigo-700 font-medium text-xs flex items-center justify-end gap-1 ml-auto">
-                      <Eye className="w-3 h-3" /> View History
-                    </button>
+              {filteredPatients.length > 0 ? (
+                filteredPatients.map((patient) => (
+                  <tr key={patient.id} className="hover:bg-slate-50">
+                    <td className="px-6 py-4 font-bold text-slate-900">{patient.name}</td>
+                    <td className="px-6 py-4 font-mono text-slate-500 text-xs">{patient.id}</td>
+                    <td className="px-6 py-4 text-slate-600">{patient.lastRx}</td>
+                    <td className="px-6 py-4 text-slate-600">{patient.orders}</td>
+                    <td className="px-6 py-4">
+                      <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                        patient.status === "Active" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"
+                      }`}>
+                        {patient.status}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <button className="text-indigo-600 hover:text-indigo-700 font-medium text-xs flex items-center justify-end gap-1 ml-auto">
+                        <Eye className="w-3 h-3" /> View History
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={6} className="px-6 py-10 text-center text-slate-500 italic">
+                    No patients found matching your search.
                   </td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>

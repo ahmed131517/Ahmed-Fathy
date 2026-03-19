@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { X, User, Info, Sparkles, Repeat, Bell } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 import { db } from "@/lib/db";
 import { toast } from "sonner";
 
@@ -197,13 +198,13 @@ export function NewAppointmentModal({ isOpen, onClose }: NewAppointmentModalProp
 
               <div className="space-y-1.5 md:col-span-2">
                 <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Notes</label>
-                <textarea 
+                <Textarea 
                   rows={3} 
                   placeholder="Additional instructions..." 
-                  value={notes}
+                  value={notes || ""}
                   onChange={(e) => setNotes(e.target.value)}
                   className="w-full px-3 py-2 bg-white dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-colors resize-none"
-                ></textarea>
+                ></Textarea>
               </div>
 
               <div className="space-y-4 md:col-span-2 pt-4 border-t border-slate-100 dark:border-slate-800">

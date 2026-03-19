@@ -1,3 +1,4 @@
+import { MobileVitals } from "./pages/MobileVitals";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { Layout } from "./components/layout/Layout";
 import { Dashboard } from "./pages/Dashboard";
@@ -14,11 +15,14 @@ import { Profile } from "./pages/Profile";
 import { Schedule } from "./pages/Schedule";
 import { Settings } from "./pages/Settings";
 import { AdminSettings } from "./pages/AdminSettings";
+import { UserManagement } from "./pages/UserManagement";
+import { Notifications } from "./pages/Notifications";
 import { PatientProvider } from "./lib/PatientContext";
 import { SymptomProvider } from "./lib/SymptomContext";
 import { UserProvider } from "./lib/UserContext";
 import { ThemeProvider } from "./lib/ThemeContext";
 import { SettingsProvider } from "./lib/SettingsContext";
+import { NotificationProvider } from "./lib/NotificationContext";
 
 import { PharmacyLayout } from "./pages/pharmacy-system/PharmacyLayout";
 import { PharmacyDashboard } from "./pages/pharmacy-system/PharmacyDashboard";
@@ -72,7 +76,8 @@ export default function App() {
     <ThemeProvider defaultTheme="light" storageKey="app-theme">
       <SettingsProvider>
         <UserProvider>
-          <PatientProvider>
+          <NotificationProvider>
+            <PatientProvider>
             <SymptomProvider>
               <BrowserRouter>
               <Toaster position="top-right" richColors />
@@ -89,10 +94,13 @@ export default function App() {
               <Route path="prescriptions" element={<Prescriptions />} />
               <Route path="pharmacies" element={<Pharmacies />} />
               <Route path="medical-records" element={<MedicalRecords />} />
+              <Route path="mobile-vitals" element={<MobileVitals />} />
               <Route path="profile" element={<Profile />} />
               <Route path="schedule" element={<Schedule />} />
               <Route path="settings" element={<Settings />} />
               <Route path="admin-settings" element={<AdminSettings />} />
+              <Route path="user-management" element={<UserManagement />} />
+              <Route path="notifications" element={<Notifications />} />
               <Route path="*" element={<div className="p-6 text-slate-500">Page under construction</div>} />
             </Route>
 
@@ -108,7 +116,8 @@ export default function App() {
         </BrowserRouter>
       </SymptomProvider>
     </PatientProvider>
-  </UserProvider>
+  </NotificationProvider>
+</UserProvider>
   </SettingsProvider>
   </ThemeProvider>
   );

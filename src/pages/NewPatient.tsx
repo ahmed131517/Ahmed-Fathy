@@ -6,9 +6,12 @@ import { QRCodeSVG } from 'qrcode.react';
 import { db } from "@/lib/db";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { Textarea } from "@/components/ui/textarea";
+import { useNotifications } from "@/lib/NotificationContext";
 
 export function NewPatient() {
   const navigate = useNavigate();
+  const { addNotification } = useNotifications();
   const [step, setStep] = useState(1);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const getInitialData = () => ({
@@ -436,13 +439,13 @@ export function NewPatient() {
                       <label className="text-sm font-medium text-slate-700">Address</label>
                       <div className="relative">
                         <MapPin className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
-                        <textarea 
+                        <Textarea 
                           rows={3} 
                           value={formData.address || ""}
                           onChange={(e) => updateField('address', e.target.value)}
                           placeholder="Start typing address..."
                           className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
-                        ></textarea>
+                        />
                       </div>
                     </div>
 
@@ -753,12 +756,12 @@ export function NewPatient() {
                         <label className="text-sm font-medium text-slate-700">Other conditions:</label>
                         <div className="relative">
                           <Activity className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
-                          <textarea 
+                          <Textarea 
                             rows={2} 
                             value={formData.otherConditions || ""}
                             onChange={(e) => updateField('otherConditions', e.target.value)}
                             className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none resize-none text-sm"
-                          ></textarea>
+                          />
                         </div>
                       </div>
                     </div>
@@ -926,12 +929,12 @@ export function NewPatient() {
                   <label className="text-sm font-medium text-slate-700">Previous Surgeries (if any):</label>
                   <div className="relative">
                     <Scissors className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
-                    <textarea 
+                    <Textarea 
                       rows={2} 
                       value={formData.surgeries || ""}
                       onChange={(e) => updateField('surgeries', e.target.value)}
                       className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none resize-none text-sm"
-                    ></textarea>
+                    />
                   </div>
                 </div>
 
@@ -939,12 +942,12 @@ export function NewPatient() {
                   <label className="text-sm font-medium text-slate-700">Additional Family Medical History Notes:</label>
                   <div className="relative">
                     <Users className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
-                    <textarea 
+                    <Textarea 
                       rows={2} 
                       value={formData.familyHistoryText || ""}
                       onChange={(e) => updateField('familyHistoryText', e.target.value)}
                       className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none resize-none text-sm"
-                    ></textarea>
+                    />
                   </div>
                 </div>
               </div>
@@ -1145,15 +1148,39 @@ export function NewPatient() {
 
                 <div className="space-y-6">
                   <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
+                    <h4 className="font-semibold text-slate-800 mb-3">Emergency Contact</h4>
+                    <div className="space-y-2 text-sm">
+                      <p><span className="text-slate-500">Name:</span> {formData.emergencyName || 'N/A'}</p>
+                      <p><span className="text-slate-500">Phone:</span> {formData.emergencyPhone || 'N/A'}</p>
+                      <p><span className="text-slate-500">Relation:</span> {formData.emergencyRelation || 'N/A'}</p>
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
                     <h4 className="font-semibold text-slate-800 mb-3">Medical Summary</h4>
                     <div className="space-y-3 text-sm">
                       <div>
                         <p className="text-slate-500 font-medium">Allergies:</p>
-                        <p>{formData.hasAllergies === 'yes' ? formData.allergies.map(a => a.name).join(', ') : 'None'}</p>
+                        <p>{formData.hasAllergies === 'yes' ? formData.allergies.filter(a => a.name).map(a => `${a.name} (${a.reaction})`).join(', ') : 'None'}</p>
                       </div>
                       <div>
                         <p className="text-slate-500 font-medium">Conditions:</p>
-                        <p>{formData.hasConditions === 'yes' ? formData.conditions.join(', ') : 'None'}</p>
+                        <p>{formData.hasConditions === 'yes' ? [...formData.conditions, formData.otherConditions].filter(Boolean).join(', ') : 'None'}</p>
+                      </div>
+                      <div>
+                        <p className="text-slate-500 font-medium">Medications:</p>
+                        <p>{formData.hasMedications === 'yes' ? formData.medications.filter(m => m.name).map(m => `${m.name} ${m.dosage} ${m.frequency}`).join(', ') : 'None'}</p>
+                      </div>
+                      {formData.surgeries && (
+                        <div>
+                          <p className="text-slate-500 font-medium">Previous Surgeries:</p>
+                          <p>{formData.surgeries}</p>
+                        </div>
+                      )}
+                      <div>
+                        <p className="text-slate-500 font-medium">Family History:</p>
+                        <p>{formData.familyHistory.filter(f => f.condition).map(f => `${f.relation}: ${f.condition}`).join(', ') || 'None'}</p>
+                        {formData.familyHistoryText && <p className="mt-1 text-xs italic">{formData.familyHistoryText}</p>}
                       </div>
                     </div>
                   </div>
@@ -1176,21 +1203,74 @@ export function NewPatient() {
                   Back
                 </button>
                 <button 
-                  onClick={async () => {
-                    try {
-                      const now = Date.now();
+                    onClick={async () => {
+                      try {
+                        const now = Date.now();
+                        
+                        // Calculate age from DOB
+                        let calculatedAge = 0;
+                        if (formData.dob) {
+                          const birthDate = new Date(formData.dob);
+                          const today = new Date();
+                          calculatedAge = today.getFullYear() - birthDate.getFullYear();
+                          const m = today.getMonth() - birthDate.getMonth();
+                          if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+                            calculatedAge--;
+                          }
+                        }
+
                       await db.patients.add({
-                        id: crypto.randomUUID(),
+                        id: formData.patientId,
                         name: `${formData.firstName} ${formData.lastName}`,
-                        age: parseInt(calculateAge(formData.dob) as string) || 0,
+                        firstName: formData.firstName,
+                        lastName: formData.lastName,
+                        dob: formData.dob,
+                        age: calculatedAge,
+                        nationalId: formData.nationalId,
+                        email: formData.email,
+                        phone: formData.phone,
+                        address: formData.address,
                         gender: formData.gender,
                         bloodType: formData.bloodType || 'Unknown',
+                        referralSource: formData.referralSource,
+                        insuranceProvider: formData.insuranceProvider,
+                        policyNumber: formData.policyNumber,
+                        groupNumber: formData.groupNumber,
+                        insuranceFront: formData.insuranceFront || undefined,
+                        insuranceBack: formData.insuranceBack || undefined,
+                        emergencyName: formData.emergencyName,
+                        emergencyPhone: formData.emergencyPhone,
+                        emergencyRelationship: formData.emergencyRelation,
+                        hasAllergies: formData.hasAllergies || undefined,
+                        allergies: JSON.stringify(formData.allergies),
+                        hasConditions: formData.hasConditions || undefined,
+                        conditions: JSON.stringify(formData.conditions),
+                        otherConditions: formData.otherConditions,
+                        hasMedications: formData.hasMedications || undefined,
+                        medications: JSON.stringify(formData.medications),
+                        hasSurgeries: formData.surgeries ? 'yes' : 'no',
+                        surgeries: formData.surgeries,
+                        familyHistory: JSON.stringify(formData.familyHistory),
+                        familyHistoryNotes: formData.familyHistoryText,
+                        photo: formData.photo || undefined,
+                        signature: formData.signature || undefined,
+                        consentTreatment: formData.consentTreatment,
+                        consentPrivacy: formData.consentPrivacy,
+                        consentFinancial: formData.consentFinancial,
+                        communication: JSON.stringify(formData.communication),
                         lastVisit: new Date().toISOString().split('T')[0],
                         status: 'Stable',
                         lastModified: now,
                         isDeleted: 0,
-                        isSynced: 0,
-                        allergies: JSON.stringify(formData.allergies)
+                        isSynced: 0
+                      });
+                      
+                      await addNotification({
+                        title: "New Patient Registered",
+                        message: `${formData.firstName} ${formData.lastName} (${formData.patientId}) has been successfully registered.`,
+                        type: "success",
+                        category: "patient",
+                        link: "/"
                       });
                       
                       toast.success("Patient Registered Successfully!");

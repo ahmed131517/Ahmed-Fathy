@@ -1,6 +1,69 @@
-import { Clock, CheckCircle, AlertTriangle, DollarSign, FileText, Box } from "lucide-react";
+import { Clock, CheckCircle, AlertTriangle, DollarSign, FileText, Box, ArrowRight } from "lucide-react";
+import { db } from "@/lib/db";
+import { useLiveQuery } from "dexie-react-hooks";
+import { useMemo } from "react";
+import { Link } from "react-router-dom";
+import { cn } from "@/lib/utils";
 
 export function PharmacyDashboard() {
+  const prescriptions = useLiveQuery(() => db.prescriptions.toArray()) || [];
+  const inventory = useLiveQuery(() => db.pharmacy_inventory.toArray()) || [];
+  const patients = useLiveQuery(() => db.patients.toArray()) || [];
+  const prescriptionItems = useLiveQuery(() => db.prescription_items.toArray()) || [];
+
+  const stats = useMemo(() => {
+    const pending = prescriptions.filter(p => p.status === 'Pending').length;
+    const ready = prescriptions.filter(p => p.status === 'Ready').length;
+    const lowStock = inventory.filter(i => i.stock <= i.minStock).length;
+    
+    // Calculate today's revenue (simplified)
+    const completedToday = prescriptions.filter(p => p.status === 'Completed');
+    let revenue = 0;
+    completedToday.forEach(p => {
+      const items = prescriptionItems.filter(i => i.prescriptionId === p.id);
+      items.forEach(item => {
+        const invItem = inventory.find(i => i.medicationName.toLowerCase() === item.medicationName.toLowerCase());
+        revenue += invItem?.price || 10;
+      });
+    });
+
+    return { pending, ready, lowStock, revenue };
+  }, [prescriptions, inventory, prescriptionItems]);
+
+  const recentPrescriptions = useMemo(() => {
+    return prescriptions
+      .filter(p => p.status === 'Pending')
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, 5)
+      .map(p => {
+        const patient = patients.find(pat => pat.id === p.patientId);
+        const items = prescriptionItems.filter(i => i.prescriptionId === p.id);
+        const meds = items.map(i => i.medicationName).join(", ");
+        
+        const diff = Date.now() - p.createdAt;
+        const mins = Math.floor(diff / 60000);
+        const timeStr = mins < 1 ? "Just now" : mins < 60 ? `${mins} mins ago` : `${Math.floor(mins / 60)} hours ago`;
+
+        return {
+          id: p.id?.slice(0, 8).toUpperCase() || `RX-${p.localId}`,
+          patient: patient?.name || "Unknown Patient",
+          meds: meds || "No medications",
+          time: timeStr
+        };
+      });
+  }, [prescriptions, patients, prescriptionItems]);
+
+  const quickInventory = useMemo(() => {
+    return inventory
+      .sort((a, b) => (a.stock / a.minStock) - (b.stock / b.minStock))
+      .slice(0, 5)
+      .map(item => {
+        const status = item.stock === 0 ? "Out of Stock" : item.stock <= item.minStock ? "Low Stock" : "In Stock";
+        const color = item.stock === 0 ? "bg-red-100 text-red-700" : item.stock <= item.minStock ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700";
+        return { ...item, status, color };
+      });
+  }, [inventory]);
+
   return (
     <div className="space-y-6">
       {/* Stats Grid */}
@@ -11,7 +74,7 @@ export function PharmacyDashboard() {
           </div>
           <div>
             <h3 className="text-sm font-medium text-slate-500">Pending Orders</h3>
-            <p className="text-2xl font-bold text-slate-900">12</p>
+            <p className="text-2xl font-bold text-slate-900">{stats.pending}</p>
           </div>
         </div>
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
@@ -20,7 +83,7 @@ export function PharmacyDashboard() {
           </div>
           <div>
             <h3 className="text-sm font-medium text-slate-500">Ready for Pickup</h3>
-            <p className="text-2xl font-bold text-slate-900">8</p>
+            <p className="text-2xl font-bold text-slate-900">{stats.ready}</p>
           </div>
         </div>
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
@@ -29,7 +92,7 @@ export function PharmacyDashboard() {
           </div>
           <div>
             <h3 className="text-sm font-medium text-slate-500">Low Stock Items</h3>
-            <p className="text-2xl font-bold text-slate-900">5</p>
+            <p className="text-2xl font-bold text-slate-900">{stats.lowStock}</p>
           </div>
         </div>
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
@@ -37,51 +100,67 @@ export function PharmacyDashboard() {
             <DollarSign className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="text-sm font-medium text-slate-500">Today's Revenue</h3>
-            <p className="text-2xl font-bold text-slate-900">$1,245.00</p>
+            <h3 className="text-sm font-medium text-slate-500">Total Revenue</h3>
+            <p className="text-2xl font-bold text-slate-900">${stats.revenue.toFixed(2)}</p>
           </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Recent Prescriptions */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="p-4 border-b border-slate-200 flex items-center gap-2">
-            <FileText className="w-5 h-5 text-indigo-600" />
-            <h3 className="font-bold text-slate-900">Recent Prescriptions from Clinic</h3>
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+          <div className="p-4 border-b border-slate-200 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <FileText className="w-5 h-5 text-indigo-600" />
+              <h3 className="font-bold text-slate-900">Recent Prescriptions from Clinic</h3>
+            </div>
+            <Link to="/pharmacy-system/orders" className="text-xs font-medium text-indigo-600 hover:text-indigo-700 flex items-center gap-1">
+              View All <ArrowRight className="w-3 h-3" />
+            </Link>
           </div>
-          <div className="p-4 space-y-4">
-            {[
-              { id: "RX-9901", patient: "John Smith", meds: "Lisinopril 10mg", time: "10 mins ago" },
-              { id: "RX-9902", patient: "Emily Davis", meds: "Atorvastatin 20mg", time: "25 mins ago" },
-              { id: "RX-9903", patient: "Michael Brown", meds: "Metformin 500mg", time: "45 mins ago" }
-            ].map((rx, i) => (
-              <div key={i} className="flex items-center justify-between p-3 border border-slate-100 rounded-lg hover:border-indigo-100 transition-colors">
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">{rx.id}</span>
-                    <span className="font-medium text-slate-900">{rx.patient}</span>
+          <div className="p-4 space-y-4 flex-1">
+            {recentPrescriptions.length > 0 ? (
+              recentPrescriptions.map((rx, i) => (
+                <div key={i} className="flex items-center justify-between p-3 border border-slate-100 rounded-lg hover:border-indigo-100 transition-colors">
+                  <div className="flex-1 min-w-0 mr-4">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded shrink-0">{rx.id}</span>
+                      <span className="font-medium text-slate-900 truncate">{rx.patient}</span>
+                    </div>
+                    <p className="text-xs text-slate-500 truncate">{rx.meds}</p>
                   </div>
-                  <p className="text-xs text-slate-500">{rx.meds}</p>
+                  <div className="flex flex-col items-end gap-2 shrink-0">
+                    <span className="text-xs text-slate-400">{rx.time}</span>
+                    <Link 
+                      to="/pharmacy-system/orders"
+                      className="px-3 py-1 bg-indigo-600 text-white text-xs font-medium rounded hover:bg-indigo-700 transition-colors"
+                    >
+                      Process
+                    </Link>
+                  </div>
                 </div>
-                <div className="flex flex-col items-end gap-2">
-                  <span className="text-xs text-slate-400">{rx.time}</span>
-                  <button className="px-3 py-1 bg-indigo-600 text-white text-xs font-medium rounded hover:bg-indigo-700 transition-colors">
-                    Process
-                  </button>
-                </div>
+              ))
+            ) : (
+              <div className="h-full flex flex-col items-center justify-center text-slate-400 py-8">
+                <FileText className="w-8 h-8 mb-2 opacity-20" />
+                <p className="text-sm">No pending prescriptions</p>
               </div>
-            ))}
+            )}
           </div>
         </div>
 
         {/* Quick Inventory */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="p-4 border-b border-slate-200 flex items-center gap-2">
-            <Box className="w-5 h-5 text-indigo-600" />
-            <h3 className="font-bold text-slate-900">Quick Inventory Check</h3>
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+          <div className="p-4 border-b border-slate-200 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Box className="w-5 h-5 text-indigo-600" />
+              <h3 className="font-bold text-slate-900">Quick Inventory Check</h3>
+            </div>
+            <Link to="/pharmacy-system/inventory" className="text-xs font-medium text-indigo-600 hover:text-indigo-700 flex items-center gap-1">
+              Manage <ArrowRight className="w-3 h-3" />
+            </Link>
           </div>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto flex-1">
             <table className="w-full text-sm text-left">
               <thead className="bg-slate-50 text-slate-500 font-medium">
                 <tr>
@@ -91,22 +170,25 @@ export function PharmacyDashboard() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {[
-                  { name: "Lisinopril 10mg", stock: 150, status: "In Stock", color: "bg-emerald-100 text-emerald-700" },
-                  { name: "Atorvastatin 20mg", stock: 12, status: "Low Stock", color: "bg-amber-100 text-amber-700" },
-                  { name: "Amoxicillin 500mg", stock: 85, status: "In Stock", color: "bg-emerald-100 text-emerald-700" },
-                  { name: "Metformin 500mg", stock: 0, status: "Out of Stock", color: "bg-red-100 text-red-700" }
-                ].map((item, i) => (
-                  <tr key={i} className="hover:bg-slate-50">
-                    <td className="px-4 py-3 font-medium text-slate-900">{item.name}</td>
-                    <td className="px-4 py-3 text-slate-600">{item.stock}</td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-1 rounded-full text-xs font-bold ${item.color}`}>
-                        {item.status}
-                      </span>
+                {quickInventory.length > 0 ? (
+                  quickInventory.map((item, i) => (
+                    <tr key={i} className="hover:bg-slate-50">
+                      <td className="px-4 py-3 font-medium text-slate-900">{item.medicationName}</td>
+                      <td className="px-4 py-3 text-slate-600">{item.stock}</td>
+                      <td className="px-4 py-3">
+                        <span className={cn("px-2 py-1 rounded-full text-xs font-bold", item.color)}>
+                          {item.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={3} className="px-4 py-8 text-center text-slate-400 italic">
+                      No inventory items found
                     </td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
           </div>

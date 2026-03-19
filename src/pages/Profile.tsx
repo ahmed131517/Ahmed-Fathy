@@ -2,6 +2,7 @@ import { User, Mail, Phone, MapPin, Award, Briefcase, Camera, Save, Shield, Cloc
 import React, { useState, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { useUser } from "../lib/UserContext";
+import { Textarea } from "@/components/ui/textarea";
 
 export function Profile() {
   const { profile, updateProfile } = useUser();
@@ -219,13 +220,13 @@ export function Profile() {
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-700 dark:text-slate-300">About Me</label>
-                <textarea 
+                <Textarea 
                   rows={5} 
                   name="bio"
                   value={formData.bio || ""}
                   onChange={handleInputChange}
                   className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-lg focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors resize-y text-slate-900 dark:text-slate-200"
-                ></textarea>
+                ></Textarea>
                 <p className="text-xs text-slate-500 dark:text-slate-400 text-right">Brief description for your public profile. Maximum 500 characters.</p>
               </div>
             </section>

@@ -4,6 +4,7 @@ export interface UserProfile {
   firstName: string;
   lastName: string;
   email: string;
+  role: 'doctor' | 'pharmacist' | 'admin';
   specialty: string;
   avatarInitials: string;
   dob: string;
@@ -23,12 +24,14 @@ export interface UserProfile {
 interface UserContextType {
   profile: UserProfile;
   updateProfile: (updates: Partial<UserProfile>) => void;
+  hasRole: (role: 'doctor' | 'pharmacist' | 'admin') => boolean;
 }
 
 const defaultProfile: UserProfile = {
   firstName: "Sarah",
   lastName: "Ahmed",
   email: "sarah.ahmed@clinic.com",
+  role: "doctor",
   specialty: "General Practitioner",
   avatarInitials: "SA",
   dob: "1985-06-15",
@@ -46,7 +49,10 @@ const defaultProfile: UserProfile = {
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
 export function UserProvider({ children }: { children: ReactNode }) {
-  const [profile, setProfile] = useState<UserProfile>(defaultProfile);
+  const [profile, setProfile] = useState<UserProfile>(() => {
+    const saved = localStorage.getItem('user_profile');
+    return saved ? JSON.parse(saved) : defaultProfile;
+  });
 
   const updateProfile = (updates: Partial<UserProfile>) => {
     setProfile(prev => {
@@ -57,12 +63,18 @@ export function UserProvider({ children }: { children: ReactNode }) {
         const last = newProfile.lastName.charAt(0).toUpperCase();
         newProfile.avatarInitials = `${first}${last}`;
       }
+      localStorage.setItem('user_profile', JSON.stringify(newProfile));
       return newProfile;
     });
   };
 
+  const hasRole = (role: 'doctor' | 'pharmacist' | 'admin') => {
+    if (profile.role === 'admin') return true;
+    return profile.role === role;
+  };
+
   return (
-    <UserContext.Provider value={{ profile, updateProfile }}>
+    <UserContext.Provider value={{ profile, updateProfile, hasRole }}>
       {children}
     </UserContext.Provider>
   );

@@ -1,10 +1,24 @@
 import { Outlet, Link, useLocation } from "react-router-dom";
-import { Grid, Package, ShoppingCart, Users, BarChart2, LogOut, Settings, ArrowLeft } from "lucide-react";
+import { Grid, Package, ShoppingCart, Users, BarChart2, LogOut, Settings, ArrowLeft, Shield } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { useUser } from "../../lib/UserContext";
 
 export function PharmacyLayout() {
+  const { hasRole } = useUser();
   const location = useLocation();
   const isActive = (path: string) => location.pathname.endsWith(path);
+
+  if (!hasRole('pharmacist') && !hasRole('admin')) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <Shield className="w-16 h-16 text-red-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-slate-900">Access Denied</h2>
+          <p className="text-slate-500">You do not have permission to access the pharmacy system.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-slate-50">

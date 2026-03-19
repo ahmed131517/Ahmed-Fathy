@@ -214,18 +214,27 @@ export function MedicalRecords() {
       </div>
 
       {viewMode === 'timeline' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full min-h-0">
-          <div className="lg:col-span-2 h-full min-h-0">
+        <div className="flex flex-col lg:flex-row gap-6 h-full min-h-0">
+          <div className={cn(
+            "h-full min-h-0 flex-col",
+            selectedRecord ? "hidden lg:flex lg:w-1/3" : "flex w-full"
+          )}>
             <PatientTimeline 
               events={timelineEvents} 
               onEventClick={(event) => setSelectedRecord(event.details)} 
             />
           </div>
-          <div className="lg:col-span-1 h-full min-h-0 flex flex-col">
-             {/* Reuse the Record Details Panel */}
+          <div className={cn(
+            "h-full min-h-0 flex-col",
+            selectedRecord ? "flex w-full lg:w-2/3" : "hidden lg:flex lg:w-2/3"
+          )}>
+             {/* Record Details Panel */}
              <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden h-full">
               <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
                 <h3 className="font-semibold text-slate-800 flex items-center gap-2">
+                  <button onClick={() => setSelectedRecord(null)} className="lg:hidden p-1 -ml-1 text-slate-500 hover:text-slate-700">
+                    <ChevronRight className="w-5 h-5 rotate-180" />
+                  </button>
                   <FileText className="w-4 h-4 text-indigo-500" /> Record Details
                 </h3>
                 <div className="flex gap-2">

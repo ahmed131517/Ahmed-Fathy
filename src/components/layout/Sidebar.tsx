@@ -11,6 +11,8 @@ import {
   ShoppingBag,
   Folder,
   LogOut,
+  Settings,
+  Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -27,6 +29,8 @@ const navItems = [
   { name: "Prescriptions", path: "/prescriptions", icon: FileText },
   { name: "Pharmacies", path: "/pharmacies", icon: ShoppingBag },
   { name: "Medical Records", path: "/medical-records", icon: Folder },
+  { name: "Settings", path: "/settings", icon: Settings },
+  { name: "User Management", path: "/user-management", icon: Users },
 ];
 
 export function Sidebar() {

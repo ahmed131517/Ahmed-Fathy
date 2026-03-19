@@ -98,7 +98,7 @@ export function JointExamCard({ exam, specialTests, onRemove, onUpdate, onToggle
             <Textarea 
               className="min-h-[60px] text-xs"
               placeholder="Enter specific findings..."
-              value={exam.notes}
+              value={exam.notes || ""}
               onChange={(e) => onUpdate(exam.id, 'notes', e.target.value)}
             />
           </div>

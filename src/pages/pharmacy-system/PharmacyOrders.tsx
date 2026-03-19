@@ -1,8 +1,11 @@
-import React, { useState } from "react";
-import { Clock, Package, Eye, GripVertical } from "lucide-react";
+import React, { useState, useMemo } from "react";
+import { Clock, Package, Eye, GripVertical, User, AlertCircle } from "lucide-react";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragOverlay } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { db, Prescription, PrescriptionItem, PatientRecord } from "@/lib/db";
+import { useLiveQuery } from "dexie-react-hooks";
+import { toast } from "sonner";
 
 interface Order {
   id: string;
@@ -11,15 +14,9 @@ interface Order {
   time: string;
   items: number;
   total: number;
+  rawPrescription: Prescription;
+  patientData?: PatientRecord;
 }
-
-const initialOrders: Order[] = [
-  { id: "ORD-12345", patient: "John Smith", status: "Pending", time: "10:30 AM", items: 3, total: 45.00 },
-  { id: "ORD-12346", patient: "Emily Davis", status: "Ready", time: "09:15 AM", items: 2, total: 32.50 },
-  { id: "ORD-12347", patient: "Michael Brown", status: "Completed", time: "Yesterday", items: 1, total: 15.00 },
-  { id: "ORD-12348", patient: "Sarah Wilson", status: "Pending", time: "08:45 AM", items: 4, total: 68.20 },
-  { id: "ORD-12349", patient: "David Lee", status: "Ready", time: "11:00 AM", items: 1, total: 12.00 },
-];
 
 interface SortableItemProps {
   order: Order;
@@ -55,7 +52,40 @@ const SortableItem: React.FC<SortableItemProps> = ({ order }) => {
 };
 
 export function PharmacyOrders() {
-  const [orders, setOrders] = useState<Order[]>(initialOrders);
+  const dbPrescriptions = useLiveQuery(() => db.prescriptions.toArray()) || [];
+  const dbPatients = useLiveQuery(() => db.patients.toArray()) || [];
+  const dbItems = useLiveQuery(() => db.prescription_items.toArray()) || [];
+  const inventory = useLiveQuery(() => db.pharmacy_inventory.toArray()) || [];
+
+  const orders = useMemo(() => {
+    return dbPrescriptions.map(p => {
+      const patient = dbPatients.find(pat => pat.id === p.patientId);
+      const items = dbItems.filter(i => i.prescriptionId === p.id);
+      
+      // Calculate total price based on inventory
+      let total = 0;
+      items.forEach(item => {
+        const invItem = inventory.find(i => i.medicationName.toLowerCase() === item.medicationName.toLowerCase());
+        if (invItem) {
+          total += invItem.price;
+        } else {
+          total += 10; // Default price if not in inventory
+        }
+      });
+
+      return {
+        id: p.id || `local-${p.localId}`,
+        patient: patient?.name || "Unknown Patient",
+        status: (p.status as any) || "Pending",
+        time: new Date(p.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        items: items.length,
+        total: total,
+        rawPrescription: p,
+        patientData: patient
+      } as Order;
+    }).filter(o => ["Pending", "Ready", "Completed"].includes(o.status));
+  }, [dbPrescriptions, dbPatients, dbItems, inventory]);
+
   const [activeId, setActiveId] = useState<string | null>(null);
 
   const sensors = useSensors(
@@ -75,7 +105,7 @@ export function PharmacyOrders() {
     setActiveId(event.active.id);
   };
 
-  const handleDragEnd = (event: any) => {
+  const handleDragEnd = async (event: any) => {
     const { active, over } = event;
 
     if (!over) return;
@@ -83,23 +113,56 @@ export function PharmacyOrders() {
     const activeId = active.id;
     const overId = over.id;
 
-    // Find the container (column) of the active item
-    const activeContainer = orders.find(o => o.id === activeId)?.status;
+    const activeOrder = orders.find(o => o.id === activeId);
+    if (!activeOrder) return;
+
+    const activeContainer = activeOrder.status;
     
-    // Find the container (column) of the over item (or if over is a container itself)
     let overContainer = orders.find(o => o.id === overId)?.status;
-    
-    // If dropping on a container directly (empty column or column header area)
     if (["Pending", "Ready", "Completed"].includes(overId)) {
       overContainer = overId as "Pending" | "Ready" | "Completed";
     }
 
     if (activeContainer && overContainer && activeContainer !== overContainer) {
-      setOrders((prev) => {
-        return prev.map(order => 
-          order.id === activeId ? { ...order, status: overContainer as any } : order
-        );
-      });
+      try {
+        const timestamp = Date.now();
+        const prescription = activeOrder.rawPrescription;
+        
+        // Update prescription status
+        if (prescription.localId) {
+          await db.prescriptions.update(prescription.localId, {
+            status: overContainer,
+            lastModified: timestamp
+          });
+
+          // If moving to Completed, deduct from inventory
+          if (overContainer === "Completed") {
+            const items = dbItems.filter(i => i.prescriptionId === prescription.id);
+            for (const item of items) {
+              const invItem = inventory.find(i => i.medicationName.toLowerCase() === item.medicationName.toLowerCase());
+              if (invItem && invItem.localId) {
+                const newStock = Math.max(0, invItem.stock - 1); // Assuming 1 unit per prescription item for simplicity
+                await db.pharmacy_inventory.update(invItem.localId, {
+                  stock: newStock,
+                  lastModified: timestamp
+                });
+                
+                if (newStock === 0) {
+                  toast.warning(`${invItem.medicationName} is now out of stock!`);
+                } else if (newStock <= invItem.minStock) {
+                  toast.warning(`${invItem.medicationName} is low on stock (${newStock} left)`);
+                }
+              }
+            }
+            toast.success(`Order ${activeId} completed and inventory updated`);
+          } else {
+            toast.success(`Order ${activeId} moved to ${overContainer}`);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to update order status", error);
+        toast.error("Failed to update order status");
+      }
     }
 
     setActiveId(null);

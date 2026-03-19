@@ -3,6 +3,7 @@ import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { useNavigate } from "react-router-dom";
 import { useUser } from "../../lib/UserContext";
+import { useNotifications } from "../../lib/NotificationContext";
 import { cn } from "../../lib/utils";
 import { toast } from "sonner";
 
@@ -31,18 +32,7 @@ export function Header() {
   const notificationsRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const { profile } = useUser();
-  const [notifications, setNotifications] = useState(mockNotifications);
-
-  const unreadCount = notifications.filter(n => !n.read).length;
-
-  const markAllAsRead = () => {
-    setNotifications(notifications.map(n => ({ ...n, read: true })));
-    toast.success("All notifications marked as read");
-  };
-
-  const markAsRead = (id: number) => {
-    setNotifications(notifications.map(n => n.id === id ? { ...n, read: true } : n));
-  };
+  const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
 
   // Filter patients based on search query
   const searchResults = mockPatients.filter(patient => 
@@ -189,25 +179,32 @@ export function Header() {
                   {notifications.length > 0 ? (
                     notifications.map((notification) => (
                       <button 
-                        key={notification.id}
-                        onClick={() => markAsRead(notification.id)}
+                        key={notification.localId}
+                        onClick={() => {
+                          if (notification.localId) markAsRead(notification.localId);
+                          if (notification.link) navigate(notification.link);
+                          setIsNotificationsOpen(false);
+                        }}
                         className={cn(
                           "w-full text-left p-4 border-b border-slate-50 dark:border-slate-800 last:border-0 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors flex gap-3",
-                          !notification.read && "bg-indigo-50/30 dark:bg-indigo-500/5"
+                          notification.isRead === 0 && "bg-indigo-50/30 dark:bg-indigo-500/5"
                         )}
                       >
                         <div className={cn(
                           "w-2 h-2 rounded-full mt-1.5 shrink-0",
-                          notification.type === 'urgent' ? "bg-red-500" : 
-                          notification.type === 'success' ? "bg-emerald-500" : "bg-indigo-500",
-                          notification.read && "opacity-30"
+                          notification.type === 'error' ? "bg-red-500" : 
+                          notification.type === 'success' ? "bg-emerald-500" : 
+                          notification.type === 'warning' ? "bg-amber-500" : "bg-indigo-500",
+                          notification.isRead === 1 && "opacity-30"
                         )} />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-2">
-                            <p className={cn("text-sm truncate", notification.read ? "text-slate-500 dark:text-slate-400 font-medium" : "text-slate-900 dark:text-white font-bold")}>
+                            <p className={cn("text-sm truncate", notification.isRead === 1 ? "text-slate-500 dark:text-slate-400 font-medium" : "text-slate-900 dark:text-white font-bold")}>
                               {notification.title}
                             </p>
-                            <span className="text-[10px] text-slate-400 dark:text-slate-500 whitespace-nowrap">{notification.time}</span>
+                            <span className="text-[10px] text-slate-400 dark:text-slate-500 whitespace-nowrap">
+                              {new Date(notification.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
                           </div>
                           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-2 leading-relaxed">
                             {notification.message}
@@ -226,7 +223,7 @@ export function Header() {
                   <button 
                     onClick={() => {
                       setIsNotificationsOpen(false);
-                      toast.info("Notification center feature coming soon");
+                      navigate('/notifications');
                     }}
                     className="text-xs font-bold text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
                   >

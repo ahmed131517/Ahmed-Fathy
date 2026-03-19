@@ -1,9 +1,12 @@
 import { BarChart2, FileText, Download, Printer } from "lucide-react";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { db } from "../../lib/db";
 
 export function PharmacyReports() {
-  const generateInventoryReport = () => {
+  const generateInventoryReport = async () => {
+    const inventory = await db.pharmacy_inventory.toArray();
+    
     const doc = new jsPDF();
     
     // Header
@@ -12,17 +15,16 @@ export function PharmacyReports() {
     doc.setFontSize(11);
     doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 14, 30);
 
-    // Mock Data (In a real app, this would come from props or context)
-    const inventoryData = [
-      ["Amoxicillin 500mg", "Antibiotics", "120", "$15.50", "In Stock"],
-      ["Lisinopril 10mg", "Cardiovascular", "15", "$22.00", "Low Stock"],
-      ["Paracetamol 500mg", "Analgesics", "450", "$5.25", "In Stock"],
-      ["Metformin 500mg", "Diabetic", "0", "$18.75", "Out of Stock"],
-      ["Atorvastatin 20mg", "Cardiovascular", "85", "$35.00", "In Stock"]
-    ];
+    const inventoryData = inventory.map(item => [
+      item.medicationName,
+      item.unit,
+      item.stock.toString(),
+      `$${item.price.toFixed(2)}`,
+      item.stock <= 0 ? "Out of Stock" : item.stock <= item.minStock ? "Low Stock" : "In Stock"
+    ]);
 
     autoTable(doc, {
-      head: [['Medication Name', 'Category', 'Stock', 'Price', 'Status']],
+      head: [['Medication Name', 'Unit', 'Stock', 'Price', 'Status']],
       body: inventoryData,
       startY: 40,
       theme: 'grid',
@@ -30,23 +32,39 @@ export function PharmacyReports() {
       headStyles: { fillColor: [79, 70, 229] }
     });
 
-    doc.save("pharmacy-inventory-report.pdf");
+    doc.save(`pharmacy-inventory-report-${new Date().toISOString().split('T')[0]}.pdf`);
   };
 
-  const generateSalesReport = () => {
+  const generateSalesReport = async () => {
+    const prescriptions = await db.prescriptions.where('status').equals('completed').toArray();
+    const patients = await db.patients.toArray();
+    const prescriptionItems = await db.prescription_items.toArray();
+    const inventory = await db.pharmacy_inventory.toArray();
+    
     const doc = new jsPDF();
     
     doc.setFontSize(20);
     doc.text("Pharmacy Sales Report", 14, 22);
     doc.setFontSize(11);
-    doc.text(`Period: Current Month`, 14, 30);
+    doc.text(`Period: All Time (Completed Orders)`, 14, 30);
 
-    const salesData = [
-      ["ORD-12345", "John Smith", "Oct 25, 2023", "$45.00", "Completed"],
-      ["ORD-12346", "Emily Davis", "Oct 25, 2023", "$32.50", "Completed"],
-      ["ORD-12347", "Michael Brown", "Oct 24, 2023", "$15.00", "Completed"],
-      ["ORD-12348", "Sarah Wilson", "Oct 24, 2023", "$68.20", "Pending"]
-    ];
+    const salesData = prescriptions.map(rx => {
+      const patient = patients.find(p => p.id === rx.patientId || String(p.localId) === rx.patientId);
+      const items = prescriptionItems.filter(item => item.prescriptionId === rx.id || item.prescriptionId === String(rx.localId));
+      
+      const total = items.reduce((sum, item) => {
+        const invItem = inventory.find(i => i.medicationName === item.medicationName);
+        return sum + (invItem?.price || 0);
+      }, 0);
+
+      return [
+        rx.id || `LOCAL-${rx.localId}`,
+        patient?.name || "Unknown Patient",
+        new Date(rx.createdAt).toLocaleDateString(),
+        `$${total.toFixed(2)}`,
+        "Completed"
+      ];
+    });
 
     autoTable(doc, {
       head: [['Order ID', 'Patient', 'Date', 'Total', 'Status']],
@@ -58,14 +76,14 @@ export function PharmacyReports() {
     });
 
     // Summary
-    const totalSales = salesData.reduce((acc, curr) => acc + parseFloat(curr[3].replace('$', '')), 0);
+    const totalRevenue = salesData.reduce((acc, curr) => acc + parseFloat(curr[3].replace('$', '')), 0);
     const finalY = (doc as any).lastAutoTable.finalY || 40;
     
     doc.setFontSize(12);
     doc.setFont("helvetica", "bold");
-    doc.text(`Total Revenue: $${totalSales.toFixed(2)}`, 14, finalY + 20);
+    doc.text(`Total Revenue: $${totalRevenue.toFixed(2)}`, 14, finalY + 20);
 
-    doc.save("pharmacy-sales-report.pdf");
+    doc.save(`pharmacy-sales-report-${new Date().toISOString().split('T')[0]}.pdf`);
   };
 
   return (
