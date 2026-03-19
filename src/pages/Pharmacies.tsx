@@ -371,7 +371,11 @@ export function Pharmacies() {
                       >
                         <Send className="w-3 h-3" /> Send Rx
                       </button>
-                      <button className="px-2 py-1.5 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-colors" title="Get Directions">
+                      <button 
+                        onClick={() => toast.info("Directions functionality coming soon!")}
+                        className="px-2 py-1.5 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-colors" 
+                        title="Get Directions"
+                      >
                         <Navigation className="w-3 h-3" />
                       </button>
                       <button 
@@ -428,9 +432,19 @@ export function Pharmacies() {
                       <span className="flex items-center gap-1"><Package className="w-3 h-3" /> {order.items} items</span>
                     </div>
                     <div className="mt-2 flex gap-2">
-                      <button className="flex-1 py-1 bg-indigo-50 text-indigo-600 rounded text-xs font-medium hover:bg-indigo-100 transition-colors">Track</button>
+                      <button 
+                        onClick={() => toast.info("Tracking functionality coming soon!")}
+                        className="flex-1 py-1 bg-indigo-50 text-indigo-600 rounded text-xs font-medium hover:bg-indigo-100 transition-colors"
+                      >
+                        Track
+                      </button>
                       {order.status === 'Processing' && (
-                        <button className="flex-1 py-1 bg-red-50 text-red-600 rounded text-xs font-medium hover:bg-red-100 transition-colors">Cancel</button>
+                        <button 
+                          onClick={() => toast.success("Order cancelled successfully!")}
+                          className="flex-1 py-1 bg-red-50 text-red-600 rounded text-xs font-medium hover:bg-red-100 transition-colors"
+                        >
+                          Cancel
+                        </button>
                       )}
                     </div>
                   </div>

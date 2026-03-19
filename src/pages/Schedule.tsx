@@ -18,16 +18,26 @@ import {
   Trash2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
+import { useSettings } from "../lib/SettingsContext";
 
 export function Schedule() {
+  const { workingHours, updateSettings } = useSettings();
   const [currentMonth, setCurrentMonth] = useState(new Date(2026, 2)); // March 2026
   const [isSyncing, setIsSyncing] = useState(false);
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [showSwapModal, setShowSwapModal] = useState(false);
   const [showAddShiftModal, setShowAddShiftModal] = useState(false);
   const [showEditHoursModal, setShowEditHoursModal] = useState(false);
+  const [editingHours, setEditingHours] = useState(workingHours);
+
+  useEffect(() => {
+    if (showEditHoursModal) {
+      setEditingHours(workingHours);
+    }
+  }, [showEditHoursModal, workingHours]);
+
   const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
   
   const monthName = currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' });
@@ -145,7 +155,9 @@ export function Schedule() {
             {Array.from({ length: 35 }).map((_, i) => {
               const dayNum = (i % 31) + 1;
               const isToday = i === 15;
-              const hasShift = [2, 3, 4, 9, 10, 11, 15, 16, 17, 23, 24, 30].includes(i);
+              const dayIndex = i % 7;
+              const dayConfig = workingHours[dayIndex];
+              const hasShift = [2, 3, 4, 9, 10, 11, 15, 16, 17, 23, 24, 30].includes(i) && dayConfig.active;
               const isOnCall = [5, 12, 19, 26].includes(i);
               
               return (
@@ -170,7 +182,7 @@ export function Schedule() {
                       <div className="group/shift relative text-[9px] font-bold bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-500/20 rounded px-1.5 py-1 flex items-center justify-between gap-1">
                         <div className="flex items-center gap-1">
                           <Briefcase className="w-2.5 h-2.5" />
-                          09:00 - 17:00
+                          {dayConfig.start} - {dayConfig.end}
                         </div>
                         <button 
                           onClick={() => setShowSwapModal(true)}
@@ -223,22 +235,26 @@ export function Schedule() {
           <div className="card-panel p-5">
             <h2 className="text-sm font-bold text-slate-900 dark:text-white mb-4 mono-label">Working Hours</h2>
             <div className="space-y-3">
-              {["Mon - Thu", "Friday"].map((period, idx) => (
-                <div key={period} className="flex flex-col gap-1">
-                  <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">{period}</span>
+              {workingHours.filter(h => h.active).map((item) => (
+                <div key={item.day} className="flex flex-col gap-1">
+                  <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">{item.day}</span>
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-slate-700 dark:text-slate-300">{idx === 0 ? "09:00 - 17:00" : "09:00 - 13:00"}</span>
+                    <span className="text-xs font-medium text-slate-700 dark:text-slate-300">{item.start} - {item.end}</span>
                     <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded text-[10px] font-mono">Active</span>
                   </div>
                 </div>
               ))}
-              <div className="flex flex-col gap-1 pt-2">
-                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Sat - Sun</span>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-slate-400 italic">Off Duty</span>
-                  <Coffee className="w-3 h-3 text-slate-300" />
+              {workingHours.filter(h => !h.active).length > 0 && (
+                <div className="flex flex-col gap-1 pt-2">
+                  <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                    {workingHours.filter(h => !h.active).map(h => h.day.substring(0, 3)).join(' - ')}
+                  </span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-slate-400 italic">Off Duty</span>
+                    <Coffee className="w-3 h-3 text-slate-300" />
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
             <button 
               onClick={() => setShowEditHoursModal(true)}
@@ -262,7 +278,12 @@ export function Schedule() {
                   <div className="w-6 h-6 bg-blue-600 rounded flex items-center justify-center text-white text-[10px] font-bold">O</div>
                   <span className="text-xs font-medium text-slate-700 dark:text-slate-300">Outlook</span>
                 </div>
-                <button className="text-[10px] text-indigo-600 font-bold hover:underline">Connect</button>
+                <button 
+                  onClick={() => toast.info("Google Calendar connection coming soon!")}
+                  className="text-[10px] text-indigo-600 font-bold hover:underline"
+                >
+                  Connect
+                </button>
               </div>
             </div>
           </div>
@@ -469,15 +490,7 @@ export function Schedule() {
               </button>
             </div>
             <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
-              {[
-                { day: "Monday", start: "09:00", end: "17:00", active: true },
-                { day: "Tuesday", start: "09:00", end: "17:00", active: true },
-                { day: "Wednesday", start: "09:00", end: "17:00", active: true },
-                { day: "Thursday", start: "09:00", end: "17:00", active: true },
-                { day: "Friday", start: "09:00", end: "13:00", active: true },
-                { day: "Saturday", start: "00:00", end: "00:00", active: false },
-                { day: "Sunday", start: "00:00", end: "00:00", active: false },
-              ].map((item) => (
+              {editingHours.map((item, index) => (
                 <div key={item.day} className="flex items-center justify-between p-3 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50">
                   <div className="flex items-center gap-3 min-w-[100px]">
                     <div className={cn(
@@ -487,13 +500,40 @@ export function Schedule() {
                     <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{item.day}</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <input type="time" disabled={!item.active} className="p-1.5 rounded border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs disabled:opacity-50" defaultValue={item.start} />
+                    <input 
+                      type="time" 
+                      disabled={!item.active} 
+                      className="p-1.5 rounded border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs disabled:opacity-50" 
+                      value={item.start}
+                      onChange={(e) => {
+                        const newHours = [...editingHours];
+                        newHours[index].start = e.target.value;
+                        setEditingHours(newHours);
+                      }}
+                    />
                     <span className="text-slate-400">-</span>
-                    <input type="time" disabled={!item.active} className="p-1.5 rounded border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs disabled:opacity-50" defaultValue={item.end} />
-                    <button className={cn(
-                      "ml-2 p-1.5 rounded-lg transition-colors",
-                      item.active ? "text-red-500 hover:bg-red-50" : "text-emerald-500 hover:bg-emerald-50"
-                    )}>
+                    <input 
+                      type="time" 
+                      disabled={!item.active} 
+                      className="p-1.5 rounded border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs disabled:opacity-50" 
+                      value={item.end}
+                      onChange={(e) => {
+                        const newHours = [...editingHours];
+                        newHours[index].end = e.target.value;
+                        setEditingHours(newHours);
+                      }}
+                    />
+                    <button 
+                      onClick={() => {
+                        const newHours = [...editingHours];
+                        newHours[index].active = !newHours[index].active;
+                        setEditingHours(newHours);
+                      }}
+                      className={cn(
+                        "ml-2 p-1.5 rounded-lg transition-colors",
+                        item.active ? "text-red-500 hover:bg-red-50" : "text-emerald-500 hover:bg-emerald-50"
+                      )}
+                    >
                       {item.active ? <Trash2 className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
                     </button>
                   </div>
@@ -509,6 +549,7 @@ export function Schedule() {
               </button>
               <button 
                 onClick={() => {
+                  updateSettings({ workingHours: editingHours });
                   toast.success("Default working hours updated");
                   setShowEditHoursModal(false);
                 }}

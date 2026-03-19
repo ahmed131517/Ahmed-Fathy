@@ -2,6 +2,7 @@ import { BarChart2, FileText, Download, Printer } from "lucide-react";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { db } from "../../lib/db";
+import { toast } from "sonner";
 
 export function PharmacyReports() {
   const generateInventoryReport = async () => {
@@ -148,7 +149,10 @@ export function PharmacyReports() {
                   <p className="text-xs text-slate-500">Generated on Oct {25 - i}, 2023</p>
                 </div>
               </div>
-              <button className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
+              <button 
+                onClick={() => toast.info("Printing functionality coming soon!")}
+                className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+              >
                 <Printer className="w-4 h-4" />
               </button>
             </div>

@@ -27,12 +27,64 @@ export function Header() {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [isListening, setIsListening] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
   const notificationsRef = useRef<HTMLDivElement>(null);
+  const recognitionRef = useRef<any>(null);
   const navigate = useNavigate();
   const { profile } = useUser();
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
+
+  // Voice Search Implementation
+  const startVoiceSearch = () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    
+    if (!SpeechRecognition) {
+      toast.error("Voice search is not supported in your browser.");
+      return;
+    }
+
+    // If already listening, stop it
+    if (isListening && recognitionRef.current) {
+      recognitionRef.current.stop();
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognitionRef.current = recognition;
+    recognition.lang = 'en-US';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      setIsListening(true);
+      toast.info("Listening...");
+    };
+
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setSearchQuery(transcript);
+      setIsSearchOpen(true);
+      setIsListening(false);
+      toast.success(`Searching for: ${transcript}`);
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error("Speech recognition error", event.error);
+      setIsListening(false);
+      if (event.error !== 'aborted') {
+        toast.error("Could not recognize speech. Please try again.");
+      }
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+      recognitionRef.current = null;
+    };
+
+    recognition.start();
+  };
 
   // Filter patients based on search query
   const searchResults = mockPatients.filter(patient => 
@@ -74,7 +126,10 @@ export function Header() {
       "glass-panel"
     )}>
       <div className="flex items-center flex-1">
-        <button className="md:hidden p-2 -ml-2 mr-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">
+        <button 
+          onClick={() => toast.info("Mobile menu coming soon!")}
+          className="md:hidden p-2 -ml-2 mr-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"
+        >
           <Menu className="w-5 h-5" />
         </button>
         <div className="relative w-full max-w-md hidden md:block" ref={searchRef}>
@@ -93,8 +148,17 @@ export function Header() {
             onFocus={() => setIsSearchOpen(true)}
           />
           <div className="absolute inset-y-0 right-0 pr-1.5 flex items-center">
-            <button className="p-1.5 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-md transition-colors">
-              <Mic className="h-4 w-4" />
+            <button 
+              onClick={startVoiceSearch}
+              className={cn(
+                "p-1.5 rounded-md transition-all duration-200",
+                isListening 
+                  ? "text-red-600 bg-red-50 dark:bg-red-500/10 animate-pulse scale-110" 
+                  : "text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10"
+              )}
+              title="Voice Search"
+            >
+              <Mic className={cn("h-4 w-4", isListening && "fill-current")} />
             </button>
           </div>
           

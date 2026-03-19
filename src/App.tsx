@@ -77,48 +77,48 @@ export default function App() {
       <SettingsProvider>
         <UserProvider>
           <NotificationProvider>
-            <PatientProvider>
-            <SymptomProvider>
-              <BrowserRouter>
-              <Toaster position="top-right" richColors />
-              <SyncStatus />
-              <Routes>
-            <Route path="/" element={<Layout />}>
-              <Route index element={<Dashboard />} />
-              <Route path="appointments" element={<Appointments />} />
-              <Route path="new-patient" element={<NewPatient />} />
-              <Route path="symptom-analysis" element={<SymptomAnalysis />} />
-              <Route path="physical-exam" element={<PhysicalExam />} />
-              <Route path="lab-requests" element={<LabRequests />} />
-              <Route path="final-diagnosis" element={<FinalDiagnosis />} />
-              <Route path="prescriptions" element={<Prescriptions />} />
-              <Route path="pharmacies" element={<Pharmacies />} />
-              <Route path="medical-records" element={<MedicalRecords />} />
-              <Route path="mobile-vitals" element={<MobileVitals />} />
-              <Route path="profile" element={<Profile />} />
-              <Route path="schedule" element={<Schedule />} />
-              <Route path="settings" element={<Settings />} />
-              <Route path="admin-settings" element={<AdminSettings />} />
-              <Route path="user-management" element={<UserManagement />} />
-              <Route path="notifications" element={<Notifications />} />
-              <Route path="*" element={<div className="p-6 text-slate-500">Page under construction</div>} />
-            </Route>
+              <PatientProvider>
+                <SymptomProvider>
+                  <BrowserRouter>
+                    <Toaster position="top-right" richColors />
+                    <SyncStatus />
+                    <Routes>
+                      <Route path="/" element={<Layout />}>
+                        <Route index element={<Dashboard />} />
+                        <Route path="appointments" element={<Appointments />} />
+                        <Route path="new-patient" element={<NewPatient />} />
+                        <Route path="symptom-analysis" element={<SymptomAnalysis />} />
+                        <Route path="physical-exam" element={<PhysicalExam />} />
+                        <Route path="lab-requests" element={<LabRequests />} />
+                        <Route path="final-diagnosis" element={<FinalDiagnosis />} />
+                        <Route path="prescriptions" element={<Prescriptions />} />
+                        <Route path="pharmacies" element={<Pharmacies />} />
+                        <Route path="medical-records" element={<MedicalRecords />} />
+                        <Route path="mobile-vitals" element={<MobileVitals />} />
+                        <Route path="profile" element={<Profile />} />
+                        <Route path="schedule" element={<Schedule />} />
+                        <Route path="settings" element={<Settings />} />
+                        <Route path="admin-settings" element={<AdminSettings />} />
+                        <Route path="user-management" element={<UserManagement />} />
+                        <Route path="notifications" element={<Notifications />} />
+                        <Route path="*" element={<div className="p-6 text-slate-500">Page under construction</div>} />
+                      </Route>
 
-            {/* Pharmacy System Routes */}
-            <Route path="/pharmacy-system" element={<PharmacyLayout />}>
-              <Route index element={<PharmacyDashboard />} />
-              <Route path="inventory" element={<PharmacyInventory />} />
-              <Route path="orders" element={<PharmacyOrders />} />
-              <Route path="patients" element={<PharmacyPatients />} />
-              <Route path="reports" element={<PharmacyReports />} />
-            </Route>
-          </Routes>
-        </BrowserRouter>
-      </SymptomProvider>
-    </PatientProvider>
-  </NotificationProvider>
-</UserProvider>
-  </SettingsProvider>
-  </ThemeProvider>
+                      {/* Pharmacy System Routes */}
+                      <Route path="/pharmacy-system" element={<PharmacyLayout />}>
+                        <Route index element={<PharmacyDashboard />} />
+                        <Route path="inventory" element={<PharmacyInventory />} />
+                        <Route path="orders" element={<PharmacyOrders />} />
+                        <Route path="patients" element={<PharmacyPatients />} />
+                        <Route path="reports" element={<PharmacyReports />} />
+                      </Route>
+                    </Routes>
+                  </BrowserRouter>
+                </SymptomProvider>
+              </PatientProvider>
+            </NotificationProvider>
+          </UserProvider>
+        </SettingsProvider>
+    </ThemeProvider>
   );
 }

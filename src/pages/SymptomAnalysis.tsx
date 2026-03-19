@@ -1,5 +1,6 @@
 import { useSymptom } from "@/lib/SymptomContext";
 import { useState, MouseEvent, useRef, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { User, Headphones, Eye, MessageCircle, Shield, Wind, Heart, Target, Droplets, Layers, X, Activity, HelpCircle, AlertTriangle, CheckCircle2, RefreshCw, ClipboardList, Sparkles, Edit2, ChevronDown, ChevronUp, Loader2, Bone, Brain, Mic, Square, TrendingUp, BookOpen, ExternalLink, Info, FileText, FlaskConical, Stethoscope, ArrowRightLeft } from "lucide-react";
 import { ALL_MODELS, SymptomModel } from "@/data/symptomModels";
 import { cn } from "@/lib/utils";
@@ -36,6 +37,7 @@ interface SelectedSymptom {
 }
 
 export function SymptomAnalysis() {
+  const navigate = useNavigate();
   const { symptoms: contextSymptoms } = useSymptom();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedSymptoms, setSelectedSymptoms] = useState<SelectedSymptom[]>([]);
@@ -689,7 +691,13 @@ export function SymptomAnalysis() {
                         </div>
                         <div className="flex items-center gap-3">
                           <span className="text-xs font-medium bg-white px-2 py-1 rounded-md text-slate-600">{diag.likelihood}</span>
-                          <button className="text-xs font-semibold text-emerald-600 bg-white border border-emerald-200 px-3 py-1 rounded-md hover:bg-emerald-50 flex items-center gap-1">
+                          <button 
+                            onClick={() => {
+                              navigate('/final-diagnosis');
+                              toast.success("Diagnosis selected for verification.");
+                            }}
+                            className="text-xs font-semibold text-emerald-600 bg-white border border-emerald-200 px-3 py-1 rounded-md hover:bg-emerald-50 flex items-center gap-1"
+                          >
                             <CheckCircle2 className="w-3 h-3" /> Verify
                           </button>
                         </div>

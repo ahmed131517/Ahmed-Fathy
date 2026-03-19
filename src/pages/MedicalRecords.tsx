@@ -1,5 +1,7 @@
 import { Folder, Clock, RefreshCw, FileText, Zap, Printer, MousePointer, FlaskConical, AlertTriangle, CheckCircle2, ChevronRight, TrendingUp, Calendar, Sparkles, Stethoscope, Pill, List } from "lucide-react";
 import { useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import { GoogleGenAI } from "@google/genai";
 import { cn } from "@/lib/utils";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
@@ -11,6 +13,7 @@ import { PatientHistoryService } from "@/services/PatientHistoryService";
 
 
 export function MedicalRecords() {
+  const navigate = useNavigate();
   const { selectedPatient } = usePatient();
   const [selectedRecord, setSelectedRecord] = useState<any | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'trends' | 'critical' | 'timeline'>('list');
@@ -521,7 +524,10 @@ export function MedicalRecords() {
                     Compare ({selectedToCompare.length})
                   </button>
                 )}
-                <button className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors">
+                <button 
+                  onClick={() => window.location.reload()}
+                  className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors"
+                >
                   <RefreshCw className="w-4 h-4" />
                 </button>
               </div>
@@ -730,10 +736,22 @@ export function MedicalRecords() {
                       </div>
                       
                       <div className="flex gap-2 pt-2">
-                        <button className="px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors">
+                        <button 
+                          onClick={() => {
+                            toast.info("Navigating to Lab Requests...");
+                            navigate("/lab-requests");
+                          }}
+                          className="px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors"
+                        >
                           <FlaskConical className="w-3.5 h-3.5 text-indigo-500" /> View Related Labs
                         </button>
-                        <button className="px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors">
+                        <button 
+                          onClick={() => {
+                            toast.info("Navigating to Prescriptions...");
+                            navigate("/prescriptions");
+                          }}
+                          className="px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors"
+                        >
                           <Pill className="w-3.5 h-3.5 text-indigo-500" /> View Prescriptions
                         </button>
                       </div>

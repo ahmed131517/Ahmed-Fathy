@@ -6,7 +6,7 @@ import { cn } from "../../lib/utils";
 
 export function AppearanceSettings() {
   const { theme, setTheme } = useTheme();
-  const { fontSize, accentColor, updateSettings } = useSettings();
+  const { fontSize, accentColor, fontFamily, fontColor, updateSettings } = useSettings();
 
   const themes = [
     { id: 'light', name: 'Light', icon: Sun },
@@ -18,6 +18,22 @@ export function AppearanceSettings() {
     { id: 'small', name: 'Small' },
     { id: 'medium', name: 'Medium' },
     { id: 'large', name: 'Large' },
+  ] as const;
+
+  const fontFamilies = [
+    { id: 'inter', name: 'Inter' },
+    { id: 'roboto', name: 'Roboto' },
+    { id: 'system', name: 'System' },
+    { id: 'serif', name: 'Serif' },
+    { id: 'mono', name: 'Monospace' },
+  ] as const;
+
+  const fontColors = [
+    { id: 'slate', name: 'Slate' },
+    { id: 'gray', name: 'Gray' },
+    { id: 'zinc', name: 'Zinc' },
+    { id: 'neutral', name: 'Neutral' },
+    { id: 'stone', name: 'Stone' },
   ] as const;
 
   const accentColors = [
@@ -40,7 +56,7 @@ export function AppearanceSettings() {
     <div className="space-y-6">
       <div className="card-panel p-6">
         <div className="flex items-center gap-2 mb-4">
-          <Palette className="w-5 h-5 text-indigo-600" />
+          <Palette className="w-5 h-5 text-[var(--accent-color)]" />
           <h2 className="text-lg font-bold text-slate-900 dark:text-white">Theme</h2>
         </div>
         <div className="grid grid-cols-3 gap-4">
@@ -51,7 +67,7 @@ export function AppearanceSettings() {
               className={cn(
                 "flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all",
                 theme === t.id
-                  ? "border-indigo-600 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400"
+                  ? "border-[var(--accent-color)] bg-[color-mix(in_srgb,var(--accent-color),transparent_90%)] text-[var(--accent-color)]"
                   : "border-slate-100 dark:border-slate-800 hover:border-slate-200 dark:hover:border-slate-700"
               )}
             >
@@ -64,25 +80,65 @@ export function AppearanceSettings() {
 
       <div className="card-panel p-6">
         <div className="flex items-center gap-2 mb-4">
-          <Type className="w-5 h-5 text-indigo-600" />
+          <Type className="w-5 h-5 text-[var(--accent-color)]" />
           <h2 className="text-lg font-bold text-slate-900 dark:text-white">Typography</h2>
         </div>
-        <div className="space-y-4">
+        <div className="space-y-6">
           <div>
             <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">Font Size</label>
             <div className="flex gap-2">
               {fontSizes.map((s) => (
                 <button
                   key={s.id}
-                  onClick={() => handleFontSizeChange(s.id)}
+                  onClick={() => updateSettings({ fontSize: s.id })}
                   className={cn(
                     "px-4 py-2 rounded-lg text-sm font-medium border transition-all",
                     fontSize === s.id
-                      ? "bg-indigo-600 border-indigo-600 text-white"
+                      ? "bg-[var(--accent-color)] border-[var(--accent-color)] text-white"
                       : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400"
                   )}
                 >
                   {s.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">Font Family</label>
+            <div className="flex flex-wrap gap-2">
+              {fontFamilies.map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => updateSettings({ fontFamily: f.id })}
+                  className={cn(
+                    "px-4 py-2 rounded-lg text-sm font-medium border transition-all",
+                    fontFamily === f.id
+                      ? "bg-[var(--accent-color)] border-[var(--accent-color)] text-white"
+                      : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400"
+                  )}
+                >
+                  {f.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">Font Color (Neutral Palette)</label>
+            <div className="flex flex-wrap gap-2">
+              {fontColors.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => updateSettings({ fontColor: c.id })}
+                  className={cn(
+                    "px-4 py-2 rounded-lg text-sm font-medium border transition-all",
+                    fontColor === c.id
+                      ? "bg-[var(--accent-color)] border-[var(--accent-color)] text-white"
+                      : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400"
+                  )}
+                >
+                  {c.name}
                 </button>
               ))}
             </div>
@@ -92,7 +148,7 @@ export function AppearanceSettings() {
 
       <div className="card-panel p-6">
         <div className="flex items-center gap-2 mb-4">
-          <Layout className="w-5 h-5 text-indigo-600" />
+          <Layout className="w-5 h-5 text-[var(--accent-color)]" />
           <h2 className="text-lg font-bold text-slate-900 dark:text-white">Accent Color</h2>
         </div>
         <div className="flex gap-4">

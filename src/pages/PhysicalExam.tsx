@@ -3265,6 +3265,11 @@ export function PhysicalExam() {
     fio2: '',
     peep: '',
     pressureSupport: '',
+    tidalVolume: '',
+    pressureControl: '',
+    setRR: '',
+    ieRatio: '',
+    pip: '',
     flowRate: '',
     notes: '',
     weight: '',
@@ -3561,6 +3566,11 @@ Format the output as a professional medical note under the heading "Physical Exa
         updated.fio2 = '';
         updated.peep = '';
         updated.pressureSupport = '';
+        updated.tidalVolume = '';
+        updated.pressureControl = '';
+        updated.setRR = '';
+        updated.ieRatio = '';
+        updated.pip = '';
         updated.flowRate = '';
         updated.notes = '';
       }
@@ -3791,11 +3801,19 @@ Format the output as a professional medical note under the heading "Physical Exa
                       {vitals.oxygenInvasive === 'invasive' ? (
                         <>
                           <input type="text" value={vitals.fio2} onChange={(e) => handleVitalChange('fio2', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="FiO2 (%)" />
-                          <input type="text" value={vitals.peep} onChange={(e) => handleVitalChange('peep', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="PEEP" />
-                          <input type="text" value={vitals.pressureSupport} onChange={(e) => handleVitalChange('pressureSupport', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="PS" />
+                          <input type="text" value={vitals.peep} onChange={(e) => handleVitalChange('peep', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="PEEP (cmH2O)" />
+                          <input type="text" value={vitals.pressureSupport} onChange={(e) => handleVitalChange('pressureSupport', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="PS (cmH2O)" />
+                          <input type="text" value={vitals.tidalVolume} onChange={(e) => handleVitalChange('tidalVolume', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="Vt (mL)" />
+                          <input type="text" value={vitals.pressureControl} onChange={(e) => handleVitalChange('pressureControl', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="PC (cmH2O)" />
+                          <input type="text" value={vitals.setRR} onChange={(e) => handleVitalChange('setRR', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="Set RR (bpm)" />
+                          <input type="text" value={vitals.ieRatio} onChange={(e) => handleVitalChange('ieRatio', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="I:E Ratio" />
+                          <input type="text" value={vitals.pip} onChange={(e) => handleVitalChange('pip', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="PIP (cmH2O)" />
                         </>
                       ) : (
-                        <input type="text" value={vitals.flowRate} onChange={(e) => handleVitalChange('flowRate', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="Flow Rate (L/min)" />
+                        <>
+                          <input type="text" value={vitals.flowRate} onChange={(e) => handleVitalChange('flowRate', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="Flow Rate (L/min)" />
+                          <input type="text" value={vitals.fio2} onChange={(e) => handleVitalChange('fio2', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="FiO2 (%)" />
+                        </>
                       )}
                       <input type="text" value={vitals.notes} onChange={(e) => handleVitalChange('notes', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm col-span-2" placeholder="Additional notes" />
                     </div>

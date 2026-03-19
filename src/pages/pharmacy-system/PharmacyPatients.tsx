@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { Search, Eye } from "lucide-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "../../lib/db";
+import { toast } from "sonner";
 
 export function PharmacyPatients() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -78,7 +79,10 @@ export function PharmacyPatients() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <button className="text-indigo-600 hover:text-indigo-700 font-medium text-xs flex items-center justify-end gap-1 ml-auto">
+                      <button 
+                        onClick={() => toast.info("Patient history functionality coming soon!")}
+                        className="text-indigo-600 hover:text-indigo-700 font-medium text-xs flex items-center justify-end gap-1 ml-auto"
+                      >
                         <Eye className="w-3 h-3" /> View History
                       </button>
                     </td>

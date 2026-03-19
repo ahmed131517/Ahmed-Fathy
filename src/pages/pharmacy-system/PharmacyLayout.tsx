@@ -2,6 +2,7 @@ import { Outlet, Link, useLocation } from "react-router-dom";
 import { Grid, Package, ShoppingCart, Users, BarChart2, LogOut, Settings, ArrowLeft, Shield } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useUser } from "../../lib/UserContext";
+import { toast } from "sonner";
 
 export function PharmacyLayout() {
   const { hasRole } = useUser();
@@ -105,7 +106,10 @@ export function PharmacyLayout() {
             <ArrowLeft className="w-4 h-4" />
             Back to Clinic
           </Link>
-          <button className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 transition-colors">
+          <button 
+            onClick={() => toast.success("Signed out successfully")}
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
+          >
             <LogOut className="w-4 h-4" />
             Sign Out
           </button>
