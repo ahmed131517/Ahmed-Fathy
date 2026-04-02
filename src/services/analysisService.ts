@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { generateContentWithRetry } from "../utils/gemini";
 
 export interface ClinicalAnalysis {
   interpretation: string;
@@ -14,8 +14,6 @@ export const analyzeClinicalFindings = async (
   patientHistory: any,
   vitals: any
 ): Promise<ClinicalAnalysis> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
-
   const prompt = `Analyze the following clinical findings for the ${system} system:
   Findings: ${JSON.stringify(findings)}
   Patient History: ${JSON.stringify(patientHistory)}
@@ -30,7 +28,7 @@ export const analyzeClinicalFindings = async (
     "severity": "Mild" | "Moderate" | "Severe"
   }`;
 
-  const response = await ai.models.generateContent({
+  const response = await generateContentWithRetry({
     model: "gemini-3-flash-preview",
     contents: prompt,
     config: { responseMimeType: "application/json" },

@@ -23,8 +23,8 @@ export function ICD10Search({ onSelect, initialValue = "", placeholder = "Search
   useEffect(() => {
     if (query.length > 1 && query !== initialValue) {
       const filtered = commonICD10Codes.filter(item => 
-        item.code.toLowerCase().includes(query.toLowerCase()) || 
-        item.description.toLowerCase().includes(query.toLowerCase())
+        item.code?.toLowerCase().includes(query?.toLowerCase() || '') || 
+        item.description?.toLowerCase().includes(query?.toLowerCase() || '')
       );
       setResults(filtered);
       setIsOpen(true);

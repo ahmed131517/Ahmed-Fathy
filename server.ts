@@ -27,6 +27,45 @@ async function startServer() {
     res.json({ status: "success" });
   });
 
+  app.post("/api/tts", async (req, res) => {
+    const { text, voiceId = "21m00Tcm4TlvDq8ikWAM" } = req.body; // Default voice: Rachel
+    const apiKey = process.env.ELEVENLABS_API_KEY;
+
+    if (!apiKey) {
+      return res.status(500).json({ error: "ElevenLabs API key is missing" });
+    }
+
+    try {
+      const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "xi-api-key": apiKey,
+        },
+        body: JSON.stringify({
+          text,
+          model_id: "eleven_monolingual_v1",
+          voice_settings: {
+            stability: 0.5,
+            similarity_boost: 0.5,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        return res.status(response.status).json(errorData);
+      }
+
+      const audioBuffer = await response.arrayBuffer();
+      res.set("Content-Type", "audio/mpeg");
+      res.send(Buffer.from(audioBuffer));
+    } catch (error) {
+      console.error("TTS error:", error);
+      res.status(500).json({ error: "Failed to generate speech" });
+    }
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

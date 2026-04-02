@@ -1,12 +1,12 @@
 import { useState } from "react";
-import { Monitor, Moon, Sun, Layout, Type, Palette } from "lucide-react";
+import { Monitor, Moon, Sun, Layout, Type, Palette, Maximize2, Zap, Accessibility } from "lucide-react";
 import { useTheme } from "../../lib/ThemeContext";
 import { useSettings } from "../../lib/SettingsContext";
 import { cn } from "../../lib/utils";
 
 export function AppearanceSettings() {
   const { theme, setTheme } = useTheme();
-  const { fontSize, accentColor, fontFamily, fontColor, updateSettings } = useSettings();
+  const { fontSize, accentColor, fontFamily, fontColor, density, borderRadius, reducedMotion, updateSettings } = useSettings();
 
   const themes = [
     { id: 'light', name: 'Light', icon: Sun },
@@ -24,36 +24,57 @@ export function AppearanceSettings() {
     { id: 'inter', name: 'Inter' },
     { id: 'roboto', name: 'Roboto' },
     { id: 'system', name: 'System' },
-    { id: 'serif', name: 'Serif' },
-    { id: 'mono', name: 'Monospace' },
   ] as const;
 
   const fontColors = [
     { id: 'slate', name: 'Slate' },
     { id: 'gray', name: 'Gray' },
     { id: 'zinc', name: 'Zinc' },
-    { id: 'neutral', name: 'Neutral' },
-    { id: 'stone', name: 'Stone' },
+  ] as const;
+
+  const densities = [
+    { id: 'compact', name: 'Compact' },
+    { id: 'comfortable', name: 'Comfortable' },
+    { id: 'cozy', name: 'Cozy' },
+  ] as const;
+
+  const radii = [
+    { id: 'none', name: 'Sharp' },
+    { id: 'rounded', name: 'Rounded' },
+    { id: 'extra', name: 'Extra' },
   ] as const;
 
   const accentColors = [
     { id: 'indigo', color: 'bg-indigo-600' },
     { id: 'blue', color: 'bg-blue-600' },
     { id: 'emerald', color: 'bg-emerald-600' },
-    { id: 'rose', color: 'bg-rose-600' },
-    { id: 'amber', color: 'bg-amber-600' },
   ];
 
-  const handleFontSizeChange = (size: 'small' | 'medium' | 'large') => {
-    updateSettings({ fontSize: size });
-  };
+  function PreviewCard() {
+    const styles = {
+      fontSize: fontSize === 'small' ? '14px' : fontSize === 'medium' ? '16px' : '18px',
+      fontFamily: fontFamily === 'serif' ? 'Playfair Display' : fontFamily === 'mono' ? 'JetBrains Mono' : 'Inter',
+      borderRadius: borderRadius === 'none' ? '0px' : borderRadius === 'rounded' ? '0.5rem' : '1rem',
+      padding: density === 'compact' ? '0.5rem' : density === 'comfortable' ? '0.75rem' : '1rem',
+    };
 
-  const handleAccentColorChange = (color: string) => {
-    updateSettings({ accentColor: color });
-  };
+    return (
+      <div className="card-panel p-6 mb-6" style={{ borderRadius: styles.borderRadius }}>
+        <h3 className="text-lg font-bold mb-2" style={{ fontFamily: styles.fontFamily, fontSize: styles.fontSize }}>Preview</h3>
+        <p className="mb-4" style={{ fontFamily: styles.fontFamily, fontSize: styles.fontSize, padding: styles.padding }}>
+          This is how your current appearance settings will look.
+        </p>
+        <button className="px-4 py-2 text-white" style={{ backgroundColor: 'var(--accent-color)', borderRadius: styles.borderRadius }}>
+          Action Button
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
+      <PreviewCard />
+      
       <div className="card-panel p-6">
         <div className="flex items-center gap-2 mb-4">
           <Palette className="w-5 h-5 text-[var(--accent-color)]" />
@@ -123,46 +144,67 @@ export function AppearanceSettings() {
               ))}
             </div>
           </div>
-
-          <div>
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">Font Color (Neutral Palette)</label>
-            <div className="flex flex-wrap gap-2">
-              {fontColors.map((c) => (
-                <button
-                  key={c.id}
-                  onClick={() => updateSettings({ fontColor: c.id })}
-                  className={cn(
-                    "px-4 py-2 rounded-lg text-sm font-medium border transition-all",
-                    fontColor === c.id
-                      ? "bg-[var(--accent-color)] border-[var(--accent-color)] text-white"
-                      : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400"
-                  )}
-                >
-                  {c.name}
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
       </div>
 
       <div className="card-panel p-6">
         <div className="flex items-center gap-2 mb-4">
           <Layout className="w-5 h-5 text-[var(--accent-color)]" />
-          <h2 className="text-lg font-bold text-slate-900 dark:text-white">Accent Color</h2>
+          <h2 className="text-lg font-bold text-slate-900 dark:text-white">Layout & Accessibility</h2>
         </div>
-        <div className="flex gap-4">
-          {accentColors.map((c) => (
+        <div className="space-y-6">
+          <div>
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">Density</label>
+            <div className="flex gap-2">
+              {densities.map((d) => (
+                <button
+                  key={d.id}
+                  onClick={() => updateSettings({ density: d.id })}
+                  className={cn(
+                    "px-4 py-2 rounded-lg text-sm font-medium border transition-all",
+                    density === d.id
+                      ? "bg-[var(--accent-color)] border-[var(--accent-color)] text-white"
+                      : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400"
+                  )}
+                >
+                  {d.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">Corner Roundness</label>
+            <div className="flex gap-2">
+              {radii.map((r) => (
+                <button
+                  key={r.id}
+                  onClick={() => updateSettings({ borderRadius: r.id })}
+                  className={cn(
+                    "px-4 py-2 rounded-lg text-sm font-medium border transition-all",
+                    borderRadius === r.id
+                      ? "bg-[var(--accent-color)] border-[var(--accent-color)] text-white"
+                      : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400"
+                  )}
+                >
+                  {r.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Reduced Motion</label>
             <button
-              key={c.id}
-              onClick={() => handleAccentColorChange(c.id)}
+              onClick={() => updateSettings({ reducedMotion: !reducedMotion })}
               className={cn(
-                "w-8 h-8 rounded-full transition-all ring-offset-2 dark:ring-offset-slate-950",
-                c.color,
-                accentColor === c.id ? "ring-2 ring-slate-900 dark:ring-white scale-110" : "hover:scale-110"
+                "w-12 h-6 rounded-full transition-all flex items-center px-1",
+                reducedMotion ? "bg-[var(--accent-color)] justify-end" : "bg-slate-200 dark:bg-slate-700 justify-start"
               )}
-            />
-          ))}
+            >
+              <div className="w-4 h-4 rounded-full bg-white" />
+            </button>
+          </div>
         </div>
       </div>
     </div>

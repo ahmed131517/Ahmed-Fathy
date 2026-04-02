@@ -22,7 +22,7 @@ export function PharmacyDashboard() {
     completedToday.forEach(p => {
       const items = prescriptionItems.filter(i => i.prescriptionId === p.id);
       items.forEach(item => {
-        const invItem = inventory.find(i => i.medicationName.toLowerCase() === item.medicationName.toLowerCase());
+        const invItem = inventory.find(i => i.medicationName?.toLowerCase() === item.medicationName?.toLowerCase());
         revenue += invItem?.price || 10;
       });
     });

@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { Heart, Stethoscope, FlaskConical, Pill, ClipboardList, AlertCircle, Check, Clock } from "lucide-react";
+import { Heart, Stethoscope, FlaskConical, Pill, ClipboardList, AlertCircle, Check, Clock, Package, ShieldCheck } from "lucide-react";
 import { useSettings } from "../../lib/SettingsContext";
 import { cn } from "../../lib/utils";
 import { toast } from "sonner";
 
-export function MedicalSettings() {
+export function PharmacySettings() {
   const { 
     autoDiagnosis, 
     labIntegration, 
@@ -22,13 +22,13 @@ export function MedicalSettings() {
       <div className="card-panel p-6">
         <div className="flex items-center gap-2 mb-4">
           <Stethoscope className="w-5 h-5 text-indigo-600" />
-          <h2 className="text-lg font-bold text-slate-900 dark:text-white">Clinical Workflow</h2>
+          <h2 className="text-lg font-bold text-slate-900 dark:text-white">Pharmacy Workflow</h2>
         </div>
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-medium text-slate-900 dark:text-slate-200">AI-Assisted Diagnosis</h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400">Enable AI suggestions for potential diagnoses based on symptoms.</p>
+              <h3 className="text-sm font-medium text-slate-900 dark:text-slate-200">AI-Assisted Prescription Review</h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400">Enable AI suggestions for prescription verification and safety checks.</p>
             </div>
             <button 
               onClick={() => updateSettings({ autoDiagnosis: !autoDiagnosis })}
@@ -40,8 +40,8 @@ export function MedicalSettings() {
           <div className="w-full h-px bg-slate-100 dark:bg-slate-800"></div>
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-medium text-slate-900 dark:text-slate-200">Laboratory Integration</h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400">Automatically sync lab results from connected diagnostic centers.</p>
+              <h3 className="text-sm font-medium text-slate-900 dark:text-slate-200">Inventory Sync Integration</h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400">Automatically sync stock levels from connected suppliers.</p>
             </div>
             <button 
               onClick={() => updateSettings({ labIntegration: !labIntegration })}
@@ -55,16 +55,16 @@ export function MedicalSettings() {
             <div>
               <h3 className="text-sm font-medium text-slate-900 dark:text-slate-200 flex items-center gap-2">
                 <Clock className="w-4 h-4 text-slate-400" />
-                Default Appointment Duration
+                Default Dispensing Time
               </h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400">Set the standard duration for new appointments in minutes.</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">Set the standard time allocated for dispensing a prescription.</p>
             </div>
             <select 
               value={defaultAppointmentDuration}
               onChange={(e) => updateSettings({ defaultAppointmentDuration: parseInt(e.target.value) })}
               className="p-2 border rounded-lg dark:bg-slate-800 dark:border-slate-700 text-sm font-medium"
             >
-              {[15, 30, 45, 60, 90].map(val => (
+              {[5, 10, 15, 20, 30].map(val => (
                 <option key={val} value={val}>{val} minutes</option>
               ))}
             </select>
@@ -75,7 +75,7 @@ export function MedicalSettings() {
       <div className="card-panel p-6">
         <div className="flex items-center gap-2 mb-4">
           <Pill className="w-5 h-5 text-indigo-600" />
-          <h2 className="text-lg font-bold text-slate-900 dark:text-white">Pharmacy & Medications</h2>
+          <h2 className="text-lg font-bold text-slate-900 dark:text-white">Safety & Compliance</h2>
         </div>
         <div className="space-y-4">
           <div className="flex items-center justify-between">
@@ -95,11 +95,11 @@ export function MedicalSettings() {
 
       <div className="card-panel p-6">
         <div className="flex items-center gap-2 mb-4">
-          <ClipboardList className="w-5 h-5 text-indigo-600" />
-          <h2 className="text-lg font-bold text-slate-900 dark:text-white">Custom Templates</h2>
+          <Package className="w-5 h-5 text-indigo-600" />
+          <h2 className="text-lg font-bold text-slate-900 dark:text-white">Dispensing Templates</h2>
         </div>
         <div className="space-y-2">
-          {['General Physical Exam', 'Pediatric Assessment', 'Cardiology Follow-up', 'Neurological Exam'].map((template) => (
+          {['Standard Prescription', 'Controlled Substance', 'Refill Request', 'Consultation Note'].map((template) => (
             <div key={template} className="flex items-center justify-between p-3 rounded-lg border border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
               <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{template}</span>
               <button 

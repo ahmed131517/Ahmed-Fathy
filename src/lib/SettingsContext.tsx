@@ -17,6 +17,9 @@ interface SettingsState {
   fontFamily: string;
   fontColor: string;
   accentColor: string;
+  density: 'compact' | 'comfortable' | 'cozy';
+  borderRadius: 'none' | 'rounded' | 'extra';
+  reducedMotion: boolean;
   
   // System
   autoBackup: boolean;
@@ -47,9 +50,10 @@ interface SettingsState {
   currencySymbol: string;
   
   // AI
-  enableAI: boolean;
+  aiProcessingMode: 'cloud' | 'local';
   modelType: string;
-  aiConfidence: number;
+  aiTemperature: number;
+  aiMaxTokens: number;
   
   // Schedule
   workingHours: {
@@ -79,6 +83,9 @@ const defaultSettings: SettingsState = {
   fontFamily: 'inter',
   fontColor: 'slate',
   accentColor: 'indigo',
+  density: 'comfortable',
+  borderRadius: 'rounded',
+  reducedMotion: false,
   
   autoBackup: true,
   syncInterval: '15',
@@ -103,9 +110,10 @@ const defaultSettings: SettingsState = {
   timeFormat: '12h',
   currencySymbol: '$',
   
-  enableAI: true,
-  modelType: 'pro',
-  aiConfidence: 85,
+  aiProcessingMode: 'cloud',
+  modelType: 'gemini-2.5-flash',
+  aiTemperature: 0.7,
+  aiMaxTokens: 2048,
   
   workingHours: [
     { day: "Monday", start: "09:00", end: "17:00", active: true },
@@ -169,6 +177,29 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     Object.entries(selectedNeutral).forEach(([shade, color]) => {
       root.style.setProperty(`--color-slate-${shade}`, color);
     });
+
+    // Density
+    const densityMap = {
+      compact: '0.5rem',
+      comfortable: '0.75rem',
+      cozy: '1rem',
+    };
+    root.style.setProperty('--spacing-scale', densityMap[settings.density]);
+
+    // Border Radius
+    const radiusMap = {
+      none: '0px',
+      rounded: '0.5rem',
+      extra: '1rem',
+    };
+    root.style.setProperty('--radius', radiusMap[settings.borderRadius]);
+
+    // Reduced Motion
+    if (settings.reducedMotion) {
+      root.style.setProperty('--transition-duration', '0ms');
+    } else {
+      root.style.setProperty('--transition-duration', '200ms');
+    }
 
     // Accent color palettes
     const palettes: Record<string, Record<string, string>> = {

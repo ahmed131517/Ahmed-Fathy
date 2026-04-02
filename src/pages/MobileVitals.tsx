@@ -19,14 +19,15 @@ export function MobileVitals() {
     if (!selectedPatient) return;
     try {
       await db.vitals.add({
+        id: crypto.randomUUID(),
         patientId: selectedPatient.id,
         date: new Date().toISOString(),
-        bp_systolic: Number(vitals.bp_systolic),
-        bp_diastolic: Number(vitals.bp_diastolic),
-        hr: Number(vitals.hr),
-        temp: Number(vitals.temp),
-        spo2: Number(vitals.spo2),
-        weight: Number(vitals.weight),
+        bp_systolic: vitals.bp_systolic ? Number(vitals.bp_systolic) : undefined,
+        bp_diastolic: vitals.bp_diastolic ? Number(vitals.bp_diastolic) : undefined,
+        hr: vitals.hr ? Number(vitals.hr) : undefined,
+        temp: vitals.temp ? Number(vitals.temp) : undefined,
+        spo2: vitals.spo2 ? Number(vitals.spo2) : undefined,
+        weight: vitals.weight ? Number(vitals.weight) : undefined,
         lastModified: Date.now(),
         isDeleted: 0,
         isSynced: 0

@@ -65,7 +65,7 @@ export function PharmacyOrders() {
       // Calculate total price based on inventory
       let total = 0;
       items.forEach(item => {
-        const invItem = inventory.find(i => i.medicationName.toLowerCase() === item.medicationName.toLowerCase());
+        const invItem = inventory.find(i => i.medicationName?.toLowerCase() === item.medicationName?.toLowerCase());
         if (invItem) {
           total += invItem.price;
         } else {
@@ -139,7 +139,7 @@ export function PharmacyOrders() {
           if (overContainer === "Completed") {
             const items = dbItems.filter(i => i.prescriptionId === prescription.id);
             for (const item of items) {
-              const invItem = inventory.find(i => i.medicationName.toLowerCase() === item.medicationName.toLowerCase());
+              const invItem = inventory.find(i => i.medicationName?.toLowerCase() === item.medicationName?.toLowerCase());
               if (invItem && invItem.localId) {
                 const newStock = Math.max(0, invItem.stock - 1); // Assuming 1 unit per prescription item for simplicity
                 await db.pharmacy_inventory.update(invItem.localId, {

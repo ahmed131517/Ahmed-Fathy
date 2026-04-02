@@ -1,3 +1,4 @@
+import { SpeakButton } from "@/components/SpeakButton";
 import { useSymptom } from "@/lib/SymptomContext";
 import { useState, MouseEvent, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
@@ -5,6 +6,7 @@ import { User, Headphones, Eye, MessageCircle, Shield, Wind, Heart, Target, Drop
 import { ALL_MODELS, SymptomModel } from "@/data/symptomModels";
 import { cn } from "@/lib/utils";
 import { GoogleGenAI, Modality, Type } from "@google/genai";
+import { generateContentWithRetry } from "../utils/gemini";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 
@@ -38,26 +40,37 @@ interface SelectedSymptom {
 
 export function SymptomAnalysis() {
   const navigate = useNavigate();
-  const { symptoms: contextSymptoms } = useSymptom();
+  const { symptoms: contextSymptoms, setSymptoms: setContextSymptoms } = useSymptom();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedSymptoms, setSelectedSymptoms] = useState<SelectedSymptom[]>([]);
 
+  // Sync with context on mount
   useEffect(() => {
-    setSelectedSymptoms(prev => {
-      const newSymptoms = [...prev];
-      contextSymptoms.forEach(cs => {
-        if (!newSymptoms.find(s => s.id === cs.id)) {
-          newSymptoms.push({
-            id: cs.id,
-            label: cs.label,
-            category: cs.category,
-            status: cs.status
-          });
-        }
-      });
-      return newSymptoms;
-    });
+    if (contextSymptoms.length > 0 && selectedSymptoms.length === 0) {
+      setSelectedSymptoms(contextSymptoms.map(cs => ({
+        id: cs.id,
+        label: cs.label,
+        category: cs.category,
+        status: cs.status,
+        analysisData: cs.analysisData,
+        severityTimeline: cs.severityTimeline,
+        followUpQuestions: cs.followUpQuestions
+      })));
+    }
   }, [contextSymptoms]);
+
+  // Sync back to context whenever selectedSymptoms changes
+  useEffect(() => {
+    setContextSymptoms(selectedSymptoms.map(s => ({
+      id: s.id,
+      label: s.label,
+      category: s.category,
+      status: s.status,
+      analysisData: s.analysisData,
+      severityTimeline: s.severityTimeline,
+      followUpQuestions: s.followUpQuestions
+    })));
+  }, [selectedSymptoms, setContextSymptoms]);
   const [analyzingSymptom, setAnalyzingSymptom] = useState<SelectedSymptom | null>(null);
   const [showCauses, setShowCauses] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -171,17 +184,14 @@ export function SymptomAnalysis() {
             setIsAnalyzing(false);
             return;
           }
-          const ai = new GoogleGenAI({ apiKey });
-          const response = await ai.models.generateContent({
+          const response = await generateContentWithRetry({
             model: "gemini-3-flash-preview",
-            contents: [
-              {
-                parts: [
-                  { text: "Extract clinical symptoms from this audio. Return a JSON array of symptom IDs that match our system. System IDs: " + Object.values(ALL_MODELS).flat().map(m => m.id).join(', ') },
-                  { inlineData: { data: base64Audio, mimeType: "audio/wav" } }
-                ]
-              }
-            ],
+            contents: {
+              parts: [
+                { text: "Extract clinical symptoms from this audio. Return a JSON array of symptom IDs that match our system. System IDs: " + Object.values(ALL_MODELS).flat().map(m => m.id).join(', ') },
+                { inlineData: { data: base64Audio, mimeType: "audio/wav" } }
+              ]
+            },
             config: { responseMimeType: "application/json" }
           });
 
@@ -246,13 +256,17 @@ export function SymptomAnalysis() {
     setNewMessage('');
     
     // Call AI
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: [...conversation, userMessage].map(m => m.content).join('\n'),
-    });
-    
-    setConversation(prev => [...prev, { role: 'ai' as const, content: response.text || "No response." }]);
+    try {
+      const response = await generateContentWithRetry({
+        model: "gemini-3-flash-preview",
+        contents: [...conversation, userMessage].map(m => m.content).join('\n'),
+      });
+      
+      setConversation(prev => [...prev, { role: 'ai' as const, content: response.text || "No response." }]);
+    } catch (err) {
+      console.error("AI chat failed:", err);
+      toast.error("Failed to get AI response. Please try again later.");
+    }
   };
 
   const toggleExpand = (id: string) => {
@@ -268,8 +282,6 @@ export function SymptomAnalysis() {
     setIsAnalyzing(true);
     
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
-      
       const prompt = `Given the following patient symptoms and their analysis, provide a list of possible differential diagnoses.
       
       Symptoms:
@@ -277,7 +289,7 @@ export function SymptomAnalysis() {
       
       Return a JSON array of objects with: name, likelihood (percentage), severity, code (ICD-10), description, rationale, isRedFlag (boolean), and grounding (array of {title, url}), labs (array of {name, reason}), imaging (array of {name, reason}), and comparison (object with matches array and mismatches array).`;
       
-      const response = await ai.models.generateContent({
+      const response = await generateContentWithRetry({
         model: "gemini-3-flash-preview",
         contents: prompt,
         config: {
@@ -300,17 +312,11 @@ export function SymptomAnalysis() {
   const generateSOAPNote = async () => {
     setIsGeneratingSOAP(true);
     try {
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        toast.error("Gemini API key is missing");
-        return;
-      }
-      const ai = new GoogleGenAI({ apiKey });
       const prompt = `Generate a professional clinical SOAP note for a patient with the following symptoms: ${selectedSymptoms.map(s => s.label).join(', ')}. 
       Patient History: ${patientHistory.conditions.join(', ')}. 
       Format as Subjective, Objective, Assessment, Plan.`;
       
-      const response = await ai.models.generateContent({
+      const response = await generateContentWithRetry({
         model: "gemini-3-flash-preview",
         contents: [{ parts: [{ text: prompt }] }]
       });
@@ -383,6 +389,14 @@ export function SymptomAnalysis() {
           >
             <ClipboardList className="w-4 h-4" />
             Show Possible Causes
+          </button>
+          <button 
+            onClick={() => navigate('/final-diagnosis')}
+            disabled={selectedSymptoms.length === 0}
+            className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors flex items-center gap-2 disabled:opacity-50"
+          >
+            <CheckCircle2 className="w-4 h-4" />
+            Finalize
           </button>
         </div>
       </div>
@@ -569,8 +583,9 @@ export function SymptomAnalysis() {
             <h3 className="text-lg font-semibold text-slate-800 mb-4">Patient History Conversation</h3>
             <div className="flex-1 overflow-y-auto space-y-4 mb-4 max-h-60">
               {conversation.map((msg, i) => (
-                <div key={i} className={cn("p-3 rounded-lg text-sm", msg.role === 'user' ? "bg-indigo-100 text-indigo-900 ml-auto max-w-[80%]" : "bg-slate-100 text-slate-800 mr-auto max-w-[80%]")}>
-                  {msg.content}
+                <div key={i} className={cn("p-3 rounded-lg text-sm flex items-start gap-2", msg.role === 'user' ? "bg-indigo-100 text-indigo-900 ml-auto max-w-[80%]" : "bg-slate-100 text-slate-800 mr-auto max-w-[80%]")}>
+                  <div className="flex-1">{msg.content}</div>
+                  {msg.role === 'ai' && <SpeakButton text={msg.content} className="p-0.5 hover:bg-slate-200" />}
                 </div>
               ))}
             </div>
@@ -851,13 +866,7 @@ function AnalysisModal({ symptom, onClose, onSave }: { symptom: SelectedSymptom,
   const generateFollowUpQuestions = async () => {
     setIsGeneratingQuestions(true);
     try {
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        toast.error("Gemini API key is missing");
-        return;
-      }
-      const ai = new GoogleGenAI({ apiKey });
-      const response = await ai.models.generateContent({
+      const response = await generateContentWithRetry({
         model: "gemini-3-flash-preview",
         contents: [{ parts: [{ text: `Generate 3 clinical follow-up questions for a patient presenting with ${model.label}. Focus on ruling out differential diagnoses.` }] }],
         config: { 

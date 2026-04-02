@@ -61,18 +61,22 @@ export class PatientHistoryService {
         id: d.id || d.localId?.toString() || '',
         date: d.date,
         type: 'Diagnosis',
-        title: `Diagnosis: ${d.condition}`,
-        description: d.notes || "No additional notes.",
+        title: `Diagnosis: ${d.description || d.condition}`,
+        description: d.reasoning || d.notes || "No additional notes.",
         provider: "Dr. Ahmed Fathy",
         status: 'completed',
         details: {
           id: d.id || d.localId?.toString() || '',
           date: d.date,
           type: 'Diagnosis',
-          title: `Diagnosis: ${d.condition}`,
-          summary: d.notes || "No additional notes.",
+          title: `Diagnosis: ${d.description || d.condition}`,
+          summary: d.reasoning || d.notes || "No additional notes.",
           provider: "Dr. Ahmed Fathy",
-          department: "General Practice"
+          department: "General Practice",
+          code: d.code,
+          symptoms: d.symptoms,
+          examFindings: d.examFindings,
+          labResults: d.labResults
         }
       });
     });

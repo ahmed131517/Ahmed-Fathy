@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { UserCheck, Eye, Wind, Heart, Activity, Move, Cpu, Feather as FeatherIcon, Clipboard, Save, Check, Thermometer, Droplets, Scale, Ruler, Mic, Sparkles, FileText, RefreshCw, CheckCircle2, AlertCircle, Camera, Trash2, CheckCircle, ChevronDown, ChevronUp, Edit2, X, Plus, AlertTriangle, Stethoscope, Ear, Hand, Info } from "lucide-react";
-import { GoogleGenAI } from "@google/genai";
+import { generateContentWithRetry } from "../utils/gemini";
 import { cn } from "@/lib/utils";
 import { CheckboxFindings } from "@/components/physical-exam/CheckboxFindings";
 import { Slider } from "@/components/ui/slider";
@@ -18,6 +18,7 @@ import { JointExamCard } from "./msk/JointExamCard";
 import { db } from "@/lib/db";
 import { toast } from "sonner";
 import { usePatient } from "@/lib/PatientContext";
+import { useSymptom } from "@/lib/SymptomContext";
 
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -70,9 +71,12 @@ const powerMuscles = [
   { label: "Elbow Flexion (C5-6)", id: "elbow-flex" },
   { label: "Elbow Extension (C7-8)", id: "elbow-ext" },
   { label: "Wrist Extension (C6-7)", id: "wrist" },
+  { label: "Finger Abduction (T1)", id: "finger-abd" },
   { label: "Grip Strength / Finger Flexion (C8)", id: "grip" },
   { label: "Hip Flexion (L2-3)", id: "hip-flex" },
+  { label: "Hip Abduction (L4-S1)", id: "hip-abd" },
   { label: "Knee Extension (L3-4)", id: "knee-ext" },
+  { label: "Knee Flexion (L5-S2)", id: "knee-flex" },
   { label: "Ankle Dorsiflexion (L4-5)", id: "ankle-df" },
   { label: "Great Toe Extension (L5)", id: "toe-ext" },
   { label: "Ankle Plantarflexion (S1)", id: "ankle-pf" },
@@ -84,6 +88,7 @@ const reflexes = [
   { label: "Triceps (C7-8)", id: "triceps" },
   { label: "Patellar (L3-4)", id: "patellar" },
   { label: "Achilles (S1-2)", id: "achilles" },
+  { label: "Supinator (C5-6)", id: "supinator" },
 ];
 
 const sensoryModalities = [
@@ -92,11 +97,13 @@ const sensoryModalities = [
   { label: "Temperature", id: "temperature" },
   { label: "Vibration (128Hz)", id: "vibration" },
   { label: "Proprioception (Joint Position)", id: "proprioception" },
+  { label: "Two-point Discrimination", id: "two-point" },
+  { label: "Point Localization", id: "point-loc" },
 ];
 
 const powerOptions = ["5/5", "4/5", "3/5", "2/5", "1/5", "0/5"];
 const reflexOptions = ["2+ (Normal)", "0 (Absent)", "1+ (Hypo)", "3+ (Brisk)", "4+ (Clonus)"];
-const sensoryOptions = ["Normal", "Decreased", "Absent", "Increased"];
+const sensoryOptions = ["Normal", "Decreased (Hypesthesia)", "Absent (Anesthesia)", "Increased (Hyperesthesia)", "Paresthesia", "Dysesthesia"];
 
 interface Lesion {
   id: number;
@@ -143,20 +150,22 @@ const abcdeLabels = [
 ];
 
 const specialTests: Record<string, string[]> = {
-  'Shoulder (L)': ['Hawkins-Kennedy', 'Neer Sign', 'Empty Can', 'Belly Press'],
-  'Shoulder (R)': ['Hawkins-Kennedy', 'Neer Sign', 'Empty Can', 'Belly Press'],
-  'Elbow (L)': ['Tennis Elbow Test', 'Golfer Elbow Test'],
-  'Elbow (R)': ['Tennis Elbow Test', 'Golfer Elbow Test'],
-  'Wrist (L)': ['Phalen Test', 'Tinel Sign', 'Finkelstein Test'],
-  'Wrist (R)': ['Phalen Test', 'Tinel Sign', 'Finkelstein Test'],
-  'Hip (L)': ['Thomas Test', 'Trendelenburg Sign', 'FABER Test'],
-  'Hip (R)': ['Thomas Test', 'Trendelenburg Sign', 'FABER Test'],
-  'Knee (L)': ['Lachman Test', 'Anterior Drawer', 'McMurray Test', 'Patellar Tap'],
-  'Knee (R)': ['Lachman Test', 'Anterior Drawer', 'McMurray Test', 'Patellar Tap'],
-  'Ankle (L)': ['Anterior Drawer', 'Talar Tilt'],
-  'Ankle (R)': ['Anterior Drawer', 'Talar Tilt'],
-  'Cervical Spine': ['Spurling Test', 'Lhermitte Sign'],
-  'Lumbar Spine': ['Straight Leg Raise', 'Schober Test'],
+  'Shoulder (L)': ['Hawkins-Kennedy', 'Neer Sign', 'Empty Can', 'Belly Press', 'Apprehension Test', 'Drop Arm'],
+  'Shoulder (R)': ['Hawkins-Kennedy', 'Neer Sign', 'Empty Can', 'Belly Press', 'Apprehension Test', 'Drop Arm'],
+  'Elbow (L)': ['Tennis Elbow Test', 'Golfer Elbow Test', 'Cozen Test', 'Mill Test'],
+  'Elbow (R)': ['Tennis Elbow Test', 'Golfer Elbow Test', 'Cozen Test', 'Mill Test'],
+  'Wrist (L)': ['Phalen Test', 'Tinel Sign', 'Finkelstein Test', 'Watson Shift'],
+  'Wrist (R)': ['Phalen Test', 'Tinel Sign', 'Finkelstein Test', 'Watson Shift'],
+  'Hip (L)': ['Thomas Test', 'Trendelenburg Sign', 'FABER Test', 'Log Roll', 'Scour Test'],
+  'Hip (R)': ['Thomas Test', 'Trendelenburg Sign', 'FABER Test', 'Log Roll', 'Scour Test'],
+  'Knee (L)': ['Lachman Test', 'Anterior Drawer', 'Posterior Drawer', 'McMurray Test', 'Patellar Tap', 'Valgus Stress', 'Varus Stress'],
+  'Knee (R)': ['Lachman Test', 'Anterior Drawer', 'Posterior Drawer', 'McMurray Test', 'Patellar Tap', 'Valgus Stress', 'Varus Stress'],
+  'Ankle (L)': ['Anterior Drawer', 'Talar Tilt', 'Thompson Test', 'Squeeze Test'],
+  'Ankle (R)': ['Anterior Drawer', 'Talar Tilt', 'Thompson Test', 'Squeeze Test'],
+  'Cervical Spine': ['Spurling Test', 'Lhermitte Sign', 'Distraction Test'],
+  'Lumbar Spine': ['Straight Leg Raise', 'Schober Test', 'Slump Test', 'Bragard Sign'],
+  'TMJ': ['Opening Range', 'Lateral Deviation', 'Palpable Click'],
+  'SI Joint': ['Gaenslen Test', 'Patrick (FABER) Test', 'Thigh Thrust'],
 };
 
 export interface JointExam {
@@ -177,6 +186,23 @@ const respSmartPhrases = [
   { label: "RUL Crackles", text: "Fine crackles noted in RUL." },
   { label: "LUL Wheezes", text: "Expiratory wheezes noted in LUL." },
   { label: "Decreased BS RLL", text: "Decreased breath sounds in RLL." },
+];
+
+const mskSmartPhrases = [
+  { label: "Normal GALS", text: "GALS screen normal. Normal gait, posture, and joint ROM." },
+  { label: "No Effusion", text: "No joint effusions or swelling noted." },
+  { label: "Full ROM", text: "Full range of motion in all major joints without pain." },
+  { label: "Strength 5/5", text: "Muscle strength 5/5 in all major muscle groups bilaterally." },
+  { label: "NV Intact", text: "Neurovascular status intact: distal pulses 2+, sensation normal, cap refill < 2s." },
+];
+
+const neuroSmartPhrases = [
+  { label: "CN II-XII Intact", text: "Cranial nerves II-XII grossly intact." },
+  { label: "Normal Tone", text: "Normal muscle tone and bulk throughout." },
+  { label: "Sensory Intact", text: "Sensation to light touch and pinprick intact in all dermatomes." },
+  { label: "Reflexes 2+", text: "Deep tendon reflexes 2+ and symmetric throughout." },
+  { label: "Coordination NL", text: "Coordination normal: finger-to-nose and heel-to-shin intact." },
+  { label: "Negative Babinski", text: "Plantar response flexor bilaterally (Negative Babinski)." },
 ];
 
 
@@ -414,16 +440,33 @@ export function MusculoskeletalTab({ findings, onChange }: { findings: any, onCh
           </div>
 
           {/* Neurovascular Status */}
-          <CheckboxFindings
-            label="Neurovascular Status"
-            options={[
-              { id: "pulses-intact", label: "Distal Pulses Intact" },
-              { id: "sensation-intact", label: "Sensation Intact" },
-              { id: "cap-refill-normal", label: "Capillary Refill < 2s" },
-            ]}
-            selected={nvStatus}
-            onChange={(v) => onChange('nvStatus', v)}
-          />
+          <div className="grid sm:grid-cols-2 gap-4">
+            <CheckboxFindings
+              label="Neurovascular Status"
+              options={[
+                { id: "pulses-intact", label: "Distal Pulses Intact" },
+                { id: "sensation-intact", label: "Sensation Intact" },
+                { id: "cap-refill-normal", label: "Capillary Refill < 2s" },
+                { id: "cyanosis-absent", label: "No Cyanosis" },
+                { id: "edema-absent", label: "No Edema" },
+              ]}
+              selected={nvStatus}
+              onChange={(v) => onChange('nvStatus', v)}
+            />
+
+            <CheckboxFindings
+              label="General MSK Findings"
+              options={[
+                { id: "atrophy-none", label: "No Muscle Atrophy" },
+                { id: "deformity-none", label: "No Deformities" },
+                { id: "nodules-none", label: "No Subcutaneous Nodules" },
+                { id: "scars-none", label: "No Surgical Scars" },
+                { id: "inflammation-none", label: "No Signs of Inflammation" },
+              ]}
+              selected={findings.generalMsk || []}
+              onChange={(v) => onChange('generalMsk', v)}
+            />
+          </div>
 
           {/* Interactive Joint Map + Selector */}
           <div className="space-y-3">
@@ -469,6 +512,18 @@ export function MusculoskeletalTab({ findings, onChange }: { findings: any, onCh
           ))}
         </div>
       )}
+
+      <div className="space-y-2">
+        <Label className="text-sm font-medium">Smart Phrases</Label>
+        <div className="flex flex-wrap gap-2">
+          {mskSmartPhrases.map(phrase => (
+            <Button key={phrase.label} variant="outline" size="sm" className="h-7 text-xs"
+              onClick={() => onChange('notes', notes ? `${notes}\n${phrase.text}` : phrase.text)}>
+              {phrase.label}
+            </Button>
+          ))}
+        </div>
+      </div>
 
       <div className="space-y-1.5">
         <Label className="text-sm">Additional MSK Notes</Label>
@@ -672,31 +727,84 @@ export function NeurologicalTab({ findings, onChange }: { findings: any, onChang
               </Table>
             </div>
 
-            {/* Coordination & Involuntary Movements */}
-            <CheckboxFindings
-              label="Coordination"
-              options={[
-                { id: "coord-fn", label: "Finger-to-Nose Normal" },
-                { id: "coord-hs", label: "Heel-to-Shin Normal" },
-                { id: "coord-ram", label: "RAM Normal" },
-              ]}
-              selected={coordination}
-              onChange={(v) => onChange('coordination', v)}
-            />
+      {/* Coordination & Involuntary Movements */}
+      <div className="grid sm:grid-cols-2 gap-4">
+        <CheckboxFindings
+          label="Coordination"
+          options={[
+            { id: "coord-fn", label: "Finger-to-Nose Normal" },
+            { id: "coord-hs", label: "Heel-to-Shin Normal" },
+            { id: "coord-ram", label: "RAM Normal" },
+            { id: "coord-dysmetria", label: "Dysmetria" },
+            { id: "coord-dysdiadochokinesia", label: "Dysdiadochokinesia" },
+          ]}
+          selected={coordination}
+          onChange={(v) => onChange('coordination', v)}
+        />
 
-            <CheckboxFindings
-              label="Involuntary Movements"
-              options={[
-                { id: "inv-none", label: "No Involuntary Movements" },
-                { id: "inv-tremor", label: "Tremor" },
-                { id: "inv-fasciculations", label: "Fasciculations" },
-                { id: "inv-chorea", label: "Chorea" },
-                { id: "inv-dystonia", label: "Dystonia" },
-                { id: "inv-myoclonus", label: "Myoclonus" },
-              ]}
-              selected={involuntary}
-              onChange={(v) => onChange('involuntary', v)}
-            />
+        <CheckboxFindings
+          label="Involuntary Movements"
+          options={[
+            { id: "inv-none", label: "No Involuntary Movements" },
+            { id: "inv-tremor-rest", label: "Resting Tremor" },
+            { id: "inv-tremor-action", label: "Action Tremor" },
+            { id: "inv-fasciculations", label: "Fasciculations" },
+            { id: "inv-chorea", label: "Chorea" },
+            { id: "inv-dystonia", label: "Dystonia" },
+            { id: "inv-myoclonus", label: "Myoclonus" },
+            { id: "inv-tics", label: "Tics" },
+          ]}
+          selected={involuntary}
+          onChange={(v) => onChange('involuntary', v)}
+        />
+      </div>
+
+      {/* Gait & Station */}
+      <div className="space-y-2">
+        <Label className="text-sm font-medium">Gait & Station</Label>
+        <div className="grid sm:grid-cols-2 gap-4">
+          <CheckboxFindings
+            label="Gait Types"
+            options={[
+              { id: "gait-normal", label: "Normal" },
+              { id: "gait-antalgic", label: "Antalgic" },
+              { id: "gait-ataxic", label: "Ataxic" },
+              { id: "gait-spastic", label: "Spastic / Scissoring" },
+              { id: "gait-parkinsonian", label: "Parkinsonian / Shuffling" },
+              { id: "gait-steppage", label: "Steppage" },
+              { id: "gait-waddling", label: "Waddling" },
+            ]}
+            selected={findings.gaitTypes || []}
+            onChange={(v) => onChange('gaitTypes', v)}
+          />
+          <CheckboxFindings
+            label="Station & Balance"
+            options={[
+              { id: "romberg-neg", label: "Romberg Negative" },
+              { id: "romberg-pos", label: "Romberg Positive" },
+              { id: "pronator-drift-neg", label: "No Pronator Drift" },
+              { id: "pronator-drift-pos", label: "Pronator Drift Present" },
+              { id: "tandem-normal", label: "Tandem Gait Normal" },
+              { id: "tandem-impaired", label: "Tandem Gait Impaired" },
+            ]}
+            selected={findings.stationBalance || []}
+            onChange={(v) => onChange('stationBalance', v)}
+          />
+        </div>
+      </div>
+
+      {/* Meningeal Signs */}
+      <CheckboxFindings
+        label="Meningeal Signs"
+        options={[
+          { id: "men-none", label: "No Meningeal Signs" },
+          { id: "men-nuchal", label: "Nuchal Rigidity" },
+          { id: "men-kernig", label: "Kernig Sign" },
+          { id: "men-brudzinski", label: "Brudzinski Sign" },
+        ]}
+        selected={findings.meningealSigns || []}
+        onChange={(v) => onChange('meningealSigns', v)}
+      />
           </div>
         )}
       </div>
@@ -886,6 +994,18 @@ export function NeurologicalTab({ findings, onChange }: { findings: any, onChang
             </div>
           </div>
         )}
+      </div>
+
+      <div className="space-y-2">
+        <Label className="text-sm font-medium">Smart Phrases</Label>
+        <div className="flex flex-wrap gap-2">
+          {neuroSmartPhrases.map(phrase => (
+            <Button key={phrase.label} variant="outline" size="sm" className="h-7 text-xs"
+              onClick={() => onChange('notes', notes ? `${notes}\n${phrase.text}` : phrase.text)}>
+              {phrase.label}
+            </Button>
+          ))}
+        </div>
       </div>
 
       <div className="space-y-1.5">
@@ -1454,7 +1574,7 @@ export function HeentTab({ findings, onChange }: { findings: any, onChange: (fie
                       <SelectTrigger className="h-7 text-xs w-28"><SelectValue placeholder="Select" /></SelectTrigger>
                       <SelectContent>
                         {opt.values?.map(v => (
-                          <SelectItem key={v} value={v.toLowerCase()}>{v}</SelectItem>
+                          <SelectItem key={v} value={v?.toLowerCase() || ''}>{v}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -1839,7 +1959,7 @@ export function CardiovascularTab({ findings, onChange }: { findings: any, onCha
         <RadioGroup value={pulses} onValueChange={(v) => onChange('pulses', v)} className="flex gap-4">
           {["Normal", "Weak", "Bounding"].map(v => (
             <div key={v} className="flex items-center gap-2">
-              <RadioGroupItem value={v.toLowerCase()} id={`pulse-${v}`} />
+              <RadioGroupItem value={v?.toLowerCase() || ''} id={`pulse-${v}`} />
               <Label htmlFor={`pulse-${v}`} className="text-sm cursor-pointer">{v}</Label>
             </div>
           ))}
@@ -3057,6 +3177,8 @@ export function PhysicalExam() {
   const [plantarResponse, setPlantarResponse] = useState("flexor");
   const [clonus, setClonus] = useState("absent");
 
+  const { symptoms } = useSymptom();
+
   const handleFinalize = async () => {
     if (!selectedPatient) {
       toast.error("No patient selected.");
@@ -3070,6 +3192,7 @@ export function PhysicalExam() {
       await db.vitals.add({
         id: crypto.randomUUID(),
         patientId: selectedPatient.id,
+        date: date,
         bp_systolic: parseInt(vitals.bpSystolic) || undefined,
         bp_diastolic: parseInt(vitals.bpDiastolic) || undefined,
         hr: parseInt(vitals.pulse) || undefined,
@@ -3088,7 +3211,6 @@ export function PhysicalExam() {
         pressureSupport: vitals.pressureSupport,
         flowRate: vitals.flowRate,
         notes: vitals.notes,
-        date: date,
         lastModified: timestamp,
         isDeleted: 0,
         isSynced: 0
@@ -3096,6 +3218,7 @@ export function PhysicalExam() {
 
       const examData = {
         vitals,
+        symptoms: symptoms.map(s => s.label),
         generalFindings,
         heentFindings,
         sseFindings,
@@ -3504,8 +3627,6 @@ export function PhysicalExam() {
   const generateExamSummary = async () => {
     setIsGenerating(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
-      
       const examData = {
         vitals,
         generalFindings,
@@ -3528,7 +3649,7 @@ ${JSON.stringify(examData, null, 2)}
 
 Format the output as a professional medical note under the heading "Physical Examination Summary".`;
 
-      const response = await ai.models.generateContent({
+      const response = await generateContentWithRetry({
         model: "gemini-3-flash-preview",
         contents: prompt,
       });

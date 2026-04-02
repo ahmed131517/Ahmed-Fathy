@@ -1,4 +1,4 @@
-import { Search, Bell, Mic, Menu, User, Calendar, FileText, ChevronDown, Settings, LogOut } from "lucide-react";
+import { Search, Bell, Mic, Menu, User, Calendar, FileText, ChevronDown, Settings, LogOut, Book, Pill, ClipboardList } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { useNavigate } from "react-router-dom";
@@ -6,6 +6,9 @@ import { useUser } from "../../lib/UserContext";
 import { useNotifications } from "../../lib/NotificationContext";
 import { cn } from "../../lib/utils";
 import { toast } from "sonner";
+import { medicationsDatabase } from '@/data/medications';
+import { ALL_TESTS } from '@/data/labReferenceData';
+import { HEAD_MODELS, EAR_MODELS, EYE_MODELS, THROAT_MODELS, BACK_MODELS } from '@/data/symptomModels';
 
 // Mock patient data
 const mockPatients = [
@@ -14,6 +17,12 @@ const mockPatients = [
   { id: "P-1003", name: "Emily Davis", dob: "1990-08-24", lastVisit: "2023-09-28" },
   { id: "P-1004", name: "James Wilson", dob: "1965-02-15", lastVisit: "2023-11-10" },
   { id: "P-1005", name: "Maria Garcia", dob: "1988-06-30", lastVisit: "2023-10-05" },
+];
+
+const allClinicalData = [
+  ...Object.values(medicationsDatabase).flat().map(m => ({ id: m.id, title: m.name, category: 'Medication', icon: Pill })),
+  ...ALL_TESTS.map(l => ({ id: l.name, title: l.name, category: 'Lab Reference', icon: FileText })),
+  ...[...HEAD_MODELS, ...EAR_MODELS, ...EYE_MODELS, ...THROAT_MODELS, ...BACK_MODELS].map(s => ({ id: s.id, title: s.label, category: 'Encyclopedia', icon: Book })),
 ];
 
 const mockNotifications = [
@@ -86,10 +95,14 @@ export function Header() {
     recognition.start();
   };
 
-  // Filter patients based on search query
-  const searchResults = mockPatients.filter(patient => 
-    patient.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    patient.id.toLowerCase().includes(searchQuery.toLowerCase())
+  // Filter patients and clinical data based on search query
+  const patientResults = mockPatients.filter(patient => 
+    patient.name?.toLowerCase().includes(searchQuery?.toLowerCase() || '') || 
+    patient.id?.toLowerCase().includes(searchQuery?.toLowerCase() || '')
+  );
+
+  const clinicalResults = allClinicalData.filter(item => 
+    item.title?.toLowerCase().includes(searchQuery?.toLowerCase() || '')
   );
 
   // Handle keyboard navigation for profile dropdown
@@ -139,7 +152,7 @@ export function Header() {
           <input
             type="text"
             className="block w-full pl-10 pr-12 py-2 border border-slate-200 dark:border-slate-800 rounded-lg leading-5 bg-slate-50 dark:bg-slate-950/50 placeholder-slate-400 dark:placeholder-slate-500 text-slate-900 dark:text-slate-200 focus:outline-none focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm transition-colors"
-            placeholder="Search patients (name or ID)..."
+            placeholder="Search patients or clinical knowledge..."
             value={searchQuery}
             onChange={(e) => {
               setSearchQuery(e.target.value);
@@ -165,9 +178,9 @@ export function Header() {
           {/* Search Results Dropdown */}
           {isSearchOpen && searchQuery.length > 0 && (
             <div className="absolute mt-1 w-full bg-white dark:bg-slate-900 rounded-lg shadow-lg border border-slate-200 dark:border-slate-800 overflow-hidden z-50">
-              {searchResults.length > 0 ? (
+              {(patientResults.length > 0 || clinicalResults.length > 0) ? (
                 <ul className="max-h-80 overflow-y-auto py-1">
-                  {searchResults.map((patient) => (
+                  {patientResults.map((patient) => (
                     <li key={patient.id}>
                       <button 
                         className="w-full text-left px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 flex items-start gap-3 transition-colors border-b border-slate-100 dark:border-slate-800 last:border-0"
@@ -190,10 +203,30 @@ export function Header() {
                       </button>
                     </li>
                   ))}
+                  {clinicalResults.map((item) => (
+                    <li key={item.id}>
+                      <button 
+                        className="w-full text-left px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 flex items-start gap-3 transition-colors border-b border-slate-100 dark:border-slate-800 last:border-0"
+                        onClick={() => {
+                          setSearchQuery(item.title);
+                          setIsSearchOpen(false);
+                          // In a real app, this would navigate to the clinical entry
+                        }}
+                      >
+                        <div className="h-10 w-10 rounded-full bg-emerald-100 dark:bg-emerald-500/20 flex items-center justify-center flex-shrink-0">
+                          <item.icon className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-slate-900 dark:text-slate-200 truncate">{item.title}</p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{item.category}</p>
+                        </div>
+                      </button>
+                    </li>
+                  ))}
                 </ul>
               ) : (
                 <div className="p-4 text-center text-sm text-slate-500 dark:text-slate-400">
-                  No patients found matching "{searchQuery}"
+                  No results found matching "{searchQuery}"
                 </div>
               )}
             </div>

@@ -10,9 +10,11 @@ import {
   FileText,
   ShoppingBag,
   Folder,
+  BookOpen,
   LogOut,
   Settings,
   Users,
+  Bot,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -29,8 +31,9 @@ const navItems = [
   { name: "Prescriptions", path: "/prescriptions", icon: FileText },
   { name: "Pharmacies", path: "/pharmacies", icon: ShoppingBag },
   { name: "Medical Records", path: "/medical-records", icon: Folder },
+  { name: "Knowledge", path: "/knowledge", icon: BookOpen },
+  { name: "Ask AI", path: "/ask-ai", icon: Bot },
   { name: "Settings", path: "/settings", icon: Settings },
-  { name: "User Management", path: "/user-management", icon: Users },
 ];
 
 export function Sidebar() {

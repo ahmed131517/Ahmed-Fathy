@@ -2,7 +2,7 @@ import { Folder, Clock, RefreshCw, FileText, Zap, Printer, MousePointer, FlaskCo
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { GoogleGenAI } from "@google/genai";
+import { generateContentWithRetry } from "../utils/gemini";
 import { cn } from "@/lib/utils";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { PatientTimeline, TimelineEvent } from "@/components/PatientTimeline";
@@ -65,7 +65,6 @@ export function MedicalRecords() {
     
     setIsGeneratingPatientSummary(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
       const prompt = `Analyze the complete medical history of this patient: ${JSON.stringify(records)}. 
       Provide a comprehensive clinical summary including:
       1. Key Diagnoses
@@ -75,7 +74,7 @@ export function MedicalRecords() {
       
       Format the response with clear headings and bullet points.`;
       
-      const response = await ai.models.generateContent({
+      const response = await generateContentWithRetry({
         model: "gemini-3-flash-preview",
         contents: prompt,
       });
@@ -147,9 +146,8 @@ export function MedicalRecords() {
   const generateRecordSummary = async (record: any) => {
     setIsSummarizing(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
       const prompt = `Synthesize the following medical record: ${JSON.stringify(record)}. Provide a concise clinical summary and key takeaways.`;
-      const response = await ai.models.generateContent({
+      const response = await generateContentWithRetry({
         model: "gemini-3-flash-preview",
         contents: prompt,
       });
@@ -577,8 +575,8 @@ export function MedicalRecords() {
                   ))
                   : (records as any[])
                     .filter((record: any) => {
-                      const matchesSearch = record.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                                            (record.summary && record.summary.toLowerCase().includes(searchQuery.toLowerCase()));
+                      const matchesSearch = record.title?.toLowerCase().includes(searchQuery?.toLowerCase() || '') || 
+                                            (record.summary && record.summary?.toLowerCase().includes(searchQuery?.toLowerCase() || ''));
                       const matchesType = filterType === 'All' || record.type === filterType;
                       return matchesSearch && matchesType;
                     })
@@ -662,9 +660,8 @@ export function MedicalRecords() {
                     onClick={async () => {
                       setIsQuerying(true);
                       try {
-                        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
                         const prompt = `Based on these medical records: ${JSON.stringify(records)}, answer this question: ${aiQuery}`;
-                        const response = await ai.models.generateContent({
+                        const response = await generateContentWithRetry({
                           model: "gemini-3-flash-preview",
                           contents: prompt,
                         });

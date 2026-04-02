@@ -5,18 +5,22 @@ import {
   Activity, Filter, Shield, FlaskConical, Image as ImageIcon, Heart, 
   Layers, AlertTriangle, Target, Thermometer, Wind, Cpu, Clock, 
   CheckCircle, Trash2, Eye, Send, Printer, X, ChevronRight, AlertOctagon, Info, Sparkles, RefreshCw,
-  PenTool, TrendingUp, History, Bell, ClipboardCheck, ArrowRight, Beaker, Loader2
+  PenTool, TrendingUp, History, Bell, ClipboardCheck, ArrowRight, Beaker, Loader2, Copy, FolderOpen
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Textarea } from "@/components/ui/textarea";
 import { usePatient } from "@/lib/PatientContext";
 import { LAB_REFERENCE_DATA, ALL_TESTS, LabTest } from "@/data/labReferenceData";
-import { GoogleGenAI } from "@google/genai";
+import { generateContentWithRetry } from "../utils/gemini";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import SignatureCanvas from 'react-signature-canvas';
 import { motion, AnimatePresence } from "motion/react";
 import { db } from "@/lib/db";
 import { toast } from "sonner";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 const categories = [
   { id: 'hematology', name: 'Hematology', icon: Droplet },
@@ -86,23 +90,43 @@ export function LabRequests() {
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
   const [isSuggesting, setIsSuggesting] = useState(false);
   
+  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+  const [templateName, setTemplateName] = useState('');
+  const [isLoadTemplateModalOpen, setIsLoadTemplateModalOpen] = useState(false);
+  const templates = useLiveQuery(() => db.templates.where('category').equals('lab_request').toArray());
+
   const sigCanvas = useRef<SignatureCanvas | null>(null);
 
-  // Mock historical data for trends
-  const historicalData = [
-    { date: '2023-01', glucose: 95, hgb: 14.2 },
-    { date: '2023-04', glucose: 105, hgb: 13.8 },
-    { date: '2023-07', glucose: 115, hgb: 13.5 },
-    { date: '2023-10', glucose: 110, hgb: 11.5 },
-  ];
+  // Fetch real historical data for trends
+  const historicalLabResults = useLiveQuery(
+    () => selectedPatient ? db.lab_results.where('patientId').equals(selectedPatient.id).toArray() : [],
+    [selectedPatient]
+  ) || [];
+
+  // Group and format data for Recharts
+  const trendData = useMemo(() => {
+    const grouped: Record<string, any> = {};
+    historicalLabResults.forEach(res => {
+      if (!grouped[res.date]) grouped[res.date] = { date: res.date };
+      grouped[res.date][res.testName] = parseFloat(res.value);
+    });
+    return Object.values(grouped).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  }, [historicalLabResults]);
+
+  // Get all unique test names for the legend
+  const testNames = useMemo(() => {
+    const names = new Set<string>();
+    historicalLabResults.forEach(res => names.add(res.testName));
+    return Array.from(names);
+  }, [historicalLabResults]);
 
   const requests = useLiveQuery(() => db.lab_requests.toArray()) || [];
 
   const filteredTests = useMemo(() => {
     if (searchQuery.length >= 2) {
       return ALL_TESTS.filter(t => 
-        t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        t.category.toLowerCase().includes(searchQuery.toLowerCase())
+        t.name?.toLowerCase().includes(searchQuery?.toLowerCase() || '') ||
+        t.category?.toLowerCase().includes(searchQuery?.toLowerCase() || '')
       );
     }
     if (selectedCategory) {
@@ -134,11 +158,10 @@ export function LabRequests() {
     if (!clinicalInfo || clinicalInfo.length < 10) return;
     setIsSuggesting(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       const prompt = `Based on this clinical information: "${clinicalInfo}", suggest 3-5 most relevant lab tests. Return only a JSON array of test names.`;
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash-latest",
-        contents: [{ parts: [{ text: prompt }] }],
+      const response = await generateContentWithRetry({
+        model: "gemini-3-flash-preview",
+        contents: prompt,
         config: { responseMimeType: "application/json" }
       });
       const suggestions = JSON.parse(response.text || "[]");
@@ -193,12 +216,52 @@ export function LabRequests() {
     setActiveTab('pending');
   };
 
+  const handleSaveAsTemplate = async () => {
+    if (!templateName.trim()) {
+      toast.error("Please enter a template name.");
+      return;
+    }
+
+    const templateData = {
+      tests: selectedTests,
+      priority: priority,
+      clinicalInfo: clinicalInfo,
+      notes: additionalNotes
+    };
+
+    try {
+      await db.templates.add({
+        id: crypto.randomUUID(),
+        name: templateName,
+        category: 'lab_request',
+        content: templateData,
+        lastModified: Date.now()
+      });
+      toast.success("Template saved successfully.");
+      setIsTemplateModalOpen(false);
+      setTemplateName('');
+    } catch (error) {
+      console.error("Failed to save template:", error);
+      toast.error("Failed to save template.");
+    }
+  };
+
+  const applyTemplate = (template: any) => {
+    const data = template.content;
+    if (data.tests) setSelectedTests(data.tests);
+    if (data.priority) setPriority(data.priority);
+    if (data.clinicalInfo) setClinicalInfo(data.clinicalInfo);
+    if (data.notes) setAdditionalNotes(data.notes);
+    
+    setIsLoadTemplateModalOpen(false);
+    toast.success(`Template "${template.name}" applied.`);
+  };
+
   const analyzeResults = async (request: LabRequest) => {
     if (!request.results || request.aiAnalysis) return;
     
     setIsAnalyzing(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
       const prompt = `
         Analyze the following lab results for a patient named ${request.patientName}.
         Clinical Info: ${request.clinicalInfo}
@@ -206,16 +269,21 @@ export function LabRequests() {
         Results:
         ${JSON.stringify(request.results, null, 2)}
         
-        Please provide:
-        1. A summary of abnormal findings.
-        2. Potential clinical correlations or diagnoses.
-        3. Recommended follow-up tests or actions.
+        Please provide a structured analysis in Markdown format:
+        ### 1. Summary of Abnormal Findings
+        - [List abnormal findings here]
+        
+        ### 2. Clinical Correlations
+        - [Discuss correlations with clinical info]
+        
+        ### 3. Recommended Actions
+        - [List follow-up tests or actions]
         
         Keep it concise and clinical.
       `;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-1.5-flash",
+      const response = await generateContentWithRetry({
+        model: "gemini-3-flash-preview",
         contents: prompt
       });
       const text = response.text;
@@ -223,6 +291,7 @@ export function LabRequests() {
       await db.lab_requests.update(request.localId!, { aiAnalysis: text });
     } catch (error) {
       console.error("AI Analysis failed:", error);
+      toast.error("AI Analysis failed. Please try again.");
     } finally {
       setIsAnalyzing(false);
     }
@@ -235,26 +304,28 @@ export function LabRequests() {
       const timestamp = Date.now();
       const date = request.requestDate;
 
-      for (const res of request.results) {
-        await db.lab_results.add({
-          id: crypto.randomUUID(),
-          patientId: selectedPatient.id,
-          testName: res.test,
-          value: res.value.toString(),
-          unit: res.unit,
-          referenceRange: res.range,
-          status: res.status === 'normal' ? 'normal' : 'abnormal',
-          date: date,
-          lastModified: timestamp,
-          isDeleted: 0,
-          isSynced: 0
-        });
-      }
+      await db.transaction('rw', [db.lab_results], async () => {
+        for (const res of request.results!) {
+          await db.lab_results.add({
+            id: crypto.randomUUID(),
+            patientId: selectedPatient.id,
+            testName: res.test,
+            value: res.value.toString(),
+            unit: res.unit,
+            referenceRange: res.range,
+            status: res.status === 'normal' ? 'normal' : 'abnormal',
+            date: date,
+            lastModified: timestamp,
+            isDeleted: 0,
+            isSynced: 0
+          });
+        }
+      });
       
       toast.success("Lab results synced to medical records.");
     } catch (error) {
       console.error("Failed to sync lab results:", error);
-      toast.error("Failed to sync lab results.");
+      toast.error("Failed to sync lab results. Please try again.");
     }
   };
 
@@ -270,7 +341,7 @@ export function LabRequests() {
       });
     }
 
-    const testNames = selectedTests.map(t => t.name.toLowerCase());
+    const testNames = selectedTests.map(t => t.name?.toLowerCase());
     if (testNames.some(n => n.includes('troponin')) && priority !== 'urgent') {
       alerts.push({ 
         type: 'info', 
@@ -279,10 +350,10 @@ export function LabRequests() {
       });
     }
 
-    if (selectedPatient?.gender.toLowerCase() === 'female') {
+    if (selectedPatient?.gender?.toLowerCase() === 'female') {
       const radiationTests = selectedTests.filter(t => 
-        t.name.toLowerCase().includes('x-ray') || 
-        t.name.toLowerCase().includes('ct')
+        t.name?.toLowerCase().includes('x-ray') || 
+        t.name?.toLowerCase().includes('ct')
       );
       if (radiationTests.length > 0) {
         alerts.push({ 
@@ -302,6 +373,20 @@ export function LabRequests() {
         <div>
           <h2 className="text-2xl font-bold text-slate-900">Lab Requests</h2>
           <p className="text-slate-500">Order and track laboratory tests</p>
+        </div>
+        <div className="flex gap-3">
+          <button 
+            onClick={() => setIsLoadTemplateModalOpen(true)}
+            className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors"
+          >
+            <FolderOpen className="w-4 h-4" /> Load Template
+          </button>
+          <button 
+            onClick={() => setIsTemplateModalOpen(true)}
+            className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors"
+          >
+            <Copy className="w-4 h-4" /> Save as Template
+          </button>
         </div>
       </div>
 
@@ -513,7 +598,7 @@ export function LabRequests() {
                             <button 
                               key={s}
                               onClick={() => {
-                                const test = ALL_TESTS.find(t => t.name.toLowerCase().includes(s.toLowerCase()));
+                                const test = ALL_TESTS.find(t => t.name?.toLowerCase().includes(s?.toLowerCase()));
                                 if (test) toggleTest(test);
                               }}
                               className="text-[10px] px-2 py-1 bg-indigo-50 text-indigo-700 rounded-full border border-indigo-100 hover:bg-indigo-100 transition-colors"
@@ -841,16 +926,16 @@ export function LabRequests() {
                         {showTrendId === req.id ? (
                           <div className="h-64 w-full bg-slate-50 rounded-xl border border-slate-200 p-4 animate-in zoom-in-95 duration-300">
                             <ResponsiveContainer width="100%" height="100%">
-                              <LineChart data={historicalData}>
+                              <LineChart data={trendData}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                                 <XAxis dataKey="date" fontSize={10} tickLine={false} axisLine={false} />
                                 <YAxis fontSize={10} tickLine={false} axisLine={false} />
                                 <Tooltip 
                                   contentStyle={{ backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '12px' }}
                                 />
-                                <Line type="monotone" dataKey="glucose" stroke="#6366f1" strokeWidth={2} dot={{ r: 4 }} activeDot={{ r: 6 }} name="Glucose" />
-                                <Line type="monotone" dataKey="hgb" stroke="#10b981" strokeWidth={2} dot={{ r: 4 }} activeDot={{ r: 6 }} name="Hemoglobin" />
-                                <ReferenceLine y={100} label={{ value: 'Upper Limit', position: 'right', fontSize: 8, fill: '#ef4444' }} stroke="#ef4444" strokeDasharray="3 3" />
+                                {testNames.map((name, i) => (
+                                  <Line key={name} type="monotone" dataKey={name} stroke={['#6366f1', '#10b981', '#f59e0b'][i % 3]} strokeWidth={2} dot={{ r: 4 }} activeDot={{ r: 6 }} name={name} />
+                                ))}
                               </LineChart>
                             </ResponsiveContainer>
                           </div>
@@ -960,6 +1045,73 @@ export function LabRequests() {
           </div>
         )}
       </AnimatePresence>
+      {/* Template Modals */}
+      <Dialog open={isTemplateModalOpen} onOpenChange={setIsTemplateModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Save as Template</DialogTitle>
+            <DialogDescription>
+              Save these lab requests as a template for future use.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="templateName">Template Name</Label>
+              <Input
+                id="templateName"
+                placeholder="e.g., Routine Checkup, Cardiac Panel"
+                value={templateName}
+                onChange={(e) => setTemplateName(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsTemplateModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveAsTemplate}>Save Template</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Load Template Modal */}
+      <Dialog open={isLoadTemplateModalOpen} onOpenChange={setIsLoadTemplateModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Load Template</DialogTitle>
+            <DialogDescription>
+              Select a template to apply to these lab requests.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[300px] overflow-y-auto space-y-2 py-4">
+            {templates && templates.length > 0 ? (
+              templates.map((template) => (
+                <button
+                  key={template.id}
+                  onClick={() => applyTemplate(template)}
+                  className="w-full text-left p-3 rounded-lg border border-slate-200 hover:border-blue-500 hover:bg-blue-50 transition-all group"
+                >
+                  <div className="font-medium text-slate-900 group-hover:text-blue-700">
+                    {template.name}
+                  </div>
+                  <div className="text-xs text-slate-500 mt-1">
+                    Last modified: {new Date(template.lastModified).toLocaleDateString()}
+                  </div>
+                </button>
+              ))
+            ) : (
+              <div className="text-center py-8 text-slate-500">
+                No templates saved yet.
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsLoadTemplateModalOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

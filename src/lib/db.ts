@@ -162,7 +162,13 @@ export interface Diagnosis {
   patientId: string;
   appointmentId?: string;
   condition: string;
+  code?: string;
+  description?: string;
   notes?: string;
+  reasoning?: string;
+  symptoms?: string[];
+  examFindings?: string[];
+  labResults?: string[];
   date: string;
   lastModified: number;
   isDeleted: number;
@@ -297,6 +303,23 @@ export interface AuditLog {
   timestamp: number;
 }
 
+export interface Template {
+  id?: string;
+  localId?: number;
+  name: string;
+  category: 'physical_exam' | 'diagnosis_reasoning' | 'soap_note' | 'lab_request';
+  content: any;
+  lastModified: number;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: "user" | "model";
+  content: string;
+  patientId?: string;
+  timestamp: number;
+}
+
 export class AppDatabase extends Dexie {
   patients!: Table<PatientRecord>;
   appointments!: Table<Appointment>;
@@ -311,6 +334,8 @@ export class AppDatabase extends Dexie {
   pharmacy_inventory!: Table<PharmacyInventoryItem>;
   notifications!: Table<Notification>;
   audit_logs!: Table<AuditLog>;
+  templates!: Table<Template>;
+  chat_messages!: Table<ChatMessage>;
   
   // Medication Tables
   drugs!: Table<Drug>;
@@ -325,7 +350,7 @@ export class AppDatabase extends Dexie {
 
   constructor() {
     super('MedicalAppDB');
-    this.version(9).stores({
+    this.version(10).stores({
       patients: '++localId, id, name, lastModified, isDeleted, isSynced',
       appointments: '++localId, id, patientId, date, lastModified, isDeleted, isSynced',
       prescriptions: '++localId, id, patientId, lastModified, isDeleted, isSynced',
@@ -339,6 +364,8 @@ export class AppDatabase extends Dexie {
       pharmacy_inventory: '++localId, id, medicationName, lastModified, isDeleted, isSynced',
       notifications: '++localId, id, type, category, isRead, createdAt, lastModified, isDeleted, isSynced',
       audit_logs: '++localId, id, userId, timestamp',
+      templates: '++localId, id, category, lastModified',
+      chat_messages: 'id, patientId, timestamp',
       drugs: '++id, generic_name, atc_code',
       drug_brands: '++id, drug_id, brand_name',
       dosage_forms: '++id, form_name',

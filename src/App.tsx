@@ -11,9 +11,25 @@ import { FinalDiagnosis } from "./pages/FinalDiagnosis";
 import { Prescriptions } from "./pages/Prescriptions";
 import { Pharmacies } from "./pages/Pharmacies";
 import { MedicalRecords } from "./pages/MedicalRecords";
+import { Knowledge } from "./pages/Knowledge";
+import { AskAI } from "./pages/AskAI";
 import { Profile } from "./pages/Profile";
 import { Schedule } from "./pages/Schedule";
-import { Settings } from "./pages/Settings";
+import { SettingsLayout } from "./pages/settings/SettingsLayout";
+import { SettingsDashboard } from "./pages/settings/SettingsDashboard";
+import { GeneralSettings } from "./pages/settings/GeneralSettings";
+import { NotificationSettings } from "./pages/settings/NotificationSettings";
+import { SecuritySettings } from "./pages/settings/SecuritySettings";
+import { LanguageSettings } from "./pages/settings/LanguageSettings";
+import { AppearanceSettings } from "./pages/settings/AppearanceSettings";
+import { UserManagementSettings } from "./pages/settings/UserManagementSettings";
+import { SystemConfigurationSettings } from "./pages/settings/SystemConfigurationSettings";
+import { PharmacySettings } from "./pages/settings/PharmacySettings";
+import { BillingSettings } from "./pages/settings/BillingSettings";
+import { BackupSettings } from "./pages/settings/BackupSettings";
+import { AuditLogSettings } from "./pages/settings/AuditLogSettings";
+import { IntegrationSettings } from "./pages/settings/IntegrationSettings";
+import { AISettings } from "./pages/settings/AISettings";
 import { AdminSettings } from "./pages/AdminSettings";
 import { UserManagement } from "./pages/UserManagement";
 import { Notifications } from "./pages/Notifications";
@@ -23,6 +39,7 @@ import { UserProvider } from "./lib/UserContext";
 import { ThemeProvider } from "./lib/ThemeContext";
 import { SettingsProvider } from "./lib/SettingsContext";
 import { NotificationProvider } from "./lib/NotificationContext";
+import { AISettingsProvider } from "./lib/AISettingsContext";
 
 import { PharmacyLayout } from "./pages/pharmacy-system/PharmacyLayout";
 import { PharmacyDashboard } from "./pages/pharmacy-system/PharmacyDashboard";
@@ -77,6 +94,7 @@ export default function App() {
       <SettingsProvider>
         <UserProvider>
           <NotificationProvider>
+            <AISettingsProvider>
               <PatientProvider>
                 <SymptomProvider>
                   <BrowserRouter>
@@ -94,14 +112,31 @@ export default function App() {
                         <Route path="prescriptions" element={<Prescriptions />} />
                         <Route path="pharmacies" element={<Pharmacies />} />
                         <Route path="medical-records" element={<MedicalRecords />} />
+                        <Route path="knowledge" element={<Knowledge />} />
+                        <Route path="ask-ai" element={<AskAI />} />
                         <Route path="mobile-vitals" element={<MobileVitals />} />
                         <Route path="profile" element={<Profile />} />
                         <Route path="schedule" element={<Schedule />} />
-                        <Route path="settings" element={<Settings />} />
-                        <Route path="admin-settings" element={<AdminSettings />} />
-                        <Route path="user-management" element={<UserManagement />} />
                         <Route path="notifications" element={<Notifications />} />
                         <Route path="*" element={<div className="p-6 text-slate-500">Page under construction</div>} />
+                      </Route>
+
+                      {/* Settings System Routes */}
+                      <Route path="/settings" element={<SettingsLayout />}>
+                        <Route index element={<SettingsDashboard />} />
+                        <Route path="general" element={<GeneralSettings />} />
+                        <Route path="appearance" element={<AppearanceSettings />} />
+                        <Route path="users" element={<UserManagementSettings />} />
+                        <Route path="system" element={<SystemConfigurationSettings />} />
+                        <Route path="notifications" element={<NotificationSettings />} />
+                        <Route path="pharmacy" element={<PharmacySettings />} />
+                        <Route path="billing" element={<BillingSettings />} />
+                        <Route path="security" element={<SecuritySettings />} />
+                        <Route path="backup" element={<BackupSettings />} />
+                        <Route path="audit" element={<AuditLogSettings />} />
+                        <Route path="integration" element={<IntegrationSettings />} />
+                        <Route path="ai" element={<AISettings />} />
+                        <Route path="language" element={<LanguageSettings />} />
                       </Route>
 
                       {/* Pharmacy System Routes */}
@@ -116,9 +151,10 @@ export default function App() {
                   </BrowserRouter>
                 </SymptomProvider>
               </PatientProvider>
-            </NotificationProvider>
-          </UserProvider>
-        </SettingsProvider>
+            </AISettingsProvider>
+          </NotificationProvider>
+        </UserProvider>
+      </SettingsProvider>
     </ThemeProvider>
   );
 }

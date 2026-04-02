@@ -142,6 +142,17 @@ export function Profile() {
                     <option value="other" className="dark:bg-slate-900">Other</option>
                   </select>
                 </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                    <Shield className="w-4 h-4 text-indigo-500" />
+                    System Role (Testing)
+                  </label>
+                  <select name="role" value={formData.role} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 rounded-lg focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-indigo-900 dark:text-indigo-200 font-medium">
+                    <option value="doctor" className="dark:bg-slate-900">Doctor</option>
+                    <option value="pharmacist" className="dark:bg-slate-900">Pharmacist</option>
+                    <option value="admin" className="dark:bg-slate-900">Admin</option>
+                  </select>
+                </div>
               </div>
             </section>
 

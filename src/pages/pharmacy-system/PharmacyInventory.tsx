@@ -68,8 +68,8 @@ export function PharmacyInventory() {
 
   const filteredInventory = useMemo(() => {
     return inventory.filter(item => {
-      const matchesSearch = item.medicationName.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesCategory = categoryFilter === "all" || item.category?.toLowerCase() === categoryFilter.toLowerCase();
+      const matchesSearch = item.medicationName?.toLowerCase().includes(searchQuery?.toLowerCase() || '');
+      const matchesCategory = categoryFilter === "all" || item.category?.toLowerCase() === categoryFilter?.toLowerCase();
       return matchesSearch && matchesCategory;
     });
   }, [inventory, searchQuery, categoryFilter]);

@@ -7,7 +7,7 @@ import {
 import { useState, useEffect } from "react";
 import { usePatient } from "../lib/PatientContext";
 import { GoogleMap, useJsApiLoader, Marker } from '@react-google-maps/api';
-import { GoogleGenAI } from "@google/genai";
+import { generateContentWithRetry } from "../utils/gemini";
 import { toast } from "sonner";
 import Markdown from "react-markdown";
 
@@ -132,8 +132,8 @@ export function Pharmacies() {
   });
 
   const filteredPharmacies = pharmacies.filter(p => 
-    p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    p.address.toLowerCase().includes(searchQuery.toLowerCase())
+    p.name?.toLowerCase().includes(searchQuery?.toLowerCase() || '') || 
+    p.address?.toLowerCase().includes(searchQuery?.toLowerCase() || '')
   );
 
   const handleSavePharmacy = () => {
@@ -181,15 +181,6 @@ export function Pharmacies() {
     setGroundingChunks([]);
 
     try {
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        toast.error("Gemini API key is missing");
-        setIsAiSearching(false);
-        return;
-      }
-
-      const ai = new GoogleGenAI({ apiKey });
-      
       let location = null;
       try {
         const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
@@ -203,7 +194,7 @@ export function Pharmacies() {
         console.warn("Geolocation failed, using default center", err);
       }
 
-      const response = await ai.models.generateContent({
+      const response = await generateContentWithRetry({
         model: "gemini-2.5-flash",
         contents: "Find 5 good pharmacies nearby and provide their details including address and rating.",
         config: {

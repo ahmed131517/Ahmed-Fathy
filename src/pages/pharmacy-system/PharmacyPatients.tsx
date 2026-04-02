@@ -33,8 +33,8 @@ export function PharmacyPatients() {
   }, [patientsData, prescriptionsData]);
 
   const filteredPatients = patients.filter(p => 
-    p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    p.id.toLowerCase().includes(searchQuery.toLowerCase())
+    p.name?.toLowerCase().includes(searchQuery?.toLowerCase() || '') || 
+    p.id?.toLowerCase().includes(searchQuery?.toLowerCase() || '')
   );
 
   return (

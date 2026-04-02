@@ -58,7 +58,7 @@ export function JointExamCard({ exam, specialTests, onRemove, onUpdate, onToggle
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">Inspection & Palpation</Label>
             <div className="flex flex-wrap gap-2">
-              {['Swelling', 'Erythema', 'Deformity', 'Tenderness', 'Crepitus', 'Effusion'].map(opt => (
+              {['Swelling', 'Erythema', 'Warmth', 'Deformity', 'Tenderness', 'Crepitus', 'Effusion', 'Ecchymosis', 'Nodules', 'Instability'].map(opt => (
                 <label key={opt} className="flex items-center gap-2 cursor-pointer px-2 py-1 rounded bg-slate-50 border border-slate-200 hover:border-primary transition-colors">
                   <Checkbox 
                     checked={exam.inspection.includes(opt) || exam.palpation.includes(opt)}

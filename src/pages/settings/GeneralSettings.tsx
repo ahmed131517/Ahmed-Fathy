@@ -41,7 +41,7 @@ export function GeneralSettings() {
 
   return (
     <div className="space-y-6">
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-6">
+      <div className="card-panel">
         <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-4">Practice Information</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-1">
@@ -75,7 +75,7 @@ export function GeneralSettings() {
         </div>
       </div>
       
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-6">
+      <div className="card-panel">
         <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-4">Preferences</h2>
         <div className="space-y-4">
           <div className="flex items-center justify-between">

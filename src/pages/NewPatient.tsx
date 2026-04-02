@@ -95,6 +95,7 @@ export function NewPatient() {
       }
     } catch (err) {
       console.error("Error accessing camera:", err);
+      toast.error("Error accessing camera: Permission denied");
       setIsCapturing({ active: false, target: null });
     }
   };

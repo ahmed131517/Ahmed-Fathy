@@ -43,9 +43,9 @@ export function PatientTimeline({ events, onEventClick }: PatientTimelineProps) 
       .filter(e => {
         const matchesType = filter === 'All' || e.type === filter;
         const matchesSearch = searchQuery === "" || 
-          e.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          e.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          e.provider?.toLowerCase().includes(searchQuery.toLowerCase());
+          e.title?.toLowerCase().includes(searchQuery?.toLowerCase() || '') ||
+          e.description?.toLowerCase().includes(searchQuery?.toLowerCase() || '') ||
+          e.provider?.toLowerCase().includes(searchQuery?.toLowerCase() || '');
         return matchesType && matchesSearch;
       })
       .sort((a, b) => {

@@ -2,9 +2,11 @@ import {
   CheckCircle, Activity, Clipboard, Database, Edit3, Cpu, RefreshCw, 
   Printer, Save, AlertTriangle, ChevronRight, AlertCircle, ArrowRight,
   Shield, Info, FileText, Mic, Stethoscope, Pill, UserPlus, BookOpen, 
-  CheckSquare, UserCheck, GitBranch, Trash2, Plus, X
+  CheckSquare, UserCheck, GitBranch, Trash2, Plus, X, Heart, Wind, Copy, FolderOpen,
+  Sparkles
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { SpeakButton } from "../components/SpeakButton";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { ICD10Search } from "../components/ICD10Search";
 import { ICD10Code } from "../data/icd10";
@@ -17,6 +19,12 @@ import { cn } from "../lib/utils";
 import { Textarea } from "@/components/ui/textarea";
 import { motion } from "motion/react";
 import { toast } from "sonner";
+import { useLiveQuery } from "dexie-react-hooks";
+import { generateContentWithRetry } from "../utils/gemini";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 interface ClinicalData {
   symptoms: string[];
@@ -80,11 +88,31 @@ export function FinalDiagnosis() {
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const [isPeerReview, setIsPeerReview] = useState(false);
   
+  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+  const [templateName, setTemplateName] = useState('');
+  const [isLoadTemplateModalOpen, setIsLoadTemplateModalOpen] = useState(false);
+  const templates = useLiveQuery(() => db.templates.where('category').equals('diagnosis_reasoning').toArray());
+
   // Editing state
   const [editingField, setEditingField] = useState<keyof ClinicalData | null>(null);
   const [editingValue, setEditingValue] = useState<string[]>([]);
   
-  // Clinical Data State (In a real app, this would come from a global store or backend)
+  // Live Queries for Clinical Data
+  const liveVitals = useLiveQuery(
+    () => selectedPatient ? db.vitals.where('patientId').equals(selectedPatient.id).reverse().first() : null,
+    [selectedPatient?.id]
+  );
+
+  const liveExam = useLiveQuery(
+    () => selectedPatient ? db.physical_exams.where('patientId').equals(selectedPatient.id).and(exam => exam.status === 'finalized').reverse().first() : null,
+    [selectedPatient?.id]
+  );
+
+  const liveLabs = useLiveQuery(
+    () => selectedPatient ? db.lab_results.where('patientId').equals(selectedPatient.id).reverse().limit(20).toArray() : [],
+    [selectedPatient?.id]
+  );
+
   const [clinicalData, setClinicalData] = useState<ClinicalData>({
     symptoms: symptoms.map(s => s.label),
     examFindings: [],
@@ -110,6 +138,105 @@ export function FinalDiagnosis() {
     }
   });
 
+  const formatExamFindings = useCallback((data: any) => {
+    const findings: string[] = [];
+    if (!data) return findings;
+
+    const addSection = (title: string, sectionData: any) => {
+      if (!sectionData) return;
+      
+      const sectionFindings: string[] = [];
+      
+      // Handle checkbox states
+      const stateKey = `${title.toLowerCase()}State`;
+      if (sectionData[stateKey]) {
+        Object.entries(sectionData[stateKey]).forEach(([key, val]: [string, any]) => {
+          if (val === true) sectionFindings.push(key.replace(/-/g, ' '));
+          else if (typeof val === 'object' && val.value) sectionFindings.push(`${key.replace(/-/g, ' ')}: ${val.value}`);
+        });
+      }
+
+      // Handle specific fields
+      if (sectionData.breathSounds) sectionFindings.push(`Breath Sounds: ${sectionData.breathSounds}`);
+      if (sectionData.heartSounds) sectionFindings.push(`Heart Sounds: ${sectionData.heartSounds}`);
+      if (sectionData.bowelSounds) sectionFindings.push(`Bowel Sounds: ${sectionData.bowelSounds}`);
+      
+      // Handle notes
+      if (sectionData.notes) sectionFindings.push(`Notes: ${sectionData.notes}`);
+
+      if (sectionFindings.length > 0) {
+        findings.push(`${title}: ${sectionFindings.join('; ')}`);
+      }
+    };
+
+    addSection('General', data.generalFindings);
+    addSection('HEENT', data.heentFindings);
+    addSection('SSE', data.sseFindings);
+    addSection('Respiratory', data.respiratoryFindings);
+    addSection('Cardiovascular', data.cardiovascularFindings);
+    addSection('Gastrointestinal', data.gastrointestinalFindings);
+    addSection('Musculoskeletal', data.musculoskeletalFindings);
+    addSection('Neurological', data.neurologicalFindings);
+    addSection('Skin', data.skinFindings);
+    addSection('Psychiatric', data.psychiatricFindings);
+    addSection('Geriatric', data.geriatricFindings);
+
+    return findings;
+  }, []);
+
+  const isInitializedRef = useRef(false);
+  const isExamInitializedRef = useRef(false);
+  const isLabsInitializedRef = useRef(false);
+
+  useEffect(() => {
+    if (liveVitals) {
+      setClinicalData(prev => ({
+        ...prev,
+        vitals: {
+          bp: (liveVitals.bp_systolic !== undefined && liveVitals.bp_diastolic !== undefined) ? `${liveVitals.bp_systolic}/${liveVitals.bp_diastolic}` : "",
+          hr: liveVitals.hr?.toString() || "",
+          temp: liveVitals.temp?.toString() || "",
+          rr: liveVitals.rr?.toString() || "",
+          spo2: liveVitals.spo2?.toString() || "",
+          oxygenType: liveVitals.oxygenType || "",
+          oxygenDose: liveVitals.oxygenDose || "",
+          oxygenInvasive: liveVitals.oxygenInvasive || "",
+          oxygenDeviceType: liveVitals.oxygenDeviceType || "",
+          fio2: liveVitals.fio2 || "",
+          peep: liveVitals.peep || "",
+          pressureSupport: liveVitals.pressureSupport || "",
+          flowRate: liveVitals.flowRate || "",
+          notes: liveVitals.notes || "",
+          weight: liveVitals.weight?.toString() || "",
+          height: liveVitals.height?.toString() || "",
+          bmi: liveVitals.bmi?.toString() || ""
+        }
+      }));
+    }
+  }, [liveVitals]);
+
+  useEffect(() => {
+    if (!isExamInitializedRef.current && liveExam) {
+      const findings = formatExamFindings(liveExam.data);
+      setClinicalData(prev => ({
+        ...prev,
+        examFindings: findings
+      }));
+      isExamInitializedRef.current = true;
+    }
+  }, [liveExam, formatExamFindings]);
+
+  useEffect(() => {
+    if (!isLabsInitializedRef.current && liveLabs && liveLabs.length > 0) {
+      const labStrings = liveLabs.map(l => `${l.testName}: ${l.value} ${l.unit} (${l.status})`);
+      setClinicalData(prev => ({
+        ...prev,
+        labResults: labStrings
+      }));
+      isLabsInitializedRef.current = true;
+    }
+  }, [liveLabs]);
+
   useEffect(() => {
     if (clinicalData.vitals.weight && clinicalData.vitals.height) {
       const weight = parseFloat(clinicalData.vitals.weight);
@@ -125,15 +252,18 @@ export function FinalDiagnosis() {
   }, [clinicalData.vitals.weight, clinicalData.vitals.height]);
 
   useEffect(() => {
-    setClinicalData(prev => ({
-      ...prev,
-      symptoms: symptoms.map(s => s.label)
-    }));
+    if (!isInitializedRef.current && symptoms.length > 0) {
+      setClinicalData(prev => ({
+        ...prev,
+        symptoms: symptoms.map(s => s.label)
+      }));
+      isInitializedRef.current = true;
+    }
   }, [symptoms]);
 
   const handleGetSuggestions = async () => {
     if (!selectedPatient) {
-      alert("Please select a patient first.");
+      toast.error("Please select a patient first.");
       return;
     }
 
@@ -141,7 +271,6 @@ export function FinalDiagnosis() {
     setSuggestions(null);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
       const prompt = `
         Act as an expert clinical diagnostician. Analyze the following patient data and provide a differential diagnosis.
         
@@ -174,7 +303,7 @@ export function FinalDiagnosis() {
         }
       `;
 
-      const response = await ai.models.generateContent({
+      const response = await generateContentWithRetry({
         model: "gemini-3-flash-preview",
         contents: prompt,
         config: { responseMimeType: "application/json" }
@@ -207,6 +336,49 @@ export function FinalDiagnosis() {
     setReasoning(suggestion.reasoning);
   };
 
+  const handleSaveAsTemplate = async () => {
+    if (!templateName.trim()) {
+      toast.error("Please enter a template name.");
+      return;
+    }
+
+    const templateData = {
+      diagnosis: selectedDiagnosis,
+      reasoning: reasoning,
+      symptoms: clinicalData.symptoms,
+      examFindings: clinicalData.examFindings,
+      labResults: clinicalData.labResults
+    };
+
+    try {
+      await db.templates.add({
+        id: crypto.randomUUID(),
+        name: templateName,
+        category: 'diagnosis_reasoning',
+        content: templateData,
+        lastModified: Date.now()
+      });
+      toast.success("Template saved successfully.");
+      setIsTemplateModalOpen(false);
+      setTemplateName('');
+    } catch (error) {
+      console.error("Failed to save template:", error);
+      toast.error("Failed to save template.");
+    }
+  };
+
+  const applyTemplate = (template: any) => {
+    const data = template.content;
+    if (data.diagnosis) setSelectedDiagnosis(data.diagnosis);
+    if (data.reasoning) setReasoning(data.reasoning);
+    if (data.symptoms) setClinicalData(prev => ({ ...prev, symptoms: data.symptoms }));
+    if (data.examFindings) setClinicalData(prev => ({ ...prev, examFindings: data.examFindings }));
+    if (data.labResults) setClinicalData(prev => ({ ...prev, labResults: data.labResults }));
+    
+    setIsLoadTemplateModalOpen(false);
+    toast.success(`Template "${template.name}" applied.`);
+  };
+
   const handleFinalize = async () => {
     if (!selectedDiagnosis) {
       toast.error("Please select a final diagnosis.");
@@ -227,7 +399,13 @@ export function FinalDiagnosis() {
         id: crypto.randomUUID(),
         patientId: selectedPatient.id,
         condition: selectedDiagnosis.description,
+        code: selectedDiagnosis.code,
+        description: selectedDiagnosis.description,
         notes: reasoning,
+        reasoning: reasoning,
+        symptoms: clinicalData.symptoms,
+        examFindings: clinicalData.examFindings,
+        labResults: clinicalData.labResults,
         date: date,
         lastModified: timestamp,
         isDeleted: 0,
@@ -279,12 +457,11 @@ export function FinalDiagnosis() {
 
   const generateSoapNote = async () => {
     if (!selectedPatient) {
-      alert("Please select a patient first.");
+      toast.error("Please select a patient first.");
       return;
     }
     setIsGeneratingNote(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
       const prompt = `
         Generate a structured clinical SOAP note for patient ${selectedPatient.name}.
         Symptoms: ${clinicalData.symptoms.join(", ")}
@@ -299,7 +476,7 @@ export function FinalDiagnosis() {
         A: Assessment (Diagnosis, Reasoning)
         P: Plan (Recommendations)
       `;
-      const response = await ai.models.generateContent({
+      const response = await generateContentWithRetry({
         model: "gemini-3-flash-preview",
         contents: prompt,
       });
@@ -315,12 +492,11 @@ export function FinalDiagnosis() {
 
   const generatePatientSummary = async () => {
     if (!selectedDiagnosis) {
-      alert("Please finalize a diagnosis first.");
+      toast.error("Please finalize a diagnosis first.");
       return;
     }
     setIsGeneratingSummary(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
       const prompt = `
         Generate a plain-language patient education sheet for the condition: ${selectedDiagnosis.description}.
         Include:
@@ -328,7 +504,7 @@ export function FinalDiagnosis() {
         2. Expected recovery timeline.
         3. Red flags (when to seek emergency care).
       `;
-      const response = await ai.models.generateContent({
+      const response = await generateContentWithRetry({
         model: "gemini-3-flash-preview",
         contents: prompt,
       });
@@ -362,6 +538,18 @@ export function FinalDiagnosis() {
 
         <div className="flex gap-3">
           <button 
+            onClick={() => setIsLoadTemplateModalOpen(true)}
+            className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors"
+          >
+            <FolderOpen className="w-4 h-4" /> Load Template
+          </button>
+          <button 
+            onClick={() => setIsTemplateModalOpen(true)}
+            className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors"
+          >
+            <Copy className="w-4 h-4" /> Save as Template
+          </button>
+          <button 
             onClick={() => {
               toast.info("Printing summary...");
               window.print();
@@ -394,45 +582,74 @@ export function FinalDiagnosis() {
           {/* Left Column: Clinical Data Summary */}
           <div className="lg:col-span-4 space-y-6 overflow-y-auto pr-2">
             {/* Patient Info Card */}
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-700 font-bold">
-                  {selectedPatient.name.charAt(0)}
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 relative">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-700 font-bold">
+                    {selectedPatient.name.charAt(0)}
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-900">{selectedPatient.name}</h3>
+                    <p className="text-xs text-slate-500">
+                      {selectedPatient.age}Y • {selectedPatient.gender} • {selectedPatient.bloodType}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="font-bold text-slate-900">{selectedPatient.name}</h3>
-                  <p className="text-xs text-slate-500">
-                    {selectedPatient.age}Y • {selectedPatient.gender} • {selectedPatient.bloodType}
-                  </p>
-                </div>
+                <button 
+                  onClick={() => navigate("/mobile-vitals")}
+                  className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                  title="Update Vitals"
+                >
+                  <Activity className="w-4 h-4" />
+                </button>
               </div>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div className="bg-slate-50 p-2 rounded border border-slate-100">
-                  <span className="text-slate-500 block">BP</span>
-                  <span className="font-bold text-slate-900">{clinicalData.vitals.bp}</span>
+                  <div className="flex items-center gap-1 text-slate-500 mb-0.5">
+                    <Heart className="w-3 h-3" />
+                    <span>BP</span>
+                  </div>
+                  <span className="font-bold text-slate-900">{clinicalData.vitals.bp || "N/A"}</span>
                 </div>
                 <div className="bg-slate-50 p-2 rounded border border-slate-100">
-                  <span className="text-slate-500 block">HR</span>
-                  <span className="font-bold text-slate-900">{clinicalData.vitals.hr} bpm</span>
+                  <div className="flex items-center gap-1 text-slate-500 mb-0.5">
+                    <Activity className="w-3 h-3" />
+                    <span>HR</span>
+                  </div>
+                  <span className="font-bold text-slate-900">{clinicalData.vitals.hr ? `${clinicalData.vitals.hr} bpm` : "N/A"}</span>
                 </div>
                 <div className="bg-slate-50 p-2 rounded border border-slate-100">
-                  <span className="text-slate-500 block">Temp</span>
+                  <div className="flex items-center gap-1 text-slate-500 mb-0.5">
+                    <RefreshCw className="w-3 h-3" />
+                    <span>Temp</span>
+                  </div>
                   <span className={`font-bold ${parseFloat(clinicalData.vitals.temp) > 37.5 ? 'text-red-600' : 'text-slate-900'}`}>
-                    {clinicalData.vitals.temp}°C
+                    {clinicalData.vitals.temp ? `${clinicalData.vitals.temp}°C` : "N/A"}
                   </span>
                 </div>
                 <div className="bg-slate-50 p-2 rounded border border-slate-100">
-                  <span className="text-slate-500 block">SpO2</span>
+                  <div className="flex items-center gap-1 text-slate-500 mb-0.5">
+                    <Wind className="w-3 h-3" />
+                    <span>RR</span>
+                  </div>
+                  <span className="font-bold text-slate-900">{clinicalData.vitals.rr ? `${clinicalData.vitals.rr} /min` : "N/A"}</span>
+                </div>
+                <div className="bg-slate-50 p-2 rounded border border-slate-100">
+                  <div className="flex items-center gap-1 text-slate-500 mb-0.5">
+                    <ArrowRight className="w-3 h-3" />
+                    <span>SpO2</span>
+                  </div>
                   <span className="font-bold text-slate-900">
-                    {clinicalData.vitals.spo2}% 
-                    <span className="text-xs font-normal text-slate-500 ml-1">
-                      ({clinicalData.vitals.oxygenType === 'oxygen_supply' 
-                        ? `O2: ${clinicalData.vitals.oxygenDose} ${clinicalData.vitals.oxygenInvasive ? (clinicalData.vitals.oxygenInvasive === 'invasive' ? '(Inv)' : '(Non-inv)') : ''} ${clinicalData.vitals.oxygenDeviceType ? `- ${clinicalData.vitals.oxygenDeviceType.replace(/_/g, ' ')}` : ''} ${clinicalData.vitals.oxygenInvasive === 'invasive' ? `(FiO2: ${clinicalData.vitals.fio2}, PEEP: ${clinicalData.vitals.peep}, PS: ${clinicalData.vitals.pressureSupport})` : (clinicalData.vitals.flowRate ? `(Flow: ${clinicalData.vitals.flowRate})` : '')} ${clinicalData.vitals.notes ? `[${clinicalData.vitals.notes}]` : ''}` 
-                        : 'RA'})
-                    </span>
+                    {clinicalData.vitals.spo2 ? `${clinicalData.vitals.spo2}%` : "N/A"}
                   </span>
                 </div>
               </div>
+              {clinicalData.vitals.oxygenType === 'oxygen_supply' && (
+                <div className="mt-2 p-2 bg-indigo-50 rounded border border-indigo-100 text-[10px] text-indigo-700">
+                  <span className="font-bold">O2 Support:</span> {clinicalData.vitals.oxygenDose} {clinicalData.vitals.oxygenDeviceType?.replace(/_/g, ' ')} 
+                  {clinicalData.vitals.oxygenInvasive === 'invasive' ? ` (FiO2: ${clinicalData.vitals.fio2}, PEEP: ${clinicalData.vitals.peep})` : ` (${clinicalData.vitals.flowRate})`}
+                </div>
+              )}
             </div>
 
             {/* Symptoms */}
@@ -608,6 +825,7 @@ export function FinalDiagnosis() {
                       <div className="bg-white border-l-4 border-indigo-500 rounded-r-lg shadow-sm p-4">
                         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Most Likely Diagnosis</label>
                         <h3 className="text-lg font-bold text-slate-900 mb-2">{suggestions[0].condition}</h3>
+                        <SpeakButton text={`${suggestions[0].condition}. Confidence: ${suggestions[0].probability}%. ${suggestions[0].reasoning}`} />
                         
                         <div className="mb-3">
                           <div className="flex justify-between text-xs mb-1">
@@ -704,6 +922,7 @@ export function FinalDiagnosis() {
                                 </span>
                                 <span className="font-semibold text-slate-800 text-sm">{suggestion.condition}</span>
                               </div>
+                              <SpeakButton text={`${suggestion.condition}. Probability: ${suggestion.probability}%. ${suggestion.reasoning}`} />
                               <span className="text-xs font-bold text-slate-500">{suggestion.probability}%</span>
                             </div>
                             <p className="text-xs text-slate-600 mb-2 line-clamp-2 group-hover:line-clamp-none transition-all">
@@ -838,6 +1057,65 @@ export function FinalDiagnosis() {
           </div>
         </div>
       )}
+      {/* Template Modals */}
+      <Dialog open={isTemplateModalOpen} onOpenChange={setIsTemplateModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Save as Template</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <Label htmlFor="templateName">Template Name</Label>
+            <Input
+              id="templateName"
+              value={templateName}
+              onChange={(e) => setTemplateName(e.target.value)}
+              placeholder="e.g., Typical Pneumonia Case"
+              className="mt-2"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsTemplateModalOpen(false)}>Cancel</Button>
+            <Button onClick={handleSaveAsTemplate}>Save Template</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isLoadTemplateModalOpen} onOpenChange={setIsLoadTemplateModalOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Load Template</DialogTitle>
+          </DialogHeader>
+          <div className="py-4 max-h-[60vh] overflow-y-auto">
+            {templates && templates.length > 0 ? (
+              <div className="grid grid-cols-1 gap-3">
+                {templates.map((template) => (
+                  <div
+                    key={template.localId}
+                    className="flex items-center justify-between p-4 border rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
+                    onClick={() => applyTemplate(template)}
+                  >
+                    <div>
+                      <h4 className="font-medium text-slate-900">{template.name}</h4>
+                      <p className="text-xs text-slate-500">
+                        Last modified: {new Date(template.lastModified).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <Button variant="ghost" size="sm">Apply</Button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-slate-500">
+                <FolderOpen className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                <p>No templates saved yet.</p>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsLoadTemplateModalOpen(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

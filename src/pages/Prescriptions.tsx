@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { medicationsDatabase } from "@/data/medications";
 import { prescriptionTemplates } from "@/data/templates";
 import { usePatient } from "@/lib/PatientContext";
-import { GoogleGenAI } from "@google/genai";
+import { generateContentWithRetry } from "../utils/gemini";
 import { toast } from "sonner";
 import { medicationService, Drug } from "@/services/medicationService";
 import { PatientHistoryService } from "@/services/PatientHistoryService";
@@ -25,6 +25,22 @@ export function Prescriptions() {
   const [activeTab, setActiveTab] = useState('new');
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
+  
+  const [promptModal, setPromptModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    defaultValue: string;
+    onConfirm: (value: string) => void;
+  }>({ isOpen: false, title: '', message: '', defaultValue: '', onConfirm: () => {} });
+  const [promptValue, setPromptValue] = useState("");
+
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
   
   // State for new prescription being built
   const [currentPrescription, setCurrentPrescription] = useState<any[]>([]);
@@ -241,7 +257,20 @@ export function Prescriptions() {
   const handleLoadTemplate = (templateName: string, variant: string) => {
     const template = prescriptionTemplates[templateName]?.[variant];
     if (template) {
-      if (currentPrescription.length > 0 && !window.confirm("Replace current items with template?")) {
+      if (currentPrescription.length > 0) {
+        setConfirmModal({
+          isOpen: true,
+          title: "Load Template",
+          message: "Replace current items with template?",
+          onConfirm: () => {
+            const newItems = template.map(item => ({
+              id: "item_" + Date.now() + Math.random(),
+              ...item
+            }));
+            setCurrentPrescription(newItems);
+            setIsTemplatesOpen(false);
+          }
+        });
         return;
       }
       const newItems = template.map(item => ({
@@ -317,20 +346,41 @@ export function Prescriptions() {
       toast.error("Add medications to the prescription first.");
       return;
     }
-    const templateName = window.prompt("Enter a name for this template:");
-    if (templateName) {
-      const newTemplate = {
-        id: "ut-" + Date.now(),
-        name: templateName,
-        items: currentPrescription.map(({ id, ...rest }) => rest)
-      };
-      setUserTemplates([...userTemplates, newTemplate]);
-      toast.success("Template saved! You can find it in the Templates menu.");
-    }
+    setPromptValue("");
+    setPromptModal({
+      isOpen: true,
+      title: "Save as Template",
+      message: "Enter a name for this template:",
+      defaultValue: "",
+      onConfirm: (templateName) => {
+        if (templateName) {
+          const newTemplate = {
+            id: "ut-" + Date.now(),
+            name: templateName,
+            items: currentPrescription.map(({ id, ...rest }) => rest)
+          };
+          setUserTemplates([...userTemplates, newTemplate]);
+          toast.success("Template saved! You can find it in the Templates menu.");
+        }
+      }
+    });
   };
 
   const handleLoadUserTemplate = (template: any) => {
-    if (currentPrescription.length > 0 && !window.confirm("Replace current items with template?")) {
+    if (currentPrescription.length > 0) {
+      setConfirmModal({
+        isOpen: true,
+        title: "Load Template",
+        message: "Replace current items with template?",
+        onConfirm: () => {
+          const newItems = template.items.map((item: any) => ({
+            id: "item_" + Date.now() + Math.random(),
+            ...item
+          }));
+          setCurrentPrescription(newItems);
+          setIsTemplatesOpen(false);
+        }
+      });
       return;
     }
     const newItems = template.items.map((item: any) => ({
@@ -353,7 +403,6 @@ export function Prescriptions() {
       const history = await PatientHistoryService.getPatientHistory(selectedPatient.id);
       const allergies = selectedPatient.allergies ? JSON.parse(selectedPatient.allergies) : [];
       
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
       const prompt = `As a clinical assistant, generate a structured medical prescription based on the following patient information and diagnosis.
       
       Patient: ${selectedPatient?.name || "Unknown"}
@@ -392,7 +441,7 @@ export function Prescriptions() {
       
       Only return the JSON array.`;
 
-      const response = await ai.models.generateContent({
+      const response = await generateContentWithRetry({
         model: "gemini-3-flash-preview",
         contents: prompt,
         config: { responseMimeType: "application/json" }
@@ -403,7 +452,7 @@ export function Prescriptions() {
       setSelectedSuggestions([]);
     } catch (error) {
       console.error("AI Suggestion failed:", error);
-      alert("Failed to get AI suggestions. Please try again.");
+      toast.error("Failed to get AI suggestions. Please try again.");
     } finally {
       setIsAiLoading(false);
     }
@@ -489,9 +538,16 @@ export function Prescriptions() {
         <div className="flex items-center gap-2">
           <button 
             onClick={() => {
-              if (currentPrescription.length > 0 && window.confirm("Start a new prescription? Current items will be cleared.")) {
-                setCurrentPrescription([]);
-                setPrescriptionNotes("");
+              if (currentPrescription.length > 0) {
+                setConfirmModal({
+                  isOpen: true,
+                  title: "New Prescription",
+                  message: "Start a new prescription? Current items will be cleared.",
+                  onConfirm: () => {
+                    setCurrentPrescription([]);
+                    setPrescriptionNotes("");
+                  }
+                });
               }
             }}
             className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center gap-2 transition-colors"
@@ -522,7 +578,7 @@ export function Prescriptions() {
           <button 
             onClick={() => {
               if (currentPrescription.length === 0) {
-                alert("Please add at least one medication.");
+                toast.error("Please add at least one medication.");
                 return;
               }
               setIsPreviewOpen(true);
@@ -587,9 +643,9 @@ export function Prescriptions() {
               {filteredCatalog.length > 0 ? (
                 <div className="space-y-2">
                   {filteredCatalog.map(med => {
-                    const query = searchQuery.toLowerCase();
-                    const matchedSideEffect = query && med.sideEffects?.find((se: string) => se.toLowerCase().includes(query));
-                    const matchedInteraction = query && med.interactions?.find((int: string) => int.toLowerCase().includes(query));
+                    const query = searchQuery?.toLowerCase() || '';
+                    const matchedSideEffect = query && med.sideEffects?.find((se: string) => se?.toLowerCase().includes(query));
+                    const matchedInteraction = query && med.interactions?.find((int: string) => int?.toLowerCase().includes(query));
 
                     return (
                       <div 
@@ -895,31 +951,44 @@ export function Prescriptions() {
                     </div>
                     <div className="flex items-center gap-2">
                       <button 
-                        onClick={async () => {
-                          const newDose = window.prompt(`Update dosage for ${med.name}:`, med.dose);
-                          if (newDose) {
-                            try {
-                              await db.prescription_items.update(med.id, { dosage: newDose });
-                              toast.success("Dosage updated");
-                            } catch (e) {
-                              toast.error("Failed to update dosage");
+                        onClick={() => {
+                          setPromptValue(med.dose);
+                          setPromptModal({
+                            isOpen: true,
+                            title: "Update Dosage",
+                            message: `Update dosage for ${med.name}:`,
+                            defaultValue: med.dose,
+                            onConfirm: async (newDose) => {
+                              if (newDose) {
+                                try {
+                                  await db.prescription_items.update(med.id, { dosage: newDose });
+                                  toast.success("Dosage updated");
+                                } catch (e) {
+                                  toast.error("Failed to update dosage");
+                                }
+                              }
                             }
-                          }
+                          });
                         }}
                         className="px-3 py-1.5 text-sm font-medium text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"
                       >
                         Update Dose
                       </button>
                       <button 
-                        onClick={async () => {
-                          if (window.confirm(`Are you sure you want to discontinue ${med.name}?`)) {
-                            try {
-                              await db.prescription_items.delete(med.id);
-                              toast.success("Medication discontinued");
-                            } catch (e) {
-                              toast.error("Failed to discontinue medication");
+                        onClick={() => {
+                          setConfirmModal({
+                            isOpen: true,
+                            title: "Discontinue Medication",
+                            message: `Are you sure you want to discontinue ${med.name}?`,
+                            onConfirm: async () => {
+                              try {
+                                await db.prescription_items.delete(med.id);
+                                toast.success("Medication discontinued");
+                              } catch (e) {
+                                toast.error("Failed to discontinue medication");
+                              }
                             }
-                          }
+                          });
                         }}
                         className="px-3 py-1.5 text-sm font-medium text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
                       >
@@ -962,9 +1031,14 @@ export function Prescriptions() {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              if(confirm('Delete template?')) {
-                                setUserTemplates(userTemplates.filter(t => t.id !== template.id));
-                              }
+                              setConfirmModal({
+                                isOpen: true,
+                                title: "Delete Template",
+                                message: "Are you sure you want to delete this template?",
+                                onConfirm: () => {
+                                  setUserTemplates(userTemplates.filter(t => t.id !== template.id));
+                                }
+                              });
                             }}
                             className="absolute top-2 right-2 p-1 text-indigo-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
                             title="Delete template"
@@ -1308,6 +1382,75 @@ export function Prescriptions() {
                 className="px-4 py-2 text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 font-medium"
               >
                 Add to Prescription
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Modal */}
+      {confirmModal.isOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-[100] p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm flex flex-col overflow-hidden">
+            <div className="p-4 border-b border-slate-200">
+              <h3 className="text-lg font-bold text-slate-900">{confirmModal.title}</h3>
+            </div>
+            <div className="p-4">
+              <p className="text-slate-700">{confirmModal.message}</p>
+            </div>
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-3">
+              <button 
+                onClick={() => setConfirmModal({ ...confirmModal, isOpen: false })}
+                className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={() => {
+                  confirmModal.onConfirm();
+                  setConfirmModal({ ...confirmModal, isOpen: false });
+                }}
+                className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Prompt Modal */}
+      {promptModal.isOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-[100] p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm flex flex-col overflow-hidden">
+            <div className="p-4 border-b border-slate-200">
+              <h3 className="text-lg font-bold text-slate-900">{promptModal.title}</h3>
+            </div>
+            <div className="p-4 space-y-3">
+              <p className="text-sm text-slate-700">{promptModal.message}</p>
+              <input 
+                type="text"
+                autoFocus
+                value={promptValue}
+                onChange={(e) => setPromptValue(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+              />
+            </div>
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-3">
+              <button 
+                onClick={() => setPromptModal({ ...promptModal, isOpen: false })}
+                className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={() => {
+                  promptModal.onConfirm(promptValue);
+                  setPromptModal({ ...promptModal, isOpen: false });
+                }}
+                className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700"
+              >
+                Save
               </button>
             </div>
           </div>
