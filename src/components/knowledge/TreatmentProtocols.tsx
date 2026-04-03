@@ -17,17 +17,92 @@ interface Protocol {
   clinicalPearls: string;
 }
 
-const commonConditions = [
-  "Hypertension",
-  "Type 2 Diabetes Mellitus",
-  "Asthma (Acute Exacerbation)",
-  "Community-Acquired Pneumonia",
-  "Heart Failure (HFrEF)",
-  "Atrial Fibrillation",
-  "Urinary Tract Infection (Uncomplicated)",
-  "Hyperlipidemia",
-  "Major Depressive Disorder",
-  "Gastroesophageal Reflux Disease (GERD)"
+const protocolCategories = [
+  {
+    name: "Cardiovascular",
+    conditions: [
+      "Hypertension (Essential)",
+      "Heart Failure (HFrEF)",
+      "Heart Failure (HFpEF)",
+      "Atrial Fibrillation",
+      "Hyperlipidemia",
+      "Coronary Artery Disease (Stable Angina)",
+      "Deep Vein Thrombosis (DVT)",
+      "Pulmonary Embolism"
+    ]
+  },
+  {
+    name: "Endocrine & Metabolic",
+    conditions: [
+      "Type 2 Diabetes Mellitus",
+      "Type 1 Diabetes Mellitus",
+      "Hypothyroidism",
+      "Hyperthyroidism",
+      "Osteoporosis",
+      "Obesity Management",
+      "Gout (Acute Flare)",
+      "Chronic Kidney Disease (CKD)"
+    ]
+  },
+  {
+    name: "Respiratory",
+    conditions: [
+      "Asthma (Chronic Management)",
+      "Asthma (Acute Exacerbation)",
+      "COPD (Chronic Management)",
+      "COPD (Acute Exacerbation)",
+      "Community-Acquired Pneumonia",
+      "Acute Bronchitis",
+      "Allergic Rhinitis"
+    ]
+  },
+  {
+    name: "Gastrointestinal",
+    conditions: [
+      "Gastroesophageal Reflux Disease (GERD)",
+      "Peptic Ulcer Disease (H. pylori positive)",
+      "Irritable Bowel Syndrome (IBS)",
+      "Inflammatory Bowel Disease (Crohn's)",
+      "Ulcerative Colitis",
+      "Acute Gastroenteritis",
+      "Chronic Constipation"
+    ]
+  },
+  {
+    name: "Infectious Disease",
+    conditions: [
+      "Urinary Tract Infection (Uncomplicated)",
+      "Pyelonephritis",
+      "Cellulitis (Non-purulent)",
+      "Abscess (Purulent Skin Infection)",
+      "Otitis Media (Acute)",
+      "Strep Pharyngitis",
+      "Influenza",
+      "COVID-19 (Mild to Moderate)"
+    ]
+  },
+  {
+    name: "Neurology & Psychiatry",
+    conditions: [
+      "Major Depressive Disorder",
+      "Generalized Anxiety Disorder",
+      "Migraine (Acute Abortive)",
+      "Migraine (Prophylaxis)",
+      "Insomnia",
+      "Alzheimer's Disease",
+      "Parkinson's Disease"
+    ]
+  },
+  {
+    name: "Rheumatology & Pain",
+    conditions: [
+      "Osteoarthritis",
+      "Rheumatoid Arthritis",
+      "Fibromyalgia",
+      "Acute Lower Back Pain",
+      "Chronic Pain Management"
+    ]
+  }
 ];
 
 export function TreatmentProtocols() {
@@ -72,9 +147,14 @@ export function TreatmentProtocols() {
     }
   };
 
-  const filteredConditions = commonConditions.filter(c => 
-    c.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredCategories = protocolCategories.map(category => ({
+    ...category,
+    conditions: category.conditions.filter(c => 
+      c.toLowerCase().includes(searchTerm.toLowerCase())
+    )
+  })).filter(category => category.conditions.length > 0);
+
+  const allConditions = protocolCategories.flatMap(c => c.conditions);
 
   const fetchProtocol = async (condition: string) => {
     setSelectedCondition(condition);
@@ -134,20 +214,29 @@ export function TreatmentProtocols() {
               <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Common Conditions</h3>
             </div>
             <div className="max-h-[500px] overflow-y-auto divide-y divide-slate-100">
-              {filteredConditions.map((condition, i) => (
-                <button
-                  key={i}
-                  onClick={() => fetchProtocol(condition)}
-                  className={cn(
-                    "w-full text-left p-4 hover:bg-white transition-all group flex items-center justify-between",
-                    selectedCondition === condition ? "bg-white ring-2 ring-inset ring-indigo-500" : ""
-                  )}
-                >
-                  <span className="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">{condition}</span>
-                  <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-indigo-500 transition-all" />
-                </button>
+              {filteredCategories.map((category, i) => (
+                <div key={i} className="bg-slate-50">
+                  <div className="px-4 py-2 bg-slate-100/50 border-y border-slate-200/50 sticky top-0 z-10 backdrop-blur-sm">
+                    <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">{category.name}</h4>
+                  </div>
+                  <div className="divide-y divide-slate-100">
+                    {category.conditions.map((condition, j) => (
+                      <button
+                        key={j}
+                        onClick={() => fetchProtocol(condition)}
+                        className={cn(
+                          "w-full text-left p-4 hover:bg-white transition-all group flex items-center justify-between",
+                          selectedCondition === condition ? "bg-white ring-2 ring-inset ring-indigo-500" : ""
+                        )}
+                      >
+                        <span className="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors text-sm">{condition}</span>
+                        <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-indigo-500 transition-all" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
               ))}
-              {searchTerm && !commonConditions.some(c => c.toLowerCase() === searchTerm.toLowerCase()) && (
+              {searchTerm && !allConditions.some(c => c.toLowerCase() === searchTerm.toLowerCase()) && (
                 <button
                   onClick={() => fetchProtocol(searchTerm)}
                   className="w-full text-left p-4 hover:bg-white transition-all group flex items-center gap-2 text-indigo-600 font-medium italic"

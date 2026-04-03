@@ -10,6 +10,7 @@ import { usePatient } from "@/lib/PatientContext";
 import { db } from "@/lib/db";
 import { useLiveQuery } from "dexie-react-hooks";
 import { PatientHistoryService } from "@/services/PatientHistoryService";
+import { CDSSAlertsWidget } from "@/components/dashboard/CDSSAlertsWidget";
 
 
 export function MedicalRecords() {
@@ -213,6 +214,12 @@ export function MedicalRecords() {
         </div>
         </div>
       </div>
+
+      {selectedPatient && (
+        <div className="mb-4">
+          <CDSSAlertsWidget patientId={selectedPatient.id} />
+        </div>
+      )}
 
       {viewMode === 'timeline' && (
         <div className="flex flex-col lg:flex-row gap-6 h-full min-h-0">

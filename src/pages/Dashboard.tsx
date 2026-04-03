@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { db } from "@/lib/db";
 import { useLiveQuery } from "dexie-react-hooks";
 import { usePatient } from "@/lib/PatientContext";
+import { CDSSAlertsWidget } from "@/components/dashboard/CDSSAlertsWidget";
 
 const activities: any[] = [];
 
@@ -112,6 +113,8 @@ export function Dashboard() {
           </button>
         </div>
       </div>
+
+      <CDSSAlertsWidget />
 
       {/* Bento Grid */}
       <div className={cn("grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4", compactMode ? "gap-4" : "gap-6")}>

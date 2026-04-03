@@ -627,7 +627,11 @@ export const THROAT_MODELS: SymptomModel[] = [
         dimensions: {
             severity: ["mild", "moderate", "severe"],
             onset: ["sudden", "gradual"],
-            triggers: ["swallowing", "talking", "morning only"]
+            triggers: ["swallowing", "talking", "morning only"],
+            cough: ["absent", "present"],
+            nodes: ["swollen/tender", "normal"],
+            fever: ["present (>38C)", "absent"],
+            tonsils: ["exudates/swelling", "normal"]
         },
         redFlags: [
             "Difficulty breathing or swallowing saliva",
@@ -1118,6 +1122,11 @@ export const DIGESTIVE_MODELS: SymptomModel[] = [
       "Rigid, board-like abdomen",
       "Fever and vomiting",
       "Bloody stools"
+    ],
+    requiredExams: [
+      "Perform McBurney's point palpation (if lower right pain)",
+      "Assess for Murphy's sign (if upper right pain)",
+      "Check for rebound tenderness and guarding"
     ]
   },
   {
@@ -1498,6 +1507,30 @@ export const MUSCULOSKELETAL_MODELS: SymptomModel[] = [
       "Joint is hot and red",
       "Associated high fever",
       "Inability to move the joint"
+    ]
+  },
+  {
+    id: "msk_leg_swelling_pain",
+    label: "Leg Pain / Swelling",
+    dimensions: {
+      location: ["single leg", "both legs", "calf only"],
+      character: ["sharp", "dull ache", "pitting edema"],
+      cancer: ["active/recent", "none"],
+      calf_swelling: [">3cm", "normal"],
+      veins: ["collateral/prominent", "normal"],
+      edema: ["pitting", "non-pitting", "none"],
+      prev_dvt: ["yes", "no"],
+      leg_swelling: ["entire leg", "localized"],
+      tenderness: ["along deep veins", "none"],
+      immobilization: ["yes", "no"],
+      recent_surgery: ["yes", "no"],
+      alt_diag: ["likely", "unlikely"]
+    },
+    redFlags: [
+      "Sudden onset of severe swelling",
+      "Associated shortness of breath",
+      "Chest pain",
+      "Cold, pale limb"
     ]
   },
   {

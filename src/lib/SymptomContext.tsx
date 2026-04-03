@@ -10,6 +10,7 @@ export interface Symptom {
   analysisData?: Record<string, string[]>;
   severityTimeline?: { date: string, value: number }[];
   followUpQuestions?: string[];
+  reviewNotes?: string;
 }
 
 interface SymptomContextType {

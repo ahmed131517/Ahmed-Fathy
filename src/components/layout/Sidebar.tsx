@@ -15,6 +15,7 @@ import {
   Settings,
   Users,
   Bot,
+  ListTodo,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -33,6 +34,7 @@ const navItems = [
   { name: "Medical Records", path: "/medical-records", icon: Folder },
   { name: "Knowledge", path: "/knowledge", icon: BookOpen },
   { name: "Ask AI", path: "/ask-ai", icon: Bot },
+  { name: "Tasks", path: "/tasks", icon: ListTodo },
   { name: "Settings", path: "/settings", icon: Settings },
 ];
 

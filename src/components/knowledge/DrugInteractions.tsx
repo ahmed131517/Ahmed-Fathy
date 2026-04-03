@@ -3,7 +3,8 @@ import { Plus, X, Search, AlertTriangle, CheckCircle, Loader2, Database, BrainCi
 import { cn } from "@/lib/utils";
 import { generateContentWithRetry } from "@/utils/gemini";
 import { Type } from "@google/genai";
-import { RxNavService, RxNavInteraction } from "@/services/RxNavService";
+import { medicationService } from "@/services/medicationService";
+import { db } from "@/lib/db";
 
 interface InteractionResult {
   meds: string[];
@@ -12,13 +13,19 @@ interface InteractionResult {
   recommendation: string;
 }
 
+interface DbInteraction {
+  severity: string;
+  description: string;
+  source: string;
+}
+
 export function DrugInteractions() {
   const [medications, setMedications] = useState<string[]>([]);
   const [input, setInput] = useState('');
   const [results, setResults] = useState<InteractionResult[] | null>(null);
-  const [rxNavResults, setRxNavResults] = useState<RxNavInteraction[] | null>(null);
+  const [dbResults, setDbResults] = useState<DbInteraction[] | null>(null);
   const [loading, setLoading] = useState(false);
-  const [rxNavLoading, setRxNavLoading] = useState(false);
+  const [dbLoading, setDbLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeSource, setActiveSource] = useState<'ai' | 'database'>('ai');
 
@@ -32,32 +39,53 @@ export function DrugInteractions() {
   const removeMedication = (index: number) => {
     setMedications(medications.filter((_, i) => i !== index));
     setResults(null);
+    setDbResults(null);
   };
 
   const checkInteractions = async () => {
     if (medications.length < 2) return;
     setLoading(true);
-    setRxNavLoading(true);
+    setDbLoading(true);
     setResults(null);
-    setRxNavResults(null);
+    setDbResults(null);
     setError(null);
 
-    // 1. RxNav Database Check
-    const rxNavPromise = (async () => {
+    // 1. Local Database Check
+    const dbPromise = (async () => {
       try {
-        const rxcuis = await Promise.all(medications.map(med => RxNavService.getRxCUI(med)));
-        const validRxcuis = rxcuis.filter((id): id is string => id !== null);
-        if (validRxcuis.length >= 2) {
-          const interactions = await RxNavService.getInteractions(validRxcuis);
-          setRxNavResults(interactions);
-        } else {
-          setRxNavResults([]);
+        await medicationService.seedDrugsIfEmpty();
+        const lowerMeds = medications.map(m => m.toLowerCase());
+        const drugs = await db.drugs.filter(d => lowerMeds.includes(d.generic_name.toLowerCase())).toArray();
+        
+        const interactions: DbInteraction[] = [];
+        
+        for (let i = 0; i < drugs.length; i++) {
+          for (let j = i + 1; j < drugs.length; j++) {
+            const d1 = drugs[i];
+            const d2 = drugs[j];
+            
+            const foundInteractions = await db.drug_interactions
+              .filter(interaction => 
+                (interaction.drug1_id === d1.id && interaction.drug2_id === d2.id) ||
+                (interaction.drug1_id === d2.id && interaction.drug2_id === d1.id)
+              )
+              .toArray();
+              
+            for (const interaction of foundInteractions) {
+              interactions.push({
+                severity: interaction.severity,
+                description: `Interaction between ${d1.generic_name} and ${d2.generic_name}: ${interaction.description}`,
+                source: 'Local Medical DB'
+              });
+            }
+          }
         }
+        setDbResults(interactions);
       } catch (err) {
-        console.error("RxNav error:", err);
-        setRxNavResults([]);
+        console.error("Local DB error:", err);
+        setDbResults([]);
       } finally {
-        setRxNavLoading(false);
+        setDbLoading(false);
       }
     })();
 
@@ -115,7 +143,7 @@ export function DrugInteractions() {
       }
     })();
 
-    await Promise.all([rxNavPromise, geminiPromise]);
+    await Promise.all([dbPromise, geminiPromise]);
   };
 
   return (
@@ -178,6 +206,15 @@ export function DrugInteractions() {
               </>
             )}
           </button>
+          <button 
+            onClick={async () => {
+              await medicationService.reseed();
+              alert("Database reset successfully!");
+            }}
+            className="w-full py-2 mt-2 bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold hover:bg-slate-300 transition-all"
+          >
+            Reset Database
+          </button>
           {medications.length === 1 && (
             <p className="text-[10px] text-amber-600 mt-2 text-center">Add at least one more medication to check</p>
           )}
@@ -188,7 +225,7 @@ export function DrugInteractions() {
             <h4 className="font-semibold text-slate-800 flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 text-amber-500" /> Interaction Results
             </h4>
-            {(results || rxNavResults) && (
+            {(results || dbResults) && (
               <div className="flex bg-slate-200 p-1 rounded-lg">
                 <button 
                   onClick={() => setActiveSource('ai')}
@@ -218,11 +255,11 @@ export function DrugInteractions() {
             </div>
           )}
 
-          {loading || rxNavLoading ? (
+          {loading || dbLoading ? (
             <div className="flex flex-col items-center justify-center py-20 text-slate-500">
               <Loader2 className="w-10 h-10 animate-spin mb-4 text-indigo-500" />
               <p className="font-medium">Consulting multiple sources...</p>
-              <p className="text-xs mt-1">Checking clinical AI and medical database (RxNav)</p>
+              <p className="text-xs mt-1">Checking clinical AI and medical database</p>
             </div>
           ) : activeSource === 'ai' ? (
             results ? (
@@ -265,6 +302,21 @@ export function DrugInteractions() {
                           {res.severity}
                         </span>
                       </div>
+                      <div className="flex gap-2 justify-end">
+                        <button
+                          onClick={async () => {
+                            try {
+                              await medicationService.addInteraction(res.meds[0], res.meds[1], res.severity, res.description);
+                              alert("Interaction saved or updated in Medical DB!");
+                            } catch (error) {
+                              alert(error instanceof Error ? error.message : "Failed to save interaction");
+                            }
+                          }}
+                          className="text-[10px] font-bold uppercase px-2 py-1 rounded-lg bg-white/50 hover:bg-white border border-slate-200 text-slate-600 transition-all flex items-center gap-1"
+                        >
+                          <Database className="w-3 h-3" /> Save to DB
+                        </button>
+                      </div>
                       <div className="space-y-3">
                         <div>
                           <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Description</p>
@@ -295,16 +347,16 @@ export function DrugInteractions() {
               </div>
             )
           ) : (
-            rxNavResults ? (
+            dbResults ? (
               <div className="space-y-4">
-                {rxNavResults.length === 0 ? (
+                {dbResults.length === 0 ? (
                   <div className="bg-emerald-50 p-6 rounded-xl border border-emerald-200 text-center">
                     <CheckCircle className="w-12 h-12 text-emerald-500 mx-auto mb-3" />
                     <h5 className="font-bold text-emerald-800">No Interactions Found in Database</h5>
-                    <p className="text-emerald-700 text-sm mt-1">The RxNav database did not return any known interactions for these medications.</p>
+                    <p className="text-emerald-700 text-sm mt-1">The local medical database did not return any known interactions for these medications.</p>
                   </div>
                 ) : (
-                  rxNavResults.map((res, i) => (
+                  dbResults.map((res, i) => (
                     <div key={i} className="p-4 rounded-xl border border-slate-200 bg-white shadow-sm">
                       <div className="flex items-center gap-2 mb-2">
                         <div className="p-1.5 bg-slate-100 rounded-lg text-slate-600">
@@ -322,14 +374,14 @@ export function DrugInteractions() {
                   ))
                 )}
                 <p className="text-[10px] text-slate-400 text-center italic mt-4">
-                  Data provided by the NIH RxNav Interaction API.
+                  Data provided by the local Medical Database.
                 </p>
               </div>
             ) : (
               <div className="text-center text-slate-400 py-20">
                 <Database className="w-12 h-12 mx-auto mb-4 opacity-20" />
                 <p className="text-lg font-medium">Database Lookup</p>
-                <p className="text-sm max-w-xs mx-auto mt-1">Check the official NIH RxNav database for documented interactions.</p>
+                <p className="text-sm max-w-xs mx-auto mt-1">Check the local medical database for documented interactions.</p>
               </div>
             )
           )}

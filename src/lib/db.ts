@@ -320,6 +320,24 @@ export interface ChatMessage {
   timestamp: number;
 }
 
+export interface Task {
+  id?: string;
+  localId?: number;
+  title: string;
+  description?: string;
+  dueDate: string;
+  status: 'pending' | 'completed';
+  type: 'follow-up' | 'lab-review' | 'outreach' | 'other';
+  priority?: 'high' | 'medium' | 'low';
+  patientId?: string;
+  patientName?: string;
+  assignedTo?: string;
+  createdAt: number;
+  lastModified: number;
+  isDeleted: number;
+  isSynced: number;
+}
+
 export class AppDatabase extends Dexie {
   patients!: Table<PatientRecord>;
   appointments!: Table<Appointment>;
@@ -336,6 +354,7 @@ export class AppDatabase extends Dexie {
   audit_logs!: Table<AuditLog>;
   templates!: Table<Template>;
   chat_messages!: Table<ChatMessage>;
+  tasks!: Table<Task>;
   
   // Medication Tables
   drugs!: Table<Drug>;
@@ -350,7 +369,7 @@ export class AppDatabase extends Dexie {
 
   constructor() {
     super('MedicalAppDB');
-    this.version(10).stores({
+    this.version(11).stores({
       patients: '++localId, id, name, lastModified, isDeleted, isSynced',
       appointments: '++localId, id, patientId, date, lastModified, isDeleted, isSynced',
       prescriptions: '++localId, id, patientId, lastModified, isDeleted, isSynced',
@@ -366,6 +385,7 @@ export class AppDatabase extends Dexie {
       audit_logs: '++localId, id, userId, timestamp',
       templates: '++localId, id, category, lastModified',
       chat_messages: 'id, patientId, timestamp',
+      tasks: '++localId, id, patientId, status, type, dueDate, lastModified, isDeleted, isSynced',
       drugs: '++id, generic_name, atc_code',
       drug_brands: '++id, drug_id, brand_name',
       dosage_forms: '++id, form_name',

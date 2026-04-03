@@ -1,4 +1,4 @@
-import { generateContentWithRetry } from "../utils/gemini";
+import { generateContentWithRetry, parseJsonResponse } from "../utils/gemini";
 
 export async function checkInteractions(medications: string[]): Promise<string[]> {
   if (medications.length < 2) return [];
@@ -14,7 +14,7 @@ export async function checkInteractions(medications: string[]): Promise<string[]
       config: { responseMimeType: "application/json" }
     });
 
-    return JSON.parse(response.text || "[]");
+    return parseJsonResponse<string[]>(response.text, []);
   } catch (error) {
     console.error("Interaction check failed:", error);
     return [];

@@ -1,6 +1,6 @@
 import { SpeakButton } from "@/components/SpeakButton";
 import { useSymptom } from "@/lib/SymptomContext";
-import { useState, MouseEvent, useRef, useEffect } from "react";
+import { useState, MouseEvent, useRef, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { User, Headphones, Eye, MessageCircle, Shield, Wind, Heart, Target, Droplets, Layers, X, Activity, HelpCircle, AlertTriangle, CheckCircle2, RefreshCw, ClipboardList, Sparkles, Edit2, ChevronDown, ChevronUp, Loader2, Bone, Brain, Mic, Square, TrendingUp, BookOpen, ExternalLink, Info, FileText, FlaskConical, Stethoscope, ArrowRightLeft } from "lucide-react";
 import { ALL_MODELS, SymptomModel } from "@/data/symptomModels";
@@ -9,6 +9,8 @@ import { GoogleGenAI, Modality, Type } from "@google/genai";
 import { generateContentWithRetry } from "../utils/gemini";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
+import { ClinicalScoresWidget } from "@/components/ClinicalScoresWidget";
+import { DifferentialDiagnosisGrid } from "@/components/DifferentialDiagnosisGrid";
 
 const categories = [
   { id: 'general', name: 'General / Systemic', icon: Activity },
@@ -36,6 +38,7 @@ interface SelectedSymptom {
   analysisData?: Record<string, string[]>;
   severityTimeline?: { date: string, value: number }[];
   followUpQuestions?: string[];
+  reviewNotes?: string;
 }
 
 export function SymptomAnalysis() {
@@ -84,13 +87,27 @@ export function SymptomAnalysis() {
   const [soapNote, setSoapNote] = useState<string | null>(null);
   const [isGeneratingSOAP, setIsGeneratingSOAP] = useState(false);
   const [showComparison, setShowComparison] = useState(false);
+  const [showRequiredExams, setShowRequiredExams] = useState(false);
   const [conversation, setConversation] = useState<{role: 'user' | 'ai', content: string}[]>([]);
   const [newMessage, setNewMessage] = useState('');
-  const [patientHistory] = useState({
+  const [patientHistory, setPatientHistory] = useState({
+    age: 32,
+    gender: 'female',
     conditions: ['Asthma', 'Hypertension'],
     medications: ['Albuterol', 'Lisinopril'],
     allergies: ['Penicillin']
   });
+
+  const requiredExamsList = useMemo(() => {
+    const exams = new Set<string>();
+    selectedSymptoms.forEach(symptom => {
+      const model = ALL_MODELS[symptom.category]?.find(m => m.id === symptom.id);
+      if (model?.requiredExams) {
+        model.requiredExams.forEach(exam => exams.add(exam));
+      }
+    });
+    return Array.from(exams);
+  }, [selectedSymptoms]);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -218,34 +235,74 @@ export function SymptomAnalysis() {
     }
   };
 
-  const handleAIAnalyze = (symptom: SelectedSymptom, e: MouseEvent) => {
+  const handleAIAnalyze = async (symptom: SelectedSymptom, e: MouseEvent) => {
     e.stopPropagation();
     setAiAnalyzingId(symptom.id);
     
-    setTimeout(() => {
+    try {
       const model = ALL_MODELS[symptom.category]?.find(m => m.id === symptom.id);
-      const mockData: Record<string, string[]> = {};
-      let hasRedFlag = false;
+      if (!model) return;
+
+      const conversationText = conversation.map(m => `${m.role}: ${m.content}`).join('\n');
       
-      if (model?.dimensions) {
-        Object.entries(model.dimensions).forEach(([key, vals]) => {
-          mockData[key] = [vals[Math.floor(Math.random() * vals.length)]];
-        });
-      }
-      
-      if (model?.redFlags && model.redFlags.length > 0 && Math.random() > 0.7) {
-         mockData.redFlags = [model.redFlags[Math.floor(Math.random() * model.redFlags.length)]];
-         hasRedFlag = true;
-      }
+      const prompt = `
+        A patient is presenting with ${model.label}. 
+        Based on the following conversation, extract the values for these dimensions:
+        ${JSON.stringify(model.dimensions)}
+        
+        Also, check for these red flags:
+        ${JSON.stringify(model.redFlags)}
+        
+        Conversation:
+        ${conversationText}
+        
+        Return a JSON object with the extracted data:
+        {
+          "analysisData": { "dimensionName": ["value1", "value2"], ... },
+          "redFlags": ["flag1", ...],
+          "reviewNotes": "Brief clinical review of the findings."
+        }
+        Only use values from the provided dimensions list if possible. If not mentioned, leave empty.
+      `;
+
+      const response = await generateContentWithRetry({
+        model: "gemini-3-flash-preview",
+        contents: [{ parts: [{ text: prompt }] }],
+        config: { 
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              analysisData: { type: Type.OBJECT },
+              redFlags: { type: Type.ARRAY, items: { type: Type.STRING } },
+              reviewNotes: { type: Type.STRING }
+            }
+          }
+        }
+      });
+
+      const result = JSON.parse(response.text || "{}");
+      const hasRedFlag = result.redFlags && result.redFlags.length > 0;
       
       setSelectedSymptoms(prev => prev.map(s => 
         s.id === symptom.id 
-          ? { ...s, analysisData: mockData, status: hasRedFlag ? 'red_flag' : 'analyzed' }
+          ? { 
+              ...s, 
+              analysisData: { ...result.analysisData, redFlags: result.redFlags }, 
+              status: hasRedFlag ? 'red_flag' : 'analyzed',
+              reviewNotes: result.reviewNotes
+            }
           : s
       ));
-      setAiAnalyzingId(null);
+      
       setExpandedSymptomId(symptom.id);
-    }, 1500);
+      toast.success(`${symptom.label} analyzed by AI`);
+    } catch (err) {
+      console.error("AI Analysis failed:", err);
+      toast.error("AI Analysis failed. Please try manual entry.");
+    } finally {
+      setAiAnalyzingId(null);
+    }
   };
 
   const sendMessage = async () => {
@@ -384,6 +441,14 @@ export function SymptomAnalysis() {
             New Case
           </button>
           <button 
+            onClick={() => setShowRequiredExams(true)}
+            disabled={selectedSymptoms.length === 0}
+            className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-2 disabled:opacity-50"
+          >
+            <Stethoscope className="w-4 h-4" />
+            Required Physical Exams
+          </button>
+          <button 
             onClick={handleShowCauses}
             className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-2"
           >
@@ -402,9 +467,10 @@ export function SymptomAnalysis() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1">
-        <div className="lg:col-span-2 bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col">
-          <h3 className="text-lg font-semibold text-slate-800 mb-4">Select Symptom Category</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 overflow-y-auto pr-2">
+        <div className="lg:col-span-2 flex flex-col gap-6">
+          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col">
+            <h3 className="text-lg font-semibold text-slate-800 mb-4">Select Symptom Category</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 overflow-y-auto pr-2">
             {categories.map(cat => (
               <div 
                 key={cat.id} 
@@ -431,10 +497,15 @@ export function SymptomAnalysis() {
             ))}
           </div>
         </div>
+        <DifferentialDiagnosisGrid symptoms={selectedSymptoms} />
+      </div>
+
+      <div className="space-y-6">
+        <ClinicalScoresWidget symptoms={selectedSymptoms} patientHistory={patientHistory} />
 
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-semibold text-slate-800">Selected Symptoms</h3>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-slate-800">Selected Symptoms</h3>
             <select 
               value={filterCategory} 
               onChange={(e) => setFilterCategory(e.target.value)}
@@ -550,6 +621,12 @@ export function SymptomAnalysis() {
                               }
                               return null;
                             })}
+                            {symptom.reviewNotes && (
+                              <div className="mt-3 p-2 bg-indigo-50/50 border border-indigo-100 rounded text-[10px] text-indigo-800 flex gap-2">
+                                <Info className="w-3 h-3 flex-shrink-0 mt-0.5" />
+                                <p><strong>AI Review:</strong> {symptom.reviewNotes}</p>
+                              </div>
+                            )}
                             {symptom.severityTimeline && symptom.severityTimeline.length > 0 && (
                               <div className="mt-4 pt-3 border-t border-slate-100">
                                 <span className="text-xs font-semibold text-slate-700 uppercase flex items-center gap-1 mb-2">
@@ -601,8 +678,9 @@ export function SymptomAnalysis() {
           </div>
         </div>
       </div>
+    </div>
 
-      {/* Category Symptoms Modal */}
+    {/* Category Symptoms Modal */}
       {selectedCategory && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl flex flex-col max-h-[80vh]">
@@ -657,6 +735,62 @@ export function SymptomAnalysis() {
           onClose={() => setAnalyzingSymptom(null)} 
           onSave={handleSaveAnalysis} 
         />
+      )}
+
+      {/* Required Exams Modal */}
+      {showRequiredExams && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl flex flex-col max-h-[80vh]">
+            <div className="p-4 border-b border-slate-100 flex justify-between items-center">
+              <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+                <Stethoscope className="w-5 h-5 text-indigo-600" />
+                Required Physical Exams
+              </h3>
+              <button onClick={() => setShowRequiredExams(false)} className="p-1 text-slate-400 hover:text-slate-600 rounded-md">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto flex-1 bg-slate-50">
+              {requiredExamsList.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4">
+                    <Stethoscope className="w-8 h-8 text-slate-400" />
+                  </div>
+                  <h4 className="text-lg font-medium text-slate-800 mb-2">No Specific Exams Required</h4>
+                  <p className="text-slate-500 max-w-md">Based on the currently selected symptoms, there are no specific physical exam maneuvers automatically suggested.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-lg flex gap-3">
+                    <Info className="w-5 h-5 text-indigo-600 flex-shrink-0" />
+                    <div>
+                      <h4 className="text-sm font-semibold text-indigo-800">Suggested Maneuvers</h4>
+                      <p className="text-xs text-indigo-600 mt-1">Based on the selected symptoms, consider performing the following physical exams.</p>
+                    </div>
+                  </div>
+                  <ul className="space-y-3">
+                    {requiredExamsList.map((exam, index) => (
+                      <li key={index} className="bg-white border border-slate-200 p-4 rounded-lg shadow-sm flex items-start gap-3">
+                        <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center flex-shrink-0 text-xs font-bold mt-0.5">
+                          {index + 1}
+                        </div>
+                        <span className="text-slate-700 text-sm leading-relaxed">{exam}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+            <div className="p-4 border-t border-slate-100 bg-white rounded-b-xl flex justify-end">
+              <button 
+                onClick={() => setShowRequiredExams(false)}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Causes Modal */}

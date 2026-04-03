@@ -1,4 +1,4 @@
-import { generateContentWithRetry } from "../utils/gemini";
+import { generateContentWithRetry, parseJsonResponse } from "../utils/gemini";
 
 export interface ClinicalAnalysis {
   interpretation: string;
@@ -34,5 +34,11 @@ export const analyzeClinicalFindings = async (
     config: { responseMimeType: "application/json" },
   });
 
-  return JSON.parse(response.text || "{}");
+  return parseJsonResponse<ClinicalAnalysis>(response.text, {
+    interpretation: "Analysis failed.",
+    redFlags: [],
+    suggestedLabs: [],
+    suggestedPrescriptions: [],
+    severity: 'Mild'
+  });
 };
