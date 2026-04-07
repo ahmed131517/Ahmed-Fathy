@@ -35,7 +35,9 @@ export function PatientProvider({ children }: { children: ReactNode }) {
     bloodType: p.bloodType,
     lastVisit: p.lastVisit,
     status: p.status,
-    allergies: p.allergies
+    allergies: p.allergies,
+    chronicConditions: p.conditions ? JSON.parse(p.conditions) : [],
+    medications: p.medications ? JSON.parse(p.medications) : []
   }));
 
   return (

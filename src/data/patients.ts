@@ -7,4 +7,6 @@ export interface Patient {
   lastVisit: string;
   status: string;
   allergies?: string;
+  chronicConditions?: string[];
+  medications?: string[];
 }

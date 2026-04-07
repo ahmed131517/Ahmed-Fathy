@@ -2,7 +2,7 @@ import { SpeakButton } from "@/components/SpeakButton";
 import { useSymptom } from "@/lib/SymptomContext";
 import { useState, MouseEvent, useRef, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { User, Headphones, Eye, MessageCircle, Shield, Wind, Heart, Target, Droplets, Layers, X, Activity, HelpCircle, AlertTriangle, CheckCircle2, RefreshCw, ClipboardList, Sparkles, Edit2, ChevronDown, ChevronUp, Loader2, Bone, Brain, Mic, Square, TrendingUp, BookOpen, ExternalLink, Info, FileText, FlaskConical, Stethoscope, ArrowRightLeft } from "lucide-react";
+import { User, Headphones, Eye, MessageCircle, Shield, Wind, Heart, Target, Droplets, Layers, X, Activity, HelpCircle, AlertTriangle, CheckCircle2, RefreshCw, ClipboardList, Sparkles, Edit2, ChevronDown, ChevronUp, Loader2, Bone, Brain, TrendingUp, BookOpen, ExternalLink, Info, FileText, FlaskConical, Stethoscope, ArrowRightLeft } from "lucide-react";
 import { ALL_MODELS, SymptomModel } from "@/data/symptomModels";
 import { cn } from "@/lib/utils";
 import { GoogleGenAI, Modality, Type } from "@google/genai";
@@ -11,6 +11,9 @@ import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { ClinicalScoresWidget } from "@/components/ClinicalScoresWidget";
 import { DifferentialDiagnosisGrid } from "@/components/DifferentialDiagnosisGrid";
+import { CLINICAL_PATHWAYS, ClinicalPathwayRule } from "@/data/clinicalPathways";
+import { ClinicalGuardrails } from "@/components/ClinicalGuardrails";
+import { usePatient } from "@/lib/PatientContext";
 
 const categories = [
   { id: 'general', name: 'General / Systemic', icon: Activity },
@@ -44,6 +47,7 @@ interface SelectedSymptom {
 export function SymptomAnalysis() {
   const navigate = useNavigate();
   const { symptoms: contextSymptoms, setSymptoms: setContextSymptoms } = useSymptom();
+  const { selectedPatient } = usePatient();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedSymptoms, setSelectedSymptoms] = useState<SelectedSymptom[]>([]);
 
@@ -82,7 +86,6 @@ export function SymptomAnalysis() {
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [expandedSymptomId, setExpandedSymptomId] = useState<string | null>(null);
   const [aiAnalyzingId, setAiAnalyzingId] = useState<string | null>(null);
-  const [isRecording, setIsRecording] = useState(false);
   const [triageLevel, setTriageLevel] = useState<'low' | 'medium' | 'high'>('low');
   const [soapNote, setSoapNote] = useState<string | null>(null);
   const [isGeneratingSOAP, setIsGeneratingSOAP] = useState(false);
@@ -90,13 +93,25 @@ export function SymptomAnalysis() {
   const [showRequiredExams, setShowRequiredExams] = useState(false);
   const [conversation, setConversation] = useState<{role: 'user' | 'ai', content: string}[]>([]);
   const [newMessage, setNewMessage] = useState('');
-  const [patientHistory, setPatientHistory] = useState({
-    age: 32,
-    gender: 'female',
-    conditions: ['Asthma', 'Hypertension'],
-    medications: ['Albuterol', 'Lisinopril'],
-    allergies: ['Penicillin']
-  });
+  
+  const patientData = useMemo(() => {
+    if (selectedPatient) {
+      return {
+        age: selectedPatient.age,
+        gender: selectedPatient.gender.toLowerCase(),
+        conditions: selectedPatient.chronicConditions || [],
+        medications: selectedPatient.medications || [],
+        allergies: selectedPatient.allergies ? [selectedPatient.allergies] : []
+      };
+    }
+    return {
+      age: 32,
+      gender: 'female',
+      conditions: ['Asthma', 'Hypertension'],
+      medications: ['Albuterol', 'Lisinopril'],
+      allergies: ['Penicillin']
+    };
+  }, [selectedPatient]);
 
   const requiredExamsList = useMemo(() => {
     const exams = new Set<string>();
@@ -109,18 +124,86 @@ export function SymptomAnalysis() {
     return Array.from(exams);
   }, [selectedSymptoms]);
 
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
+  const activePathways = useMemo(() => {
+    if (selectedSymptoms.length === 0) return [];
+    
+    return CLINICAL_PATHWAYS.filter(pathway => {
+      const { conditions } = pathway;
+      
+      // Check symptom IDs
+      if (conditions.symptomIds) {
+        const hasAllSymptoms = conditions.symptomIds.every(id => 
+          selectedSymptoms.some(s => s.id === id)
+        );
+        if (!hasAllSymptoms) return false;
+      }
+      
+      // Check patient age
+      if (conditions.patientAgeMin !== undefined && patientData.age < conditions.patientAgeMin) return false;
+      if (conditions.patientAgeMax !== undefined && patientData.age > conditions.patientAgeMax) return false;
+      
+      // Check patient gender
+      if (conditions.patientGender !== undefined && patientData.gender !== conditions.patientGender) return false;
+      
+      // Check red flags
+      if (conditions.hasRedFlag !== undefined) {
+        const hasRedFlag = selectedSymptoms.some(s => s.status === 'red_flag');
+        if (hasRedFlag !== conditions.hasRedFlag) return false;
+      }
+      
+      // Check required analysis data
+      if (conditions.requiredAnalysisData) {
+        const matchesAnalysisData = Object.entries(conditions.requiredAnalysisData).every(([key, values]) => {
+          return selectedSymptoms.some(s => 
+            s.analysisData?.[key]?.some(v => values.includes(v))
+          );
+        });
+        if (!matchesAnalysisData) return false;
+      }
+
+      // Check required chronic conditions
+      if (conditions.requiredChronicConditions) {
+        const hasCondition = conditions.requiredChronicConditions.some(c => 
+          patientData.conditions.some(pc => pc.toLowerCase().includes(c.toLowerCase()))
+        );
+        if (!hasCondition) return false;
+      }
+
+      // Check required medications
+      if (conditions.requiredMedications) {
+        const hasMedication = conditions.requiredMedications.some(m => 
+          patientData.medications.some(pm => pm.toLowerCase().includes(m.toLowerCase()))
+        );
+        if (!hasMedication) return false;
+      }
+      
+      return true;
+    });
+  }, [selectedSymptoms, patientData]);
 
   useEffect(() => {
     // Calculate Triage Level
     const hasRedFlag = selectedSymptoms.some(s => s.status === 'red_flag');
     const highSeverity = selectedSymptoms.some(s => s.analysisData?.severity?.includes('severe') || s.analysisData?.severity?.includes('incapacitating'));
     
-    if (hasRedFlag) setTriageLevel('high');
+    // Check if any active pathway forces a high triage level
+    const forcedHighTriage = activePathways.some(p => p.actions.triageLevel === 'high');
+    
+    if (hasRedFlag || forcedHighTriage) setTriageLevel('high');
     else if (highSeverity || selectedSymptoms.length > 3) setTriageLevel('medium');
     else setTriageLevel('low');
-  }, [selectedSymptoms]);
+
+    // Notify user of triggered pathways
+    if (activePathways.length > 0) {
+      const highPriority = activePathways.filter(p => p.actions.triageLevel === 'high');
+      if (highPriority.length > 0) {
+        toast.error(`CRITICAL: ${highPriority[0].title} Triggered`, {
+          description: highPriority[0].actions.alertMessage || "Immediate action required.",
+          duration: 5000
+        });
+      }
+    }
+  }, [selectedSymptoms, activePathways]);
 
   const handleCategoryClick = (categoryId: string) => {
     setSelectedCategory(categoryId);
@@ -155,84 +238,6 @@ export function SymptomAnalysis() {
         : s
     ));
     setAnalyzingSymptom(null);
-  };
-
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
-
-      mediaRecorder.ondataavailable = (event) => {
-        audioChunksRef.current.push(event.data);
-      };
-
-      mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
-        await processAudioWithAI(audioBlob);
-      };
-
-      mediaRecorder.start();
-      setIsRecording(true);
-    } catch (err) {
-      console.error("Error accessing microphone:", err);
-    }
-  };
-
-  const stopRecording = () => {
-    if (mediaRecorderRef.current) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-    }
-  };
-
-  const processAudioWithAI = async (audioBlob: Blob) => {
-    setIsAnalyzing(true);
-    try {
-      const reader = new FileReader();
-      reader.readAsDataURL(audioBlob);
-      reader.onloadend = async () => {
-        try {
-          const base64Audio = (reader.result as string).split(',')[1];
-          const apiKey = process.env.GEMINI_API_KEY;
-          if (!apiKey) {
-            toast.error("Gemini API key is missing");
-            setIsAnalyzing(false);
-            return;
-          }
-          const response = await generateContentWithRetry({
-            model: "gemini-3-flash-preview",
-            contents: {
-              parts: [
-                { text: "Extract clinical symptoms from this audio. Return a JSON array of symptom IDs that match our system. System IDs: " + Object.values(ALL_MODELS).flat().map(m => m.id).join(', ') },
-                { inlineData: { data: base64Audio, mimeType: "audio/wav" } }
-              ]
-            },
-            config: { responseMimeType: "application/json" }
-          });
-
-          const extractedIds = JSON.parse(response.text || "[]");
-          
-          // Add extracted symptoms
-          Object.values(ALL_MODELS).flat().forEach(model => {
-            if (extractedIds.includes(model.id)) {
-              const categoryId = Object.keys(ALL_MODELS).find(key => ALL_MODELS[key].some(m => m.id === model.id)) || 'head';
-              toggleSymptom(model, categoryId);
-            }
-          });
-        } catch (err) {
-          console.error("AI Transcription processing failed:", err);
-          toast.error("Failed to process audio analysis");
-        } finally {
-          setIsAnalyzing(false);
-        }
-      };
-    } catch (err) {
-      console.error("AI Transcription failed:", err);
-      toast.error("Failed to start audio analysis");
-      setIsAnalyzing(false);
-    }
   };
 
   const handleAIAnalyze = async (symptom: SelectedSymptom, e: MouseEvent) => {
@@ -370,7 +375,7 @@ export function SymptomAnalysis() {
     setIsGeneratingSOAP(true);
     try {
       const prompt = `Generate a professional clinical SOAP note for a patient with the following symptoms: ${selectedSymptoms.map(s => s.label).join(', ')}. 
-      Patient History: ${patientHistory.conditions.join(', ')}. 
+      Patient History: ${patientData.conditions.join(', ')}. 
       Format as Subjective, Objective, Assessment, Plan.`;
       
       const response = await generateContentWithRetry({
@@ -411,20 +416,19 @@ export function SymptomAnalysis() {
             )} />
             <span className="text-xs uppercase tracking-wider">Triage: {triageLevel} Risk</span>
           </div>
+          {selectedPatient ? (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 border border-indigo-100 rounded-full text-xs font-medium text-indigo-700">
+              <User className="w-3 h-3" />
+              Patient: {selectedPatient.name} ({selectedPatient.age}y {selectedPatient.gender})
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 border border-amber-100 rounded-full text-xs font-medium text-amber-700">
+              <AlertTriangle className="w-3 h-3" />
+              No Patient Selected (Using Default)
+            </div>
+          )}
         </div>
         <div className="flex gap-3">
-          <button 
-            onClick={isRecording ? stopRecording : startRecording}
-            className={cn(
-              "px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 shadow-sm",
-              isRecording 
-                ? "bg-red-500 text-white hover:bg-red-600 animate-pulse" 
-                : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"
-            )}
-          >
-            {isRecording ? <Square className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-            {isRecording ? "Stop Dictation" : "Dictate Symptoms"}
-          </button>
           <button 
             onClick={generateSOAPNote}
             disabled={selectedSymptoms.length === 0 || isGeneratingSOAP}
@@ -497,11 +501,12 @@ export function SymptomAnalysis() {
             ))}
           </div>
         </div>
+        <ClinicalGuardrails activePathways={activePathways} />
         <DifferentialDiagnosisGrid symptoms={selectedSymptoms} />
       </div>
 
       <div className="space-y-6">
-        <ClinicalScoresWidget symptoms={selectedSymptoms} patientHistory={patientHistory} />
+        <ClinicalScoresWidget symptoms={selectedSymptoms} patientHistory={patientData} />
 
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col">
             <div className="flex justify-between items-center mb-4">

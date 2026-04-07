@@ -7,6 +7,7 @@ import { SavedKnowledgeService } from '@/lib/SavedKnowledgeService';
 import { Bookmark, Check } from 'lucide-react';
 import { auth, googleProvider } from '@/lib/firebase';
 import { signInWithPopup, onAuthStateChanged } from 'firebase/auth';
+import { LOCAL_ENCYCLOPEDIA } from '@/data/localEncyclopedia';
 
 interface EncyclopediaEntry {
   term: string;
@@ -25,10 +26,44 @@ const categories = [
   { name: 'Medical Terminology', icon: Microscope, color: 'text-emerald-500', bg: 'bg-emerald-50' },
 ];
 
+const encyclopediaData: Record<string, string[]> = {
+  'Diseases & Conditions': [
+    "Diabetes Mellitus", "Hypertension", "Myocardial Infarction", "Asthma", "Pneumonia",
+    "Osteoarthritis", "Alzheimer's Disease", "COPD", "Rheumatoid Arthritis", "GERD",
+    "Atrial Fibrillation", "Multiple Sclerosis", "Parkinson's Disease", "Crohn's Disease",
+    "Ulcerative Colitis", "Psoriasis", "Systemic Lupus Erythematosus", "Celiac Disease",
+    "Sleep Apnea", "Hypothyroidism", "Hyperthyroidism", "Anemia", "Sepsis", "Stroke",
+    "Migraine", "Epilepsy", "Gout", "Fibromyalgia", "Endometriosis", "PCOS"
+  ],
+  'Procedures & Tests': [
+    "Echocardiogram", "Colonoscopy", "Endoscopy", "MRI Scan", "CT Scan", "PET Scan",
+    "Electrocardiogram (ECG)", "Lumbar Puncture", "Biopsy", "Angiography",
+    "Stress Test", "Pulmonary Function Test", "Mammogram", "Ultrasound",
+    "Blood Culture", "Complete Blood Count (CBC)", "Basic Metabolic Panel (BMP)",
+    "Liver Function Test", "Thyroid Panel", "Urinalysis"
+  ],
+  'Anatomy & Physiology': [
+    "Cardiovascular System", "Respiratory System", "Nervous System", "Digestive System",
+    "Endocrine System", "Musculoskeletal System", "Immune System", "Renal System",
+    "Integumentary System", "Reproductive System", "Lymphatic System", "Homeostasis",
+    "Metabolism", "Cell Biology", "Genetics"
+  ],
+  'Medical Specialties': [
+    "Cardiology", "Dermatology", "Endocrinology", "Gastroenterology", "Hematology",
+    "Infectious Disease", "Nephrology", "Neurology", "Oncology", "Ophthalmology",
+    "Orthopedics", "Otolaryngology", "Pediatrics", "Psychiatry", "Pulmonology",
+    "Rheumatology", "Urology", "Gynecology", "Obstetrics"
+  ],
+  'Medical Terminology': [
+    "Acute vs Chronic", "Benign vs Malignant", "Idiopathic", "Iatrogenic", "Prognosis",
+    "Etiology", "Pathogenesis", "Epidemiology", "Symptom vs Sign", "Syndrome",
+    "Comorbidity", "Contraindication", "Efficacy", "Placebo", "Systemic"
+  ]
+};
+
 const commonTerms = [
   "Diabetes Mellitus", "Hypertension", "Myocardial Infarction", "Asthma", "Pneumonia",
-  "Osteoarthritis", "Alzheimer's Disease", "Chronic Obstructive Pulmonary Disease",
-  "Rheumatoid Arthritis", "Gastroesophageal Reflux Disease"
+  "Osteoarthritis", "Alzheimer's Disease", "COPD", "Rheumatoid Arthritis", "GERD"
 ];
 
 export function Encyclopedia() {
@@ -37,9 +72,12 @@ export function Encyclopedia() {
   const [entry, setEntry] = useState<EncyclopediaEntry | null>(null);
   const [loading, setLoading] = useState(false);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isSaved, setIsSaved] = useState(false);
   const [user, setUser] = useState(auth.currentUser);
+
+  const displayTerms = activeCategory ? encyclopediaData[activeCategory] : commonTerms;
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -85,6 +123,16 @@ export function Encyclopedia() {
     setLoading(true);
     setEntry(null);
     setError(null);
+
+    // Update recent searches
+    setRecentSearches(prev => [term, ...prev.filter(t => t !== term)].slice(0, 5));
+
+    // Check local data first
+    if (LOCAL_ENCYCLOPEDIA[term]) {
+      setEntry(LOCAL_ENCYCLOPEDIA[term]);
+      setLoading(false);
+      return;
+    }
 
     try {
       const response = await generateContentWithRetry({
@@ -187,7 +235,7 @@ export function Encyclopedia() {
                 </h3>
               </div>
               <div className="p-2 space-y-1 max-h-[300px] overflow-y-auto">
-                {commonTerms.map((term) => (
+                {displayTerms.map((term) => (
                   <button
                     key={term}
                     onClick={() => fetchEntry(term)}
@@ -202,6 +250,25 @@ export function Encyclopedia() {
                 ))}
               </div>
             </div>
+
+            {recentSearches.length > 0 && (
+              <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="p-3 bg-slate-50 border-b border-slate-200">
+                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Recent Searches</h3>
+                </div>
+                <div className="p-2 space-y-1">
+                  {recentSearches.map((term) => (
+                    <button
+                      key={term}
+                      onClick={() => fetchEntry(term)}
+                      className="w-full text-left p-2 rounded-lg text-sm text-slate-600 hover:bg-slate-50 transition-all"
+                    >
+                      {term}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

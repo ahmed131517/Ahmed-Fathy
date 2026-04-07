@@ -38,6 +38,11 @@ export const HEAD_MODELS: SymptomModel[] = [
       "Weakness or numbness on one side",
       "Difficulty speaking",
       "Vision loss"
+    ],
+    requiredExams: [
+      "Perform a full neurological exam",
+      "Assess for focal neurological deficits",
+      "Check for meningeal signs (if fever/stiffness)"
     ]
   },
   {
@@ -88,6 +93,12 @@ export const HEAD_MODELS: SymptomModel[] = [
       "Unequal pupil size",
       "Slurred speech",
       "Worsening confusion"
+    ],
+    requiredExams: [
+      "Assess GCS score",
+      "Perform a full neurological exam",
+      "Check pupil size and reactivity",
+      "Perform balance testing (e.g., Romberg test)"
     ]
   },
   {
@@ -104,6 +115,12 @@ export const HEAD_MODELS: SymptomModel[] = [
       "Double vision",
       "Difficulty speaking or swallowing",
       "Facial drooping or limb weakness"
+    ],
+    requiredExams: [
+      "Perform Dix-Hallpike maneuver (if vertigo)",
+      "Assess for nystagmus",
+      "Check orthostatic blood pressure",
+      "Perform HINTS exam (if acute vestibular syndrome)"
     ]
   },
   {
@@ -875,6 +892,12 @@ export const BACK_MODELS: SymptomModel[] = [
     redFlags: [
       "Saddle anesthesia (numbness in groin)",
       "Progressive loss of sensation"
+    ],
+    requiredExams: [
+      "Perform straight leg raise test",
+      "Assess for saddle anesthesia",
+      "Check lower extremity strength and reflexes",
+      "Perform palpation for spinal tenderness"
     ]
   }
 ];
@@ -907,6 +930,12 @@ export const LUNGS_MODELS: SymptomModel[] = [
       "Inability to speak in full sentences",
       "Severe chest pain",
       "Stridor (high-pitched breathing sound)"
+    ],
+    requiredExams: [
+      "Auscultate for breath sounds (wheezing, crackles)",
+      "Assess for use of accessory muscles",
+      "Check oxygen saturation",
+      "Perform chest percussion"
     ]
   },
   {
@@ -1015,6 +1044,12 @@ export const HEART_MODELS: SymptomModel[] = [
       "Sweating and nausea (cold sweat)",
       "Shortness of breath",
       "Pain lasting more than 15 minutes"
+    ],
+    requiredExams: [
+      "Perform a full cardiovascular exam",
+      "Auscultate for heart sounds and murmurs",
+      "Check for peripheral edema",
+      "Assess for jugular venous distension (JVD)"
     ]
   },
   {
@@ -1480,6 +1515,12 @@ export const MUSCULOSKELETAL_MODELS: SymptomModel[] = [
       "Inability to bear weight",
       "Associated fever",
       "Sudden onset of severe pain"
+    ],
+    requiredExams: [
+      "Assess for joint effusion",
+      "Check range of motion",
+      "Perform Lachman test (if ACL suspected)",
+      "Perform McMurray test (if meniscus suspected)"
     ]
   },
   {
@@ -1531,6 +1572,12 @@ export const MUSCULOSKELETAL_MODELS: SymptomModel[] = [
       "Associated shortness of breath",
       "Chest pain",
       "Cold, pale limb"
+    ],
+    requiredExams: [
+      "Measure calf circumference (if unilateral swelling)",
+      "Assess for Homan's sign (though low sensitivity)",
+      "Check for pitting edema",
+      "Assess peripheral pulses"
     ]
   },
   {

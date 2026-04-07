@@ -902,5 +902,167 @@ export const COMMON_DIAGNOSES: Diagnosis[] = [
     commonSymptoms: ["lungs_shortness_of_breath", "wheezing", "throat_itching", "hives_urticaria"],
     redFlags: ["Hypotension", "Swelling of tongue/throat", "Loss of consciousness"],
     icd10: "T78.2"
+  },
+  {
+    id: "sle",
+    name: "Systemic Lupus Erythematosus (SLE)",
+    category: "Autoimmune",
+    description: "A chronic autoimmune disease that can affect many parts of the body.",
+    commonSymptoms: ["skin_rash", "msk_joint_pain", "gen_fever", "gen_fatigue", "chest_tightness"],
+    redFlags: ["Lupus nephritis (renal failure)", "CNS lupus (seizures, psychosis)", "Severe pleuritis/pericarditis"],
+    icd10: "M32.9"
+  },
+  {
+    id: "sjogrens",
+    name: "Sjogren's Syndrome",
+    category: "Autoimmune",
+    description: "An immune system disorder characterized by dry eyes and a dry mouth.",
+    commonSymptoms: ["eye_itching", "throat_itching", "gen_fatigue", "msk_joint_pain"],
+    redFlags: ["Severe corneal ulceration", "Lymphoma risk", "Systemic vasculitis"],
+    icd10: "M35.00"
+  },
+  {
+    id: "dengue_fever",
+    name: "Dengue Fever",
+    category: "Infectious",
+    description: "A mosquito-borne viral infection causing severe flu-like symptoms.",
+    commonSymptoms: ["gen_fever", "headache_migraine", "msk_joint_pain", "nausea", "skin_rash"],
+    redFlags: ["Dengue Hemorrhagic Fever (bleeding, low platelets)", "Severe abdominal pain", "Persistent vomiting"],
+    icd10: "A90"
+  },
+  {
+    id: "sickle_cell_anemia",
+    name: "Sickle Cell Anemia",
+    category: "Hematologic",
+    description: "An inherited group of disorders that cause red blood cells to become misshapen and break down.",
+    commonSymptoms: ["msk_bone_pain", "gen_fatigue", "jaundice", "lungs_shortness_of_breath"],
+    redFlags: ["Vaso-occlusive crisis (severe pain)", "Acute chest syndrome", "Stroke symptoms"],
+    icd10: "D57.1"
+  },
+  {
+    id: "myasthenia_gravis",
+    name: "Myasthenia Gravis",
+    category: "Neurological",
+    description: "A weakness and rapid fatigue of muscles under voluntary control.",
+    commonSymptoms: ["msk_muscle_weakness", "vision_blurring", "neuro_speech_difficulty", "throat_hoarseness"],
+    redFlags: ["Myasthenic crisis (respiratory failure)", "Severe difficulty swallowing"],
+    icd10: "G70.00"
+  },
+  {
+    id: "guillain_barre",
+    name: "Guillain-Barre Syndrome",
+    category: "Neurological",
+    description: "A rare disorder in which your body's immune system attacks your nerves.",
+    commonSymptoms: ["msk_muscle_weakness", "neuro_numbness", "neuro_coordination"],
+    redFlags: ["Rapidly ascending paralysis", "Respiratory distress", "Autonomic instability"],
+    icd10: "G61.0"
+  },
+  {
+    id: "bipolar_disorder",
+    name: "Bipolar Disorder",
+    category: "Psychiatric",
+    description: "A disorder associated with episodes of mood swings ranging from depressive lows to manic highs.",
+    commonSymptoms: ["gen_fatigue", "neuro_memory_loss", "palpitations"],
+    redFlags: ["Severe mania (psychosis)", "Suicidal ideation during depressive phase", "Risk-taking behavior"],
+    icd10: "F31.9"
+  },
+  {
+    id: "ptsd",
+    name: "Post-Traumatic Stress Disorder (PTSD)",
+    category: "Psychiatric",
+    description: "A disorder in which a person has difficulty recovering after experiencing or witnessing a terrifying event.",
+    commonSymptoms: ["palpitations", "gen_fatigue", "headache_tension", "neuro_memory_loss"],
+    redFlags: ["Severe flashbacks", "Suicidal ideation", "Extreme hypervigilance"],
+    icd10: "F43.10"
+  },
+  {
+    id: "ectopic_pregnancy",
+    name: "Ectopic Pregnancy",
+    category: "Emergency",
+    description: "A pregnancy in which the fertilized egg implants outside the uterus.",
+    commonSymptoms: ["abdominal_pain", "blood_in_stool", "head_dizziness_vertigo"],
+    redFlags: ["Severe acute abdominal pain", "Signs of shock (hypotension, tachycardia)", "Shoulder tip pain"],
+    icd10: "O00.9"
+  },
+  {
+    id: "ovarian_torsion",
+    name: "Ovarian Torsion",
+    category: "Emergency",
+    description: "When an ovary twists around the tissues that support it, cutting off blood supply.",
+    commonSymptoms: ["abdominal_pain", "nausea", "vomiting"],
+    redFlags: ["Sudden, severe pelvic pain", "Adnexal mass", "Fever"],
+    icd10: "N83.51"
+  },
+  {
+    id: "testicular_torsion",
+    name: "Testicular Torsion",
+    category: "Emergency",
+    description: "When the spermatic cord twists, cutting off the blood supply to the testicle.",
+    commonSymptoms: ["abdominal_pain", "nausea", "vomiting"],
+    redFlags: ["Sudden, severe scrotal pain", "Swollen, high-riding testicle", "Absent cremasteric reflex"],
+    icd10: "N44.00"
+  },
+  {
+    id: "hypertension",
+    name: "Essential Hypertension",
+    category: "Cardiovascular",
+    description: "High blood pressure that doesn't have a known secondary cause.",
+    commonSymptoms: ["headache_tension", "head_dizziness_vertigo", "vision_blurring"],
+    redFlags: ["Hypertensive emergency (BP >180/120 with end-organ damage)", "Severe headache", "Confusion"],
+    icd10: "I10"
+  },
+  {
+    id: "hyperlipidemia",
+    name: "Hyperlipidemia",
+    category: "Metabolic",
+    description: "High levels of lipids (fats) in the blood.",
+    commonSymptoms: ["gen_fatigue"],
+    redFlags: ["Xanthomas (fatty deposits under skin)", "Early onset cardiovascular disease"],
+    icd10: "E78.5"
+  },
+  {
+    id: "hypoglycemia",
+    name: "Hypoglycemia",
+    category: "Metabolic",
+    description: "Low blood sugar, common in diabetics on insulin.",
+    commonSymptoms: ["neuro_tremor", "palpitations", "gen_fatigue", "head_dizziness_vertigo", "gen_thirst"],
+    redFlags: ["Confusion", "Seizures", "Loss of consciousness", "Severe diaphoresis"],
+    icd10: "E16.2"
+  },
+  {
+    id: "hyperkalemia",
+    name: "Hyperkalemia",
+    category: "Metabolic",
+    description: "High potassium levels in the blood, potentially life-threatening.",
+    commonSymptoms: ["palpitations", "msk_muscle_weakness", "nausea"],
+    redFlags: ["Cardiac arrest", "Severe arrhythmias", "Ascending paralysis"],
+    icd10: "E87.5"
+  },
+  {
+    id: "opioid_overdose",
+    name: "Opioid Overdose",
+    category: "Emergency",
+    description: "Life-threatening condition caused by excessive opioid intake.",
+    commonSymptoms: ["lungs_shortness_of_breath", "gen_fatigue"],
+    redFlags: ["Respiratory depression (slow/shallow breathing)", "Pinpoint pupils", "Unresponsiveness", "Cyanosis"],
+    icd10: "T40.2X1A"
+  },
+  {
+    id: "alcohol_withdrawal",
+    name: "Alcohol Withdrawal",
+    category: "Emergency",
+    description: "Symptoms that occur when someone who has been drinking heavily suddenly stops.",
+    commonSymptoms: ["neuro_tremor", "nausea", "vomiting", "palpitations", "gen_fever"],
+    redFlags: ["Delirium Tremens (confusion, hallucinations)", "Seizures", "Severe hypertension"],
+    icd10: "F10.239"
+  },
+  {
+    id: "carbon_monoxide_poisoning",
+    name: "Carbon Monoxide Poisoning",
+    category: "Emergency",
+    description: "Toxic condition caused by inhaling carbon monoxide gas.",
+    commonSymptoms: ["headache_tension", "head_dizziness_vertigo", "nausea", "gen_fatigue", "lungs_shortness_of_breath"],
+    redFlags: ["Confusion", "Chest pain", "Loss of consciousness", "Cherry-red skin (late sign)"],
+    icd10: "T58.91XA"
   }
 ];
