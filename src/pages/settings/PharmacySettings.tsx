@@ -3,6 +3,7 @@ import { Heart, Stethoscope, FlaskConical, Pill, ClipboardList, AlertCircle, Che
 import { useSettings } from "../../lib/SettingsContext";
 import { cn } from "../../lib/utils";
 import { toast } from "sonner";
+import { EditTemplateModal } from "../../components/modals/EditTemplateModal";
 
 export function PharmacySettings() {
   const { 
@@ -10,11 +11,22 @@ export function PharmacySettings() {
     labIntegration, 
     drugInteractionCheck, 
     defaultAppointmentDuration,
+    dispensingTemplates,
     updateSettings 
   } = useSettings();
 
-  const handleEditTemplate = (templateName: string) => {
-    toast.info(`Editing template: ${templateName}`);
+  const [editingTemplate, setEditingTemplate] = useState<{ key: keyof typeof dispensingTemplates, name: string } | null>(null);
+
+  const handleSaveTemplate = (newContent: string) => {
+    if (editingTemplate) {
+      updateSettings({
+        dispensingTemplates: {
+          ...dispensingTemplates,
+          [editingTemplate.key]: newContent
+        }
+      });
+      toast.success(`Template ${editingTemplate.name} updated`);
+    }
   };
 
   return (
@@ -99,11 +111,16 @@ export function PharmacySettings() {
           <h2 className="text-lg font-bold text-slate-900 dark:text-white">Dispensing Templates</h2>
         </div>
         <div className="space-y-2">
-          {['Standard Prescription', 'Controlled Substance', 'Refill Request', 'Consultation Note'].map((template) => (
-            <div key={template} className="flex items-center justify-between p-3 rounded-lg border border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-              <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{template}</span>
+          {[
+            { key: 'standard', name: 'Standard Prescription' },
+            { key: 'controlled', name: 'Controlled Substance' },
+            { key: 'refill', name: 'Refill Request' },
+            { key: 'consultation', name: 'Consultation Note' }
+          ].map((template) => (
+            <div key={template.key} className="flex items-center justify-between p-3 rounded-lg border border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+              <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{template.name}</span>
               <button 
-                onClick={() => handleEditTemplate(template)}
+                onClick={() => setEditingTemplate({ key: template.key as keyof typeof dispensingTemplates, name: template.name })}
                 className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline uppercase tracking-wider"
               >
                 Edit
@@ -112,6 +129,16 @@ export function PharmacySettings() {
           ))}
         </div>
       </div>
+      
+      {editingTemplate && (
+        <EditTemplateModal
+          isOpen={!!editingTemplate}
+          onClose={() => setEditingTemplate(null)}
+          templateName={editingTemplate.name}
+          content={dispensingTemplates[editingTemplate.key]}
+          onSave={handleSaveTemplate}
+        />
+      )}
     </div>
   );
 }

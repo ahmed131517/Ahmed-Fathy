@@ -53,7 +53,21 @@ import { PharmacyReports } from "./pages/pharmacy-system/PharmacyReports";
 import { Toaster } from "sonner";
 import { useEffect, useState } from "react";
 import { startSyncEngine, syncAll } from "./lib/sync";
+import { checkAndPerformAutoBackup } from "./services/backupService";
+import { checkAndSendAppointmentReminders } from "./services/notificationService";
+import { useSettings } from "./lib/SettingsContext";
 import { Cloud, CloudOff, RefreshCw } from "lucide-react";
+
+function BackupInitializer() {
+  const { autoBackup, appointmentReminders } = useSettings();
+  
+  useEffect(() => {
+    checkAndPerformAutoBackup(autoBackup);
+    checkAndSendAppointmentReminders(appointmentReminders);
+  }, [autoBackup, appointmentReminders]);
+
+  return null;
+}
 
 function SyncStatus() {
   const [isSyncing, setIsSyncing] = useState(false);
@@ -67,7 +81,7 @@ function SyncStatus() {
   };
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2 bg-white dark:bg-slate-900 px-3 py-2 rounded-full border border-slate-200 dark:border-slate-800 shadow-lg text-xs font-medium text-slate-600 dark:text-slate-400">
+    <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2 bg-white dark:bg-slate-900 px-3 py-2 rounded-full border border-slate-200 dark:border-slate-800 shadow-lg text-xs font-medium text-slate-600 dark:text-slate-400 no-print">
       {isSyncing ? (
         <RefreshCw className="w-3 h-3 animate-spin text-indigo-500" />
       ) : (
@@ -94,6 +108,7 @@ export default function App() {
   return (
     <ThemeProvider defaultTheme="light" storageKey="app-theme">
       <SettingsProvider>
+        <BackupInitializer />
         <UserProvider>
           <NotificationProvider>
             <AISettingsProvider>

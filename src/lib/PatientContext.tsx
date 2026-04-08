@@ -32,6 +32,7 @@ export function PatientProvider({ children }: { children: ReactNode }) {
     name: p.name,
     age: p.age,
     gender: p.gender,
+    phone: p.phone,
     bloodType: p.bloodType,
     lastVisit: p.lastVisit,
     status: p.status,

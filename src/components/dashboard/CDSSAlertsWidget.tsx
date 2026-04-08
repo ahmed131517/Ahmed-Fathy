@@ -1,10 +1,12 @@
 import React from 'react';
 import { useCDSS } from '../../lib/CDSSContext';
+import { useSettings } from '../../lib/SettingsContext';
 import { AlertTriangle, AlertCircle, X, Info } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
 export function CDSSAlertsWidget({ patientId }: { patientId?: string }) {
   const { alerts, dismissAlert, getAlertsForPatient } = useCDSS();
+  const { showPatientIds } = useSettings();
   
   const displayAlerts = patientId ? getAlertsForPatient(patientId) : alerts;
 
@@ -50,7 +52,7 @@ export function CDSSAlertsWidget({ patientId }: { patientId?: string }) {
               )}
               <p className="text-[10px] mt-2 opacity-60">
                 {formatDistanceToNow(alert.timestamp, { addSuffix: true })}
-                {!patientId && ` • Patient ID: ${alert.patientId}`}
+                {showPatientIds && !patientId && ` • Patient ID: ${alert.patientId}`}
               </p>
             </div>
             <button 

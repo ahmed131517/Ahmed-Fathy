@@ -3,6 +3,7 @@ export interface Patient {
   name: string;
   age: number;
   gender: string;
+  phone?: string;
   bloodType: string;
   lastVisit: string;
   status: string;

@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { 
   Sparkles, Brain, MessageSquare, Zap, Shield, 
   ExternalLink, Volume2, Bot, Trash2, Loader2,
-  Cloud, Server, CheckCircle2, XCircle
+  Cloud, Server, CheckCircle2, XCircle, Globe, Info
 } from "lucide-react";
 import { useSettings } from "../../lib/SettingsContext";
 import { useAISettings } from "../../lib/AISettingsContext";
@@ -18,6 +18,7 @@ export function AISettings() {
   const [predictiveScheduling, setPredictiveScheduling] = useState(false);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [isClearing, setIsClearing] = useState(false);
+  const [isTestingVoice, setIsTestingVoice] = useState(false);
 
   useEffect(() => {
     const loadVoices = () => {
@@ -52,6 +53,32 @@ export function AISettings() {
       } finally {
         setIsClearing(false);
       }
+    }
+  };
+
+  const handleTestVoice = () => {
+    if (isTestingVoice) return;
+    
+    setIsTestingVoice(true);
+    const text = "This is a test of the clinical assistant voice settings. How does it sound?";
+    
+    if (aiSettings.useElevenLabs) {
+      toast.info("Testing ElevenLabs voice... (Simulated)");
+      // In a real app, this would call the ElevenLabs API
+      setTimeout(() => setIsTestingVoice(false), 2000);
+    } else {
+      const utterance = new SpeechSynthesisUtterance(text);
+      const selectedVoice = voices.find(v => v.voiceURI === aiSettings.voiceURI);
+      if (selectedVoice) utterance.voice = selectedVoice;
+      utterance.rate = aiSettings.speechRate;
+      
+      utterance.onend = () => setIsTestingVoice(false);
+      utterance.onerror = () => {
+        setIsTestingVoice(false);
+        toast.error("Speech synthesis failed");
+      };
+      
+      window.speechSynthesis.speak(utterance);
     }
   };
 
@@ -111,15 +138,67 @@ export function AISettings() {
           {/* Cloud Model */}
           <div className={cn("transition-opacity duration-300", aiProcessingMode !== 'cloud' && "opacity-50 pointer-events-none")}>
             <h3 className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-3">Cloud Model</h3>
-            <select 
-              value={modelType} 
-              onChange={(e) => updateGlobalSettings({ modelType: e.target.value })}
-              className="w-full p-3 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-cyan-500 outline-none"
-            >
-              <option value="gemini-2.5-flash">Gemini 2.5 Flash (Fast)</option>
-              <option value="gemini-3-flash-preview">Gemini 3 Flash (Preview)</option>
-              <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro (Advanced)</option>
-            </select>
+            <div className="space-y-4">
+              <select 
+                value={modelType} 
+                onChange={(e) => updateGlobalSettings({ modelType: e.target.value })}
+                className="w-full p-3 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-cyan-500 outline-none"
+              >
+                <option value="gemini-2.5-flash">Gemini 2.5 Flash (Fast)</option>
+                <option value="gemini-3-flash-preview">Gemini 3 Flash (Preview)</option>
+                <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro (Advanced)</option>
+              </select>
+
+              {/* OpenRouter Integration */}
+              <div className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <Globe className="w-4 h-4 text-indigo-500" />
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">Use OpenRouter</h4>
+                  </div>
+                  <button 
+                    onClick={() => updateAISettings({ useOpenRouter: !aiSettings.useOpenRouter })}
+                    className={`w-11 h-6 rounded-full relative cursor-pointer transition-colors ${aiSettings.useOpenRouter ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'}`}
+                  >
+                    <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 shadow-sm transition-transform ${aiSettings.useOpenRouter ? 'right-0.5 translate-x-0' : 'left-0.5 dark:bg-slate-400'}`}></div>
+                  </button>
+                </div>
+
+                {aiSettings.useOpenRouter && (
+                  <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                        OpenRouter API Key
+                      </label>
+                      <input 
+                        type="password" 
+                        value={aiSettings.openRouterApiKey || ''} 
+                        onChange={(e) => updateAISettings({ openRouterApiKey: e.target.value })}
+                        placeholder="sk-or-v1-..."
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 dark:text-white outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                        Preferred Model
+                      </label>
+                      <select
+                        value={aiSettings.openRouterModel}
+                        onChange={(e) => updateAISettings({ openRouterModel: e.target.value })}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 dark:text-white outline-none"
+                      >
+                        <option value="openai/gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                        <option value="openai/gpt-4-turbo">GPT-4 Turbo</option>
+                        <option value="anthropic/claude-3-opus">Claude 3 Opus</option>
+                        <option value="anthropic/claude-3-sonnet">Claude 3 Sonnet</option>
+                        <option value="google/gemini-pro-1.5">Gemini Pro 1.5</option>
+                        <option value="mistralai/mixtral-8x7b-instruct">Mixtral 8x7B</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* Temperature */}
@@ -177,81 +256,167 @@ export function AISettings() {
 
       {/* Voice & Audio */}
       <div className="card-panel p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <Volume2 className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-          <h2 className="text-lg font-bold text-slate-900 dark:text-white">Voice & Audio</h2>
-        </div>
-        <div className="space-y-6">
-          {/* ElevenLabs Toggle */}
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Use ElevenLabs TTS</h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">More natural and expressive voice</p>
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-2">
+            <div className="p-2 bg-indigo-50 dark:bg-indigo-500/10 rounded-lg">
+              <Volume2 className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
             </div>
-            <button 
-              onClick={() => updateAISettings({ useElevenLabs: !aiSettings.useElevenLabs })}
-              className={`w-11 h-6 rounded-full relative cursor-pointer transition-colors ${aiSettings.useElevenLabs ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'}`}
+            <div>
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white">Voice & Audio</h2>
+              <p className="text-xs text-slate-500">Configure text-to-speech and dictation settings</p>
+            </div>
+          </div>
+          <button
+            onClick={handleTestVoice}
+            disabled={isTestingVoice}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-indigo-500/20 disabled:opacity-50"
+          >
+            {isTestingVoice ? <Loader2 className="w-4 h-4 animate-spin" /> : <Volume2 className="w-4 h-4" />}
+            Test Voice
+          </button>
+        </div>
+
+        <div className="space-y-8">
+          {/* Engine Selection */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl">
+            <button
+              onClick={() => updateAISettings({ useElevenLabs: false })}
+              className={cn(
+                "flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition-all",
+                !aiSettings.useElevenLabs
+                  ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+              )}
             >
-              <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 shadow-sm transition-transform ${aiSettings.useElevenLabs ? 'right-0.5 translate-x-0' : 'left-0.5 dark:bg-slate-400'}`}></div>
+              <Server className="w-4 h-4" />
+              System Native
+            </button>
+            <button
+              onClick={() => updateAISettings({ useElevenLabs: true })}
+              className={cn(
+                "flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition-all",
+                aiSettings.useElevenLabs
+                  ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+              )}
+            >
+              <Zap className="w-4 h-4" />
+              ElevenLabs (Premium)
             </button>
           </div>
 
-          {/* ElevenLabs API Key */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-              ElevenLabs API Key
-            </label>
-            <div className="relative">
-              <input 
-                type="password" 
-                value={aiSettings.elevenLabsApiKey || ''} 
-                onChange={(e) => updateAISettings({ elevenLabsApiKey: e.target.value })}
-                placeholder="Enter your ElevenLabs API key"
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 dark:text-white outline-none pr-10"
-              />
-              <button className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600">
-                <span className="sr-only">Toggle visibility</span>
-                {/* Add eye icon here if needed */}
-              </button>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="space-y-6">
+              {aiSettings.useElevenLabs ? (
+                <div className="space-y-4 animate-in fade-in slide-in-from-left-4 duration-300">
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                      ElevenLabs API Key
+                    </label>
+                    <input 
+                      type="password" 
+                      value={aiSettings.elevenLabsApiKey || ''} 
+                      onChange={(e) => updateAISettings({ elevenLabsApiKey: e.target.value })}
+                      placeholder="Enter your API key"
+                      className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 dark:text-white outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                      ElevenLabs Voice
+                    </label>
+                    <select
+                      value={aiSettings.elevenLabsVoiceId || ''}
+                      onChange={(e) => updateAISettings({ elevenLabsVoiceId: e.target.value })}
+                      className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 dark:text-white outline-none"
+                    >
+                      <option value="21m00Tcm4TlvDq8ikWAM">Rachel (Female)</option>
+                      <option value="AZnzlk1XhkDUD0Mwv9Pv">Nicole (Female)</option>
+                      <option value="EXAVITQu4vr4xnSDxMaL">Bella (Female)</option>
+                      <option value="ErXw9S1q39YNo94nki54">Antoni (Male)</option>
+                      <option value="VR6AewrSTuWM3pbcjgv0">Josh (Male)</option>
+                    </select>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4 animate-in fade-in slide-in-from-left-4 duration-300">
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                      System Voice
+                    </label>
+                    <select
+                      value={aiSettings.voiceURI}
+                      onChange={(e) => updateAISettings({ voiceURI: e.target.value })}
+                      className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 dark:text-white outline-none"
+                    >
+                      {voices.map((voice) => (
+                        <option key={voice.voiceURI} value={voice.voiceURI}>
+                          {voice.name} ({voice.lang})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <div className="flex justify-between items-center mb-1.5">
+                      <label className="text-sm font-bold text-slate-700 dark:text-slate-300">Speech Rate</label>
+                      <span className="text-xs font-mono text-indigo-600">{aiSettings.speechRate.toFixed(1)}x</span>
+                    </div>
+                    <input 
+                      type="range" 
+                      min="0.5" 
+                      max="2" 
+                      step="0.1"
+                      value={aiSettings.speechRate} 
+                      onChange={(e) => updateAISettings({ speechRate: parseFloat(e.target.value) })}
+                      className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
-            <p className="text-xs text-slate-500 mt-1.5">
-              Get your API key from <a href="https://elevenlabs.io" target="_blank" className="text-indigo-600 hover:underline">elevenlabs.io</a>
-            </p>
-          </div>
 
-          {/* Voice */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-              Voice
-            </label>
-            <select
-              value={aiSettings.elevenLabsVoiceId || ''}
-              onChange={(e) => updateAISettings({ elevenLabsVoiceId: e.target.value })}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 dark:text-white"
-            >
-              <option value="21m00Tcm4TlvDq8ikWAM">Rachel - Soft, natural female</option>
-              {/* Add more voices as needed */}
-            </select>
-          </div>
+            <div className="space-y-6">
+              <div>
+                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  Speech Recognition Language
+                </label>
+                <select
+                  value={aiSettings.dictationLanguage}
+                  onChange={(e) => updateAISettings({ dictationLanguage: e.target.value })}
+                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 dark:text-white outline-none"
+                >
+                  <option value="en-US">English (US)</option>
+                  <option value="en-GB">English (UK)</option>
+                  <option value="ar-SA">العربية (Saudi Arabia)</option>
+                  <option value="es-ES">Español (Spain)</option>
+                  <option value="fr-FR">Français (France)</option>
+                  <option value="de-DE">Deutsch (Germany)</option>
+                </select>
+                <p className="text-[10px] text-slate-500 mt-2 flex items-center gap-1">
+                  <Info className="w-3 h-3" />
+                  Used for voice-to-text dictation in clinical notes
+                </p>
+              </div>
 
-          {/* Speech Recognition Language */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-              Speech Recognition Language
-            </label>
-            <select
-              value={aiSettings.dictationLanguage}
-              onChange={(e) => updateAISettings({ dictationLanguage: e.target.value })}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 dark:text-white"
-            >
-              <option value="en-US">English (US)</option>
-              <option value="en-GB">English (UK)</option>
-              <option value="es-ES">Spanish</option>
-              <option value="fr-FR">French</option>
-              <option value="de-DE">German</option>
-              <option value="ar-SA">Arabic</option>
-            </select>
-            <p className="text-xs text-slate-500 mt-1.5">Select the language for voice input recognition</p>
+              <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">Auto-Read Responses</h3>
+                  <p className="text-[10px] text-slate-500">Automatically speak AI responses</p>
+                </div>
+                <button 
+                  onClick={() => updateAISettings({ autoRead: !aiSettings.autoRead })}
+                  className={cn(
+                    "w-11 h-6 rounded-full relative transition-colors",
+                    aiSettings.autoRead ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-700"
+                  )}
+                >
+                  <div className={cn(
+                    "w-5 h-5 bg-white rounded-full absolute top-0.5 shadow-sm transition-transform",
+                    aiSettings.autoRead ? "right-0.5" : "left-0.5"
+                  )}></div>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>

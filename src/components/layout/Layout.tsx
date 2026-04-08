@@ -25,12 +25,16 @@ export function Layout() {
       "flex h-screen w-full font-sans overflow-hidden transition-colors duration-200",
       "bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-200"
     )}>
-      <Sidebar />
+      <div className="no-print flex h-full">
+        <Sidebar />
+      </div>
       <div className="flex flex-col flex-1 overflow-hidden">
-        <Header />
-        {selectedPatient && <PatientContextBar />}
-        <main className="flex-1 overflow-y-auto p-4 md:p-6">
-          {showPatientSelection && <PatientSelection variant="compact" />}
+        <div className="no-print">
+          <Header />
+          {selectedPatient && <PatientContextBar />}
+        </div>
+        <main className="flex-1 overflow-y-auto p-4 md:p-6 print:p-0 print:overflow-visible">
+          {showPatientSelection && <div className="no-print"><PatientSelection variant="compact" /></div>}
           <Outlet />
         </main>
       </div>

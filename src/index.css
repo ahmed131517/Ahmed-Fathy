@@ -110,3 +110,45 @@ body {
 h1, h2, h3 {
   @apply tracking-tight;
 }
+
+@media print {
+  @page {
+    margin: 0.5cm;
+    size: auto;
+  }
+
+  /* Hide everything by default */
+  body * {
+    visibility: hidden;
+  }
+  
+  /* Show the modal container and its contents */
+  .print-modal, .print-modal * {
+    visibility: visible !important;
+  }
+  
+  /* Position the prescription area at the very top of the printed page */
+  #prescription-to-print {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    background: white !important;
+    visibility: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide elements with no-print class explicitly */
+  .no-print {
+    display: none !important;
+  }
+
+  /* Ensure backgrounds are printed */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}

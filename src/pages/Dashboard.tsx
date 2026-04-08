@@ -4,6 +4,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { useState, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useSettings } from "@/lib/SettingsContext";
+import { useTranslation } from "@/lib/i18n";
 import { toast } from "sonner";
 import { db } from "@/lib/db";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -17,6 +18,7 @@ const initialAlerts: any[] = [];
 export function Dashboard() {
   const navigate = useNavigate();
   const { compactMode } = useSettings();
+  const { t, isRTL } = useTranslation();
   const { patients, isLoading } = usePatient();
   const [timeRange, setTimeRange] = useState('week');
   const [alerts, setAlerts] = useState<any[]>(initialAlerts);
@@ -98,8 +100,8 @@ export function Dashboard() {
     <div className="space-y-6 h-full flex flex-col">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Dashboard</h2>
-          <p className="text-slate-500 dark:text-slate-400">Overview of today's clinical activities</p>
+          <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">{t('dashboard')}</h2>
+          <p className="text-slate-500 dark:text-slate-400">{t('dashboardOverview')}</p>
         </div>
         <div className="flex gap-3">
           <button 
@@ -109,7 +111,7 @@ export function Dashboard() {
             }}
             className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center gap-2 transition-colors shadow-sm"
           >
-            <Calendar className="w-4 h-4" /> Schedule
+            <Calendar className="w-4 h-4" /> {t('schedule')}
           </button>
         </div>
       </div>
@@ -123,7 +125,7 @@ export function Dashboard() {
           "card-panel glow-indigo",
           compactMode ? "p-4" : "p-6"
         )}>
-          <h3 className="mono-label">Total Patients</h3>
+          <h3 className="mono-label">{t('totalPatients')}</h3>
           <p className="text-3xl font-bold text-slate-900 dark:text-white mt-2 font-mono">
             {isLoading ? "..." : patients.length.toLocaleString()}
           </p>
@@ -133,7 +135,7 @@ export function Dashboard() {
           "card-panel glow-emerald",
           compactMode ? "p-4" : "p-6"
         )}>
-          <h3 className="mono-label">Active Patients</h3>
+          <h3 className="mono-label">{t('activePatients')}</h3>
           <p className="text-3xl font-bold text-slate-900 dark:text-white mt-2 font-mono">
             {isLoading ? "..." : activePatientsCount}
           </p>
@@ -143,23 +145,23 @@ export function Dashboard() {
           "card-panel glow-indigo",
           compactMode ? "p-4" : "p-6"
         )}>
-          <h3 className="mono-label">Appointments</h3>
+          <h3 className="mono-label">{t('appointments')}</h3>
           <p className="text-3xl font-bold text-slate-900 dark:text-white mt-2 font-mono">
             {totalAppointmentsCount}
           </p>
           <span className="text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10 px-2 py-1 rounded-full mt-2 self-start">
-            {todayAppointmentsCount} Today
+            {todayAppointmentsCount} {t('today')}
           </span>
         </div>
         <div className={cn(
           "card-panel glow-indigo",
           compactMode ? "p-4" : "p-6"
         )}>
-          <h3 className="mono-label">Critical Patients</h3>
+          <h3 className="mono-label">{t('criticalPatients')}</h3>
           <p className="text-3xl font-bold text-slate-900 dark:text-white mt-2 font-mono">
             {isLoading ? "..." : criticalPatientsCount}
           </p>
-          <span className="text-xs font-medium text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-500/10 px-2 py-1 rounded-full mt-2 self-start">Requires Attention</span>
+          <span className="text-xs font-medium text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-500/10 px-2 py-1 rounded-full mt-2 self-start">{t('requiresAttention')}</span>
         </div>
 
         {/* Main Chart */}
@@ -167,7 +169,7 @@ export function Dashboard() {
           "md:col-span-2 lg:col-span-3 card-panel gradient-indigo",
           compactMode ? "p-4" : "p-6"
         )}>
-          <h3 className="font-bold text-slate-900 dark:text-white text-lg mb-4 mono-label">Appointments (Last 7 Days)</h3>
+          <h3 className="font-bold text-slate-900 dark:text-white text-lg mb-4 mono-label">{t('appointments')} ({t('last7Days')})</h3>
           <div className="h-[300px]">
              <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData.patientData}>
@@ -197,14 +199,14 @@ export function Dashboard() {
           compactMode ? "p-4" : "p-6"
         )}>
           <div className="flex justify-between items-center mb-4">
-            <h3 className="font-bold text-slate-900 dark:text-white text-lg mono-label">Distribution</h3>
+            <h3 className="font-bold text-slate-900 dark:text-white text-lg mono-label">{t('distribution')}</h3>
             <select 
-              className="text-xs border-slate-200 dark:border-slate-700 rounded-md bg-transparent dark:text-white"
+              className="text-xs border-slate-200 dark:border-slate-700 rounded-md bg-transparent dark:text-white outline-none"
               value={chartType}
               onChange={(e) => setChartType(e.target.value as any)}
             >
-              <option value="department">By Appt Type</option>
-              <option value="condition">By Patient Status</option>
+              <option value="department" className="dark:bg-slate-900">{t('byApptType')}</option>
+              <option value="condition" className="dark:bg-slate-900">{t('byPatientStatus')}</option>
             </select>
           </div>
           <div className="h-[300px]">

@@ -3,27 +3,29 @@ import { Monitor, Moon, Sun, Layout, Type, Palette, Maximize2, Zap, Accessibilit
 import { useTheme } from "../../lib/ThemeContext";
 import { useSettings } from "../../lib/SettingsContext";
 import { cn } from "../../lib/utils";
+import { useTranslation } from "../../lib/i18n";
 
 export function AppearanceSettings() {
   const { theme, setTheme } = useTheme();
   const { fontSize, accentColor, fontFamily, fontColor, density, borderRadius, reducedMotion, updateSettings } = useSettings();
+  const { t, isRTL } = useTranslation();
 
   const themes = [
-    { id: 'light', name: 'Light', icon: Sun },
-    { id: 'dark', name: 'Dark', icon: Moon },
-    { id: 'system', name: 'System', icon: Monitor },
+    { id: 'light', name: t('light'), icon: Sun },
+    { id: 'dark', name: t('dark'), icon: Moon },
+    { id: 'system', name: t('system'), icon: Monitor },
   ] as const;
 
   const fontSizes = [
-    { id: 'small', name: 'Small' },
-    { id: 'medium', name: 'Medium' },
-    { id: 'large', name: 'Large' },
+    { id: 'small', name: t('small') },
+    { id: 'medium', name: t('medium') },
+    { id: 'large', name: t('large') },
   ] as const;
 
   const fontFamilies = [
     { id: 'inter', name: 'Inter' },
     { id: 'roboto', name: 'Roboto' },
-    { id: 'system', name: 'System' },
+    { id: 'system', name: t('system') },
   ] as const;
 
   const fontColors = [
@@ -33,15 +35,15 @@ export function AppearanceSettings() {
   ] as const;
 
   const densities = [
-    { id: 'compact', name: 'Compact' },
-    { id: 'comfortable', name: 'Comfortable' },
-    { id: 'cozy', name: 'Cozy' },
+    { id: 'compact', name: t('compact') },
+    { id: 'comfortable', name: t('comfortable') },
+    { id: 'cozy', name: t('cozy') },
   ] as const;
 
   const radii = [
-    { id: 'none', name: 'Sharp' },
-    { id: 'rounded', name: 'Rounded' },
-    { id: 'extra', name: 'Extra' },
+    { id: 'none', name: t('sharp') },
+    { id: 'rounded', name: t('rounded') },
+    { id: 'extra', name: t('extra') },
   ] as const;
 
   const accentColors = [
@@ -60,12 +62,12 @@ export function AppearanceSettings() {
 
     return (
       <div className="card-panel p-6 mb-6" style={{ borderRadius: styles.borderRadius }}>
-        <h3 className="text-lg font-bold mb-2" style={{ fontFamily: styles.fontFamily, fontSize: styles.fontSize }}>Preview</h3>
+        <h3 className="text-lg font-bold mb-2" style={{ fontFamily: styles.fontFamily, fontSize: styles.fontSize }}>{t('preview')}</h3>
         <p className="mb-4" style={{ fontFamily: styles.fontFamily, fontSize: styles.fontSize, padding: styles.padding }}>
-          This is how your current appearance settings will look.
+          {t('previewDesc')}
         </p>
         <button className="px-4 py-2 text-white" style={{ backgroundColor: 'var(--accent-color)', borderRadius: styles.borderRadius }}>
-          Action Button
+          {t('actionButton')}
         </button>
       </div>
     );
@@ -78,7 +80,7 @@ export function AppearanceSettings() {
       <div className="card-panel p-6">
         <div className="flex items-center gap-2 mb-4">
           <Palette className="w-5 h-5 text-[var(--accent-color)]" />
-          <h2 className="text-lg font-bold text-slate-900 dark:text-white">Theme</h2>
+          <h2 className="text-lg font-bold text-slate-900 dark:text-white">{t('theme')}</h2>
         </div>
         <div className="grid grid-cols-3 gap-4">
           {themes.map((t) => (
@@ -102,11 +104,11 @@ export function AppearanceSettings() {
       <div className="card-panel p-6">
         <div className="flex items-center gap-2 mb-4">
           <Type className="w-5 h-5 text-[var(--accent-color)]" />
-          <h2 className="text-lg font-bold text-slate-900 dark:text-white">Typography</h2>
+          <h2 className="text-lg font-bold text-slate-900 dark:text-white">{t('typography')}</h2>
         </div>
         <div className="space-y-6">
           <div>
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">Font Size</label>
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">{t('fontSize')}</label>
             <div className="flex gap-2">
               {fontSizes.map((s) => (
                 <button
@@ -126,7 +128,7 @@ export function AppearanceSettings() {
           </div>
 
           <div>
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">Font Family</label>
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">{t('fontFamily')}</label>
             <div className="flex flex-wrap gap-2">
               {fontFamilies.map((f) => (
                 <button
@@ -150,11 +152,11 @@ export function AppearanceSettings() {
       <div className="card-panel p-6">
         <div className="flex items-center gap-2 mb-4">
           <Layout className="w-5 h-5 text-[var(--accent-color)]" />
-          <h2 className="text-lg font-bold text-slate-900 dark:text-white">Layout & Accessibility</h2>
+          <h2 className="text-lg font-bold text-slate-900 dark:text-white">{t('layoutAndAccessibility')}</h2>
         </div>
         <div className="space-y-6">
           <div>
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">Density</label>
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">{t('density')}</label>
             <div className="flex gap-2">
               {densities.map((d) => (
                 <button
@@ -174,7 +176,7 @@ export function AppearanceSettings() {
           </div>
 
           <div>
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">Corner Roundness</label>
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">{t('cornerRoundness')}</label>
             <div className="flex gap-2">
               {radii.map((r) => (
                 <button
@@ -194,7 +196,7 @@ export function AppearanceSettings() {
           </div>
 
           <div className="flex items-center justify-between">
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Reduced Motion</label>
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">{t('reducedMotion')}</label>
             <button
               onClick={() => updateSettings({ reducedMotion: !reducedMotion })}
               className={cn(

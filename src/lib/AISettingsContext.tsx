@@ -13,6 +13,9 @@ export interface AISettings {
   useElevenLabs: boolean;
   elevenLabsApiKey: string;
   elevenLabsVoiceId: string;
+  useOpenRouter: boolean;
+  openRouterApiKey: string;
+  openRouterModel: string;
 }
 
 const defaultSettings: AISettings = {
@@ -28,6 +31,9 @@ const defaultSettings: AISettings = {
   useElevenLabs: true,
   elevenLabsApiKey: 'sk_a57245443c2c81e578231fdb1f797491af0b4b52afd39d8d',
   elevenLabsVoiceId: '21m00Tcm4TlvDq8ikWAM', // Rachel voice
+  useOpenRouter: false,
+  openRouterApiKey: '',
+  openRouterModel: 'openai/gpt-3.5-turbo',
 };
 
 interface AISettingsContextType {

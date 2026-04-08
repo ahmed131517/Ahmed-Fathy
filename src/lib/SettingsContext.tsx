@@ -10,7 +10,32 @@ interface SettingsState {
   practiceState: string;
   practiceZip: string;
   practicePhone: string;
+  practiceLogo: string;
   patientIdPrefix: string;
+  
+  // Prescription
+  doctorName: string;
+  doctorQualifications: string;
+  doctorDesignation: string;
+  doctorRegNo: string;
+  doctorNameAr: string;
+  doctorQualificationsAr: string;
+  doctorDesignationAr: string;
+  prescriptionFooter: string;
+  prescriptionFooterAr: string;
+  prescriptionBackground: string;
+  prescriptionHeaderFont: string;
+  prescriptionFooterFont: string;
+  prescriptionBodyFont: string;
+  doctorSignature: string;
+  
+  // Dispensing Templates
+  dispensingTemplates: {
+    standard: string;
+    controlled: string;
+    refill: string;
+    consultation: string;
+  };
   
   // Appearance
   fontSize: 'small' | 'medium' | 'large';
@@ -77,7 +102,30 @@ const defaultSettings: SettingsState = {
   practiceState: "CA",
   practiceZip: "12345",
   practicePhone: "(555) 123-4567",
+  practiceLogo: "",
   patientIdPrefix: "PAT",
+  
+  doctorName: "DR. AHMED FATHY ALI",
+  doctorQualifications: "MBBS, CCD, CCC, CMJ",
+  doctorDesignation: "Cardiologist, City Institute of Cardiology",
+  doctorRegNo: "123456",
+  doctorNameAr: "د. أحمد فتحي علي",
+  doctorQualificationsAr: "بكالوريوس الطب والجراحة، ماجستير القلب والأوعية الدموية",
+  doctorDesignationAr: "أخصائي القلب والأوعية الدموية، معهد القلب",
+  prescriptionFooter: "Days: Mon, Tue, Wed, Thu, Fri | Timings: 05:00 PM - 08:30 PM",
+  prescriptionFooterAr: "الأيام: السبت إلى الأربعاء | المواعيد: 05:00 مساءً - 08:30 مساءً",
+  prescriptionBackground: "",
+  prescriptionHeaderFont: "inter",
+  prescriptionFooterFont: "inter",
+  prescriptionBodyFont: "inter",
+  doctorSignature: "",
+  
+  dispensingTemplates: {
+    standard: "Standard prescription format...",
+    controlled: "Controlled substance format...",
+    refill: "Refill request format...",
+    consultation: "Consultation note format...",
+  },
   
   fontSize: 'medium',
   fontFamily: 'inter',
@@ -194,11 +242,29 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     };
     root.style.setProperty('--radius', radiusMap[settings.borderRadius]);
 
+    // Compact Mode
+    if (settings.compactMode) {
+      root.classList.add('compact-mode');
+    } else {
+      root.classList.remove('compact-mode');
+    }
+
     // Reduced Motion
     if (settings.reducedMotion) {
       root.style.setProperty('--transition-duration', '0ms');
     } else {
       root.style.setProperty('--transition-duration', '200ms');
+    }
+
+    // Language & Direction (RTL/LTR)
+    const isRTL = settings.language === 'ar';
+    root.setAttribute('dir', isRTL ? 'rtl' : 'ltr');
+    root.setAttribute('lang', settings.language);
+    
+    if (isRTL) {
+      root.classList.add('rtl');
+    } else {
+      root.classList.remove('rtl');
     }
 
     // Accent color palettes

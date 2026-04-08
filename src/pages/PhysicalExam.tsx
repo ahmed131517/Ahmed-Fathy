@@ -3379,6 +3379,7 @@ export function PhysicalExam() {
     bpSystolic: '',
     bpDiastolic: '',
     pulse: '',
+    rbs: '',
     respiratoryRate: '',
     oxygenSaturation: '',
     oxygenType: 'RA',
@@ -3599,6 +3600,7 @@ export function PhysicalExam() {
       case 'bpDiastolic': return num > 90 || num < 60 ? 'border-red-500 text-red-700 focus:ring-red-500 bg-red-50' : 'border-emerald-500 focus:ring-emerald-500 bg-emerald-50/30';
       case 'temperature': return num > 37.5 || num < 36.0 ? 'border-red-500 text-red-700 focus:ring-red-500 bg-red-50' : 'border-emerald-500 focus:ring-emerald-500 bg-emerald-50/30';
       case 'respiratoryRate': return num > 20 || num < 12 ? 'border-red-500 text-red-700 focus:ring-red-500 bg-red-50' : 'border-emerald-500 focus:ring-emerald-500 bg-emerald-50/30';
+      case 'rbs': return num > 140 || num < 70 ? 'border-red-500 text-red-700 focus:ring-red-500 bg-red-50' : 'border-emerald-500 focus:ring-emerald-500 bg-emerald-50/30';
       default: return 'border-slate-200 focus:ring-indigo-500';
     }
   };
@@ -3737,19 +3739,6 @@ Format the output as a professional medical note under the heading "Physical Exa
           Vital Signs
         </h3>
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-slate-600">Temp (°C)</label>
-            <div className="relative">
-              <Thermometer className="w-4 h-4 absolute left-2.5 top-2.5 text-slate-400" />
-              <input 
-                type="number" 
-                value={vitals.temperature}
-                onChange={(e) => handleVitalChange('temperature', e.target.value)}
-                className={`w-full pl-9 pr-3 py-2 border rounded-lg text-sm outline-none transition-colors ${getVitalColor('temperature', vitals.temperature)}`}
-                placeholder="37.2" 
-              />
-            </div>
-          </div>
           <div className="space-y-1.5 col-span-2 md:col-span-1 lg:col-span-2">
             <label className="text-xs font-medium text-slate-600">Blood Pressure (mmHg)</label>
             <div className="flex items-center gap-2">
@@ -3780,6 +3769,32 @@ Format the output as a professional medical note under the heading "Physical Exa
                 onChange={(e) => handleVitalChange('pulse', e.target.value)}
                 className={`w-full pl-9 pr-3 py-2 border rounded-lg text-sm outline-none transition-colors ${getVitalColor('pulse', vitals.pulse)}`}
                 placeholder="72" 
+              />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-600">Temp (°C)</label>
+            <div className="relative">
+              <Thermometer className="w-4 h-4 absolute left-2.5 top-2.5 text-slate-400" />
+              <input 
+                type="number" 
+                value={vitals.temperature}
+                onChange={(e) => handleVitalChange('temperature', e.target.value)}
+                className={`w-full pl-9 pr-3 py-2 border rounded-lg text-sm outline-none transition-colors ${getVitalColor('temperature', vitals.temperature)}`}
+                placeholder="37.2" 
+              />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-600">RBS (mg/dL)</label>
+            <div className="relative">
+              <Droplets className="w-4 h-4 absolute left-2.5 top-2.5 text-slate-400" />
+              <input 
+                type="number" 
+                value={vitals.rbs}
+                onChange={(e) => handleVitalChange('rbs', e.target.value)}
+                className={`w-full pl-9 pr-3 py-2 border rounded-lg text-sm outline-none transition-colors ${getVitalColor('rbs', vitals.rbs)}`}
+                placeholder="110" 
               />
             </div>
           </div>

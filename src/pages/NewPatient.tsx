@@ -8,10 +8,14 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Textarea } from "@/components/ui/textarea";
 import { useNotifications } from "@/lib/NotificationContext";
+import { useTranslation } from "@/lib/i18n";
+import { useSettings } from "@/lib/SettingsContext";
 
 export function NewPatient() {
   const navigate = useNavigate();
   const { addNotification } = useNotifications();
+  const { t, isRTL } = useTranslation();
+  const { showPatientIds } = useSettings();
   const [step, setStep] = useState(1);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const getInitialData = () => ({
@@ -177,14 +181,14 @@ export function NewPatient() {
     <div className="space-y-6 max-w-5xl mx-auto pb-12">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900">New Patient Registration</h2>
-          <p className="text-slate-500">Register a new patient or update an existing one</p>
+          <h2 className="text-2xl font-bold text-slate-900">{t('newPatientRegistration')}</h2>
+          <p className="text-slate-500">{t('newPatientDesc')}</p>
         </div>
         <button 
           onClick={clearDraft}
           className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors"
         >
-          <RotateCcw className="w-4 h-4" /> Clear Draft
+          <RotateCcw className="w-4 h-4" /> {t('clearDraft')}
         </button>
       </div>
 
@@ -194,10 +198,10 @@ export function NewPatient() {
           <div className="flex justify-between relative">
             <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-0.5 bg-slate-200 dark:bg-slate-800 z-0"></div>
             {[
-              { num: 1, label: "Personal Details" },
-              { num: 2, label: "Medical History" },
-              { num: 3, label: "Consent & Privacy" },
-              { num: 4, label: "Review & Submit" },
+              { num: 1, label: t('personalDetails') },
+              { num: 2, label: t('medicalHistory') },
+              { num: 3, label: t('consentPrivacy') },
+              { num: 4, label: t('reviewSubmit') },
             ].map((s) => (
               <div key={s.num} className="relative z-10 flex flex-col items-center cursor-pointer" onClick={() => setStep(s.num)}>
                 <div className={cn(
@@ -240,7 +244,7 @@ export function NewPatient() {
                     ) : (
                       <div className="text-center p-4">
                         <User className="w-12 h-12 text-slate-300 dark:text-slate-700 mx-auto mb-2" />
-                        <p className="text-xs text-slate-500 dark:text-slate-500 mono-label">No photo captured</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-500 mono-label">{t('noPhotoCaptured')}</p>
                       </div>
                     )}
                   </div>
@@ -248,19 +252,19 @@ export function NewPatient() {
                     {isCapturing.active && isCapturing.target === 'photo' ? (
                       <>
                         <button onClick={capturePhoto} className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 glow-indigo">
-                          <Check className="w-3.5 h-3.5" /> Capture
+                          <Check className="w-3.5 h-3.5" /> {t('capture')}
                         </button>
                         <button onClick={stopCamera} className="px-3 py-1.5 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-medium flex items-center gap-1.5">
-                          <X className="w-3.5 h-3.5" /> Cancel
+                          <X className="w-3.5 h-3.5" /> {t('cancel')}
                         </button>
                       </>
                     ) : (
                       <>
                         <button onClick={() => startCamera('photo')} className="px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-medium flex items-center gap-1.5 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-                          <Camera className="w-3.5 h-3.5" /> Take Photo
+                          <Camera className="w-3.5 h-3.5" /> {t('takePhoto')}
                         </button>
                         <label className="px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-medium flex items-center gap-1.5 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer transition-colors">
-                          <Upload className="w-3.5 h-3.5" /> Upload
+                          <Upload className="w-3.5 h-3.5" /> {t('upload')}
                           <input type="file" className="hidden" accept="image/*" onChange={(e) => {
                             const file = e.target.files?.[0];
                             if (file) {
@@ -278,98 +282,110 @@ export function NewPatient() {
                 <div className="flex-1 space-y-6">
                   <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-2">
                     <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2 tracking-tight">
-                      <User className="w-5 h-5 text-indigo-500 dark:text-indigo-400" /> Personal Details
+                      <User className="w-5 h-5 text-indigo-500 dark:text-indigo-400" /> {t('personalDetails')}
                     </h3>
                     <div className="flex items-center gap-2 px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-full">
                       <QrCode className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-                      <span className="text-[10px] font-mono font-bold text-slate-600 dark:text-slate-300">{formData.patientId}</span>
+                      {showPatientIds && <span className="text-[10px] font-mono font-bold text-slate-600 dark:text-slate-300">{formData.patientId}</span>}
                     </div>
                   </div>
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-1.5">
-                      <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mono-label">First Name <span className="text-red-500">*</span></label>
+                      <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mono-label">{t('firstName')} <span className="text-red-500">*</span></label>
                       <div className="relative">
-                        <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <User className={cn("absolute top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400", isRTL ? "right-3" : "left-3")} />
                         <input 
                           type="text" 
                           value={formData.firstName}
                           onChange={(e) => updateField('firstName', e.target.value)}
                           className={cn(
-                            "w-full pl-9 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-all bg-white dark:bg-slate-950/50 text-slate-900 dark:text-slate-100",
-                            errors.firstName ? "border-red-300 bg-red-50 dark:bg-red-900/10" : "border-slate-200 dark:border-slate-800"
+                            "w-full py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-all bg-white dark:bg-slate-950/50 text-slate-900 dark:text-slate-100",
+                            errors.firstName ? "border-red-300 bg-red-50 dark:bg-red-900/10" : "border-slate-200 dark:border-slate-800",
+                            isRTL ? "pr-9 pl-3" : "pl-9 pr-3"
                           )} 
                         />
                       </div>
                       {errors.firstName && <p className="text-[10px] text-red-500 font-medium">{errors.firstName}</p>}
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mono-label">Last Name <span className="text-red-500">*</span></label>
+                      <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mono-label">{t('lastName')} <span className="text-red-500">*</span></label>
                       <div className="relative">
-                        <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <User className={cn("absolute top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400", isRTL ? "right-3" : "left-3")} />
                         <input 
                           type="text" 
                           value={formData.lastName}
                           onChange={(e) => updateField('lastName', e.target.value)}
                           className={cn(
-                            "w-full pl-9 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-all bg-white dark:bg-slate-950/50 text-slate-900 dark:text-slate-100",
-                            errors.lastName ? "border-red-300 bg-red-50 dark:bg-red-900/10" : "border-slate-200 dark:border-slate-800"
+                            "w-full py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-all bg-white dark:bg-slate-950/50 text-slate-900 dark:text-slate-100",
+                            errors.lastName ? "border-red-300 bg-red-50 dark:bg-red-900/10" : "border-slate-200 dark:border-slate-800",
+                            isRTL ? "pr-9 pl-3" : "pl-9 pr-3"
                           )} 
                         />
                       </div>
                       {errors.lastName && <p className="text-[10px] text-red-500 font-medium">{errors.lastName}</p>}
                     </div>
                     <div className="space-y-1.5 md:col-span-2">
-                      <label className="text-sm font-medium text-slate-700">National ID/Passport Number</label>
+                      <label className="text-sm font-medium text-slate-700">{t('nationalId')}</label>
                       <div className="relative">
-                        <CreditCard className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <CreditCard className={cn("absolute top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400", isRTL ? "right-3" : "left-3")} />
                         <input 
                           type="text" 
                           value={formData.nationalId}
                           onChange={(e) => updateField('nationalId', e.target.value)}
-                          className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" 
+                          className={cn(
+                            "w-full py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none",
+                            isRTL ? "pr-9 pl-3" : "pl-9 pr-3"
+                          )}
                         />
                       </div>
                     </div>
                     
                     <div className="space-y-1.5">
-                      <label className="text-sm font-medium text-slate-700">Date of Birth <span className="text-red-500">*</span></label>
+                      <label className="text-sm font-medium text-slate-700">{t('dob')} <span className="text-red-500">*</span></label>
                       <div className="relative">
-                        <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <Calendar className={cn("absolute top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400", isRTL ? "right-3" : "left-3")} />
                         <input 
                           type="date" 
                           value={formData.dob}
                           onChange={(e) => updateField('dob', e.target.value)}
                           className={cn(
-                            "w-full pl-9 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-all",
-                            errors.dob ? "border-red-300 bg-red-50" : "border-slate-200"
+                            "w-full py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-all",
+                            errors.dob ? "border-red-300 bg-red-50" : "border-slate-200",
+                            isRTL ? "pr-9 pl-3" : "pl-9 pr-3"
                           )} 
                         />
                       </div>
                       {errors.dob && <p className="text-[10px] text-red-500 font-medium">{errors.dob}</p>}
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-sm font-medium text-slate-700">Age</label>
+                      <label className="text-sm font-medium text-slate-700">{t('age')}</label>
                       <div className="relative">
-                        <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <Clock className={cn("absolute top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400", isRTL ? "right-3" : "left-3")} />
                         <input 
                           type="text" 
                           readOnly 
                           value={calculateAge(formData.dob)}
                           placeholder="Calculated automatically" 
-                          className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg bg-slate-50 text-slate-700 font-semibold outline-none" 
+                          className={cn(
+                            "w-full py-2 border border-slate-200 rounded-lg bg-slate-50 text-slate-700 font-semibold outline-none",
+                            isRTL ? "pr-9 pl-3" : "pl-9 pr-3"
+                          )}
                         />
                       </div>
                     </div>
                     
                     <div className="space-y-1.5">
-                      <label className="text-sm font-medium text-slate-700">Gender</label>
+                      <label className="text-sm font-medium text-slate-700">{t('gender')}</label>
                       <div className="relative">
-                        <Users className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <Users className={cn("absolute top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400", isRTL ? "right-3" : "left-3")} />
                         <select 
                           value={formData.gender}
                           onChange={(e) => updateField('gender', e.target.value)}
-                          className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                          className={cn(
+                            "w-full py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white",
+                            isRTL ? "pr-9 pl-3" : "pl-9 pr-3"
+                          )}
                         >
                           <option value="">Select</option>
                           <option value="male">Male</option>
@@ -381,13 +397,16 @@ export function NewPatient() {
                     </div>
 
                     <div className="space-y-1.5">
-                      <label className="text-sm font-medium text-slate-700">Blood Type</label>
+                      <label className="text-sm font-medium text-slate-700">{t('bloodType')}</label>
                       <div className="relative">
-                        <Heart className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <Heart className={cn("absolute top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400", isRTL ? "right-3" : "left-3")} />
                         <select 
                           value={formData.bloodType}
                           onChange={(e) => updateField('bloodType', e.target.value)}
-                          className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                          className={cn(
+                            "w-full py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white",
+                            isRTL ? "pr-9 pl-3" : "pl-9 pr-3"
+                          )}
                         >
                           <option value="">Select</option>
                           <option value="A+">A+</option>
@@ -404,32 +423,34 @@ export function NewPatient() {
                     </div>
 
                     <div className="space-y-1.5">
-                      <label className="text-sm font-medium text-slate-700">Email Address <span className="text-red-500">*</span></label>
+                      <label className="text-sm font-medium text-slate-700">{t('emailAddress')} <span className="text-red-500">*</span></label>
                       <div className="relative">
-                        <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <Mail className={cn("absolute top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400", isRTL ? "right-3" : "left-3")} />
                         <input 
                           type="email" 
                           value={formData.email}
                           onChange={(e) => updateField('email', e.target.value)}
                           className={cn(
-                            "w-full pl-9 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-all",
-                            errors.email ? "border-red-300 bg-red-50" : "border-slate-200"
+                            "w-full py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-all",
+                            errors.email ? "border-red-300 bg-red-50" : "border-slate-200",
+                            isRTL ? "pr-9 pl-3" : "pl-9 pr-3"
                           )} 
                         />
                       </div>
                       {errors.email && <p className="text-[10px] text-red-500 font-medium">{errors.email}</p>}
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-sm font-medium text-slate-700">Phone Number <span className="text-red-500">*</span></label>
+                      <label className="text-sm font-medium text-slate-700">{t('phoneNumber')} <span className="text-red-500">*</span></label>
                       <div className="relative">
-                        <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <Phone className={cn("absolute top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400", isRTL ? "right-3" : "left-3")} />
                         <input 
                           type="tel" 
                           value={formData.phone}
                           onChange={(e) => updateField('phone', e.target.value)}
                           className={cn(
-                            "w-full pl-9 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-all",
-                            errors.phone ? "border-red-300 bg-red-50" : "border-slate-200"
+                            "w-full py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-all",
+                            errors.phone ? "border-red-300 bg-red-50" : "border-slate-200",
+                            isRTL ? "pr-9 pl-3" : "pl-9 pr-3"
                           )} 
                         />
                       </div>
@@ -437,27 +458,33 @@ export function NewPatient() {
                     </div>
 
                     <div className="space-y-1.5 md:col-span-2">
-                      <label className="text-sm font-medium text-slate-700">Address</label>
+                      <label className="text-sm font-medium text-slate-700">{t('address')}</label>
                       <div className="relative">
-                        <MapPin className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+                        <MapPin className={cn("absolute top-3 w-4 h-4 text-slate-400", isRTL ? "right-3" : "left-3")} />
                         <Textarea 
                           rows={3} 
                           value={formData.address || ""}
                           onChange={(e) => updateField('address', e.target.value)}
                           placeholder="Start typing address..."
-                          className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
+                          className={cn(
+                            "w-full py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none resize-none",
+                            isRTL ? "pr-9 pl-3" : "pl-9 pr-3"
+                          )}
                         />
                       </div>
                     </div>
 
                     <div className="space-y-1.5 md:col-span-2">
-                      <label className="text-sm font-medium text-slate-700">How did you hear about us?</label>
+                      <label className="text-sm font-medium text-slate-700">{t('howDidYouHear')}</label>
                       <div className="relative">
-                        <Users className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <Users className={cn("absolute top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400", isRTL ? "right-3" : "left-3")} />
                         <select 
                           value={formData.referralSource}
                           onChange={(e) => updateField('referralSource', e.target.value)}
-                          className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                          className={cn(
+                            "w-full py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white",
+                            isRTL ? "pr-9 pl-3" : "pl-9 pr-3"
+                          )}
                         >
                           <option value="">Select Source</option>
                           <option value="social-media">Social Media</option>
@@ -474,48 +501,57 @@ export function NewPatient() {
               </div>
 
               <div className="space-y-6">
-                <h4 className="text-base font-semibold text-slate-800 border-b border-slate-100 pb-2">Insurance Information</h4>
+                <h4 className="text-base font-semibold text-slate-800 border-b border-slate-100 pb-2">{t('insuranceInformation')}</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-1.5 md:col-span-2">
-                    <label className="text-sm font-medium text-slate-700">Insurance Provider</label>
+                    <label className="text-sm font-medium text-slate-700">{t('insuranceProvider')}</label>
                     <div className="relative">
-                      <Shield className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <Shield className={cn("absolute top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400", isRTL ? "right-3" : "left-3")} />
                       <input 
                         type="text" 
                         value={formData.insuranceProvider}
                         onChange={(e) => updateField('insuranceProvider', e.target.value)}
-                        className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" 
+                        className={cn(
+                          "w-full py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none",
+                          isRTL ? "pr-9 pl-3" : "pl-9 pr-3"
+                        )} 
                       />
                     </div>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-slate-700">Policy Number</label>
+                    <label className="text-sm font-medium text-slate-700">{t('policyNumber')}</label>
                     <div className="relative">
-                      <FileText className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <FileText className={cn("absolute top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400", isRTL ? "right-3" : "left-3")} />
                       <input 
                         type="text" 
                         value={formData.policyNumber}
                         onChange={(e) => updateField('policyNumber', e.target.value)}
-                        className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" 
+                        className={cn(
+                          "w-full py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none",
+                          isRTL ? "pr-9 pl-3" : "pl-9 pr-3"
+                        )} 
                       />
                     </div>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-slate-700">Group Number</label>
+                    <label className="text-sm font-medium text-slate-700">{t('groupNumber')}</label>
                     <div className="relative">
-                      <Users className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <Users className={cn("absolute top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400", isRTL ? "right-3" : "left-3")} />
                       <input 
                         type="text" 
                         value={formData.groupNumber}
                         onChange={(e) => updateField('groupNumber', e.target.value)}
-                        className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" 
+                        className={cn(
+                          "w-full py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none",
+                          isRTL ? "pr-9 pl-3" : "pl-9 pr-3"
+                        )} 
                       />
                     </div>
                   </div>
 
                   <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <label className="text-xs font-medium text-slate-500">Insurance Card (Front)</label>
+                      <label className="text-xs font-medium text-slate-500">{t('insuranceCardFront')}</label>
                       <div className="h-32 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 flex items-center justify-center overflow-hidden relative group">
                         {formData.insuranceFront ? (
                           <>
@@ -527,20 +563,20 @@ export function NewPatient() {
                         ) : (
                           <div className="text-center">
                             <ImageIcon className="w-6 h-6 text-slate-300 mx-auto mb-1" />
-                            <p className="text-[10px] text-slate-400">Not scanned</p>
+                            <p className="text-[10px] text-slate-400">{t('notScanned')}</p>
                           </div>
                         )}
                       </div>
                       <div className="flex gap-2">
                         {isCapturing.active && isCapturing.target === 'insuranceFront' ? (
-                          <button onClick={capturePhoto} className="flex-1 py-1 bg-indigo-600 text-white rounded-lg text-[10px] font-medium">Capture</button>
+                          <button onClick={capturePhoto} className="flex-1 py-1 bg-indigo-600 text-white rounded-lg text-[10px] font-medium">{t('capture')}</button>
                         ) : (
-                          <button onClick={() => startCamera('insuranceFront')} className="flex-1 py-1 bg-white border border-slate-200 text-slate-600 rounded-lg text-[10px] font-medium hover:bg-slate-50">Scan Front</button>
+                          <button onClick={() => startCamera('insuranceFront')} className="flex-1 py-1 bg-white border border-slate-200 text-slate-600 rounded-lg text-[10px] font-medium hover:bg-slate-50">{t('scanFront')}</button>
                         )}
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <label className="text-xs font-medium text-slate-500">Insurance Card (Back)</label>
+                      <label className="text-xs font-medium text-slate-500">{t('insuranceCardBack')}</label>
                       <div className="h-32 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 flex items-center justify-center overflow-hidden relative group">
                         {formData.insuranceBack ? (
                           <>
@@ -552,15 +588,15 @@ export function NewPatient() {
                         ) : (
                           <div className="text-center">
                             <ImageIcon className="w-6 h-6 text-slate-300 mx-auto mb-1" />
-                            <p className="text-[10px] text-slate-400">Not scanned</p>
+                            <p className="text-[10px] text-slate-400">{t('notScanned')}</p>
                           </div>
                         )}
                       </div>
                       <div className="flex gap-2">
                         {isCapturing.active && isCapturing.target === 'insuranceBack' ? (
-                          <button onClick={capturePhoto} className="flex-1 py-1 bg-indigo-600 text-white rounded-lg text-[10px] font-medium">Capture</button>
+                          <button onClick={capturePhoto} className="flex-1 py-1 bg-indigo-600 text-white rounded-lg text-[10px] font-medium">{t('capture')}</button>
                         ) : (
-                          <button onClick={() => startCamera('insuranceBack')} className="flex-1 py-1 bg-white border border-slate-200 text-slate-600 rounded-lg text-[10px] font-medium hover:bg-slate-50">Scan Back</button>
+                          <button onClick={() => startCamera('insuranceBack')} className="flex-1 py-1 bg-white border border-slate-200 text-slate-600 rounded-lg text-[10px] font-medium hover:bg-slate-50">{t('scanBack')}</button>
                         )}
                       </div>
                     </div>
@@ -569,41 +605,50 @@ export function NewPatient() {
               </div>
 
               <div className="space-y-6">
-                <h4 className="text-base font-semibold text-slate-800 border-b border-slate-100 pb-2">Emergency Contact</h4>
+                <h4 className="text-base font-semibold text-slate-800 border-b border-slate-100 pb-2">{t('emergencyContact')}</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-1.5 md:col-span-2">
-                    <label className="text-sm font-medium text-slate-700">Emergency Contact Name</label>
+                    <label className="text-sm font-medium text-slate-700">{t('emergencyContactName')}</label>
                     <div className="relative">
-                      <UserCheck className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <UserCheck className={cn("absolute top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400", isRTL ? "right-3" : "left-3")} />
                       <input 
                         type="text" 
                         value={formData.emergencyName}
                         onChange={(e) => updateField('emergencyName', e.target.value)}
-                        className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" 
+                        className={cn(
+                          "w-full py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none",
+                          isRTL ? "pr-9 pl-3" : "pl-9 pr-3"
+                        )} 
                       />
                     </div>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-slate-700">Emergency Contact Phone</label>
+                    <label className="text-sm font-medium text-slate-700">{t('emergencyContactPhone')}</label>
                     <div className="relative">
-                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <Phone className={cn("absolute top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400", isRTL ? "right-3" : "left-3")} />
                       <input 
                         type="tel" 
                         value={formData.emergencyPhone}
                         onChange={(e) => updateField('emergencyPhone', e.target.value)}
-                        className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" 
+                        className={cn(
+                          "w-full py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none",
+                          isRTL ? "pr-9 pl-3" : "pl-9 pr-3"
+                        )} 
                       />
                     </div>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-slate-700">Relationship to Patient</label>
+                    <label className="text-sm font-medium text-slate-700">{t('relationshipToPatient')}</label>
                     <div className="relative">
-                      <Heart className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <Heart className={cn("absolute top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400", isRTL ? "right-3" : "left-3")} />
                       <input 
                         type="text" 
                         value={formData.emergencyRelation}
                         onChange={(e) => updateField('emergencyRelation', e.target.value)}
-                        className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" 
+                        className={cn(
+                          "w-full py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none",
+                          isRTL ? "pr-9 pl-3" : "pl-9 pr-3"
+                        )} 
                       />
                     </div>
                   </div>
@@ -612,7 +657,7 @@ export function NewPatient() {
               
               <div className="flex justify-end pt-4 border-t border-slate-100">
                 <button onClick={handleNext} className="bg-indigo-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-indigo-700 transition-colors shadow-sm">
-                  Continue to Medical History
+                  {t('continueToMedicalHistory')}
                 </button>
               </div>
             </div>
@@ -621,13 +666,13 @@ export function NewPatient() {
           {step === 2 && (
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2 border-b border-slate-100 pb-2">
-                <FileText className="w-5 h-5 text-indigo-500" /> Medical History
+                <FileText className="w-5 h-5 text-indigo-500" /> {t('medicalHistory')}
               </h3>
               
               <div className="space-y-8">
                 {/* Allergies */}
                 <div className="space-y-4">
-                  <label className="text-sm font-medium text-slate-700">Do you have any allergies? <span className="text-red-500">*</span></label>
+                  <label className="text-sm font-medium text-slate-700">{t('allergiesQuestion')} <span className="text-red-500">*</span></label>
                   <div className="flex gap-6">
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input 
@@ -638,7 +683,7 @@ export function NewPatient() {
                         onChange={(e) => updateField('hasAllergies', e.target.value)} 
                         className="text-indigo-600 focus:ring-indigo-500 w-4 h-4" 
                       />
-                      <span className="text-sm text-slate-700">Yes</span>
+                      <span className="text-sm text-slate-700">{t('yes')}</span>
                     </label>
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input 
@@ -649,18 +694,18 @@ export function NewPatient() {
                         onChange={(e) => updateField('hasAllergies', e.target.value)} 
                         className="text-indigo-600 focus:ring-indigo-500 w-4 h-4" 
                       />
-                      <span className="text-sm text-slate-700">No</span>
+                      <span className="text-sm text-slate-700">{t('no')}</span>
                     </label>
                   </div>
 
                   {formData.hasAllergies === 'yes' && (
                     <div className="space-y-3 p-4 bg-slate-50 rounded-xl border border-slate-200 animate-in fade-in">
-                      <label className="text-sm font-medium text-slate-700">Please list all allergies:</label>
+                      <label className="text-sm font-medium text-slate-700">{t('listAllergies')}</label>
                       {formData.allergies.map((allergy: any, index: number) => (
                         <div key={allergy.id} className="flex gap-3 items-center">
                           <input 
                             type="text" 
-                            placeholder="Allergy" 
+                            placeholder={t('allergy')} 
                             value={allergy.name}
                             onChange={(e) => {
                               const newAllergies = [...formData.allergies];
@@ -678,10 +723,10 @@ export function NewPatient() {
                             }}
                             className="w-40 px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white"
                           >
-                            <option value="">Reaction</option>
-                            <option value="mild">Mild</option>
-                            <option value="moderate">Moderate</option>
-                            <option value="severe">Severe</option>
+                            <option value="">{t('reaction')}</option>
+                            <option value="mild">{t('mild')}</option>
+                            <option value="moderate">{t('moderate')}</option>
+                            <option value="severe">{t('severe')}</option>
                           </select>
                           <button 
                             onClick={() => {
@@ -698,7 +743,7 @@ export function NewPatient() {
                         onClick={() => updateField('allergies', [...formData.allergies, { id: Date.now(), name: "", reaction: "" }])} 
                         className="text-sm font-medium text-indigo-600 hover:text-indigo-700 flex items-center gap-1 mt-2"
                       >
-                        <Plus className="w-4 h-4" /> Add Another Allergy
+                        <Plus className="w-4 h-4" /> {t('addAnotherAllergy')}
                       </button>
                     </div>
                   )}
@@ -706,7 +751,7 @@ export function NewPatient() {
 
                 {/* Conditions */}
                 <div className="space-y-4">
-                  <label className="text-sm font-medium text-slate-700">Do you have any current medical conditions? <span className="text-red-500">*</span></label>
+                  <label className="text-sm font-medium text-slate-700">{t('conditionsQuestion')} <span className="text-red-500">*</span></label>
                   <div className="flex gap-6">
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input 
@@ -717,7 +762,7 @@ export function NewPatient() {
                         onChange={(e) => updateField('hasConditions', e.target.value)} 
                         className="text-indigo-600 focus:ring-indigo-500 w-4 h-4" 
                       />
-                      <span className="text-sm text-slate-700">Yes</span>
+                      <span className="text-sm text-slate-700">{t('yes')}</span>
                     </label>
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input 
@@ -728,40 +773,52 @@ export function NewPatient() {
                         onChange={(e) => updateField('hasConditions', e.target.value)} 
                         className="text-indigo-600 focus:ring-indigo-500 w-4 h-4" 
                       />
-                      <span className="text-sm text-slate-700">No</span>
+                      <span className="text-sm text-slate-700">{t('no')}</span>
                     </label>
                   </div>
 
                   {formData.hasConditions === 'yes' && (
                     <div className="space-y-4 p-4 bg-slate-50 rounded-xl border border-slate-200 animate-in fade-in">
-                      <label className="text-sm font-medium text-slate-700">Please select all that apply:</label>
+                      <label className="text-sm font-medium text-slate-700">{t('selectAllThatApply')}</label>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                        {['Hypertension', 'Diabetes', 'Asthma', 'Heart Disease', 'Cancer', 'Arthritis', 'Thyroid Disorder', 'Depression/Anxiety'].map(cond => (
-                          <label key={cond} className="flex items-center gap-2 cursor-pointer p-2 rounded-lg hover:bg-white border border-transparent hover:border-slate-200 transition-colors">
+                        {[
+                          { key: 'Hypertension', label: t('hypertension') },
+                          { key: 'Diabetes', label: t('diabetes') },
+                          { key: 'Asthma', label: t('asthma') },
+                          { key: 'Heart Disease', label: t('heartDisease') },
+                          { key: 'Cancer', label: t('cancer') },
+                          { key: 'Arthritis', label: t('arthritis') },
+                          { key: 'Thyroid Disorder', label: t('thyroidDisorder') },
+                          { key: 'Depression/Anxiety', label: t('depressionAnxiety') }
+                        ].map(cond => (
+                          <label key={cond.key} className="flex items-center gap-2 cursor-pointer p-2 rounded-lg hover:bg-white border border-transparent hover:border-slate-200 transition-colors">
                             <input 
                               type="checkbox" 
-                              checked={formData.conditions.includes(cond)}
+                              checked={formData.conditions.includes(cond.key)}
                               onChange={(e) => {
                                 const newConditions = e.target.checked 
-                                  ? [...formData.conditions, cond]
-                                  : formData.conditions.filter((c: string) => c !== cond);
+                                  ? [...formData.conditions, cond.key]
+                                  : formData.conditions.filter((c: string) => c !== cond.key);
                                 updateField('conditions', newConditions);
                               }}
                               className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4" 
                             />
-                            <span className="text-sm text-slate-700">{cond}</span>
+                            <span className="text-sm text-slate-700">{cond.label}</span>
                           </label>
                         ))}
                       </div>
                       <div className="space-y-1.5 pt-2">
-                        <label className="text-sm font-medium text-slate-700">Other conditions:</label>
+                        <label className="text-sm font-medium text-slate-700">{t('otherConditions')}</label>
                         <div className="relative">
-                          <Activity className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+                          <Activity className={cn("absolute top-3 w-4 h-4 text-slate-400", isRTL ? "right-3" : "left-3")} />
                           <Textarea 
                             rows={2} 
                             value={formData.otherConditions || ""}
                             onChange={(e) => updateField('otherConditions', e.target.value)}
-                            className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none resize-none text-sm"
+                            className={cn(
+                              "w-full py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none resize-none text-sm",
+                              isRTL ? "pr-9 pl-3" : "pl-9 pr-3"
+                            )}
                           />
                         </div>
                       </div>
@@ -771,7 +828,7 @@ export function NewPatient() {
 
                 {/* Medications */}
                 <div className="space-y-4">
-                  <label className="text-sm font-medium text-slate-700">Are you currently taking any medications? <span className="text-red-500">*</span></label>
+                  <label className="text-sm font-medium text-slate-700">{t('medicationsQuestion')} <span className="text-red-500">*</span></label>
                   <div className="flex gap-6">
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input 
@@ -782,7 +839,7 @@ export function NewPatient() {
                         onChange={(e) => updateField('hasMedications', e.target.value)} 
                         className="text-indigo-600 focus:ring-indigo-500 w-4 h-4" 
                       />
-                      <span className="text-sm text-slate-700">Yes</span>
+                      <span className="text-sm text-slate-700">{t('yes')}</span>
                     </label>
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input 
@@ -793,18 +850,18 @@ export function NewPatient() {
                         onChange={(e) => updateField('hasMedications', e.target.value)} 
                         className="text-indigo-600 focus:ring-indigo-500 w-4 h-4" 
                       />
-                      <span className="text-sm text-slate-700">No</span>
+                      <span className="text-sm text-slate-700">{t('no')}</span>
                     </label>
                   </div>
 
                   {formData.hasMedications === 'yes' && (
                     <div className="space-y-3 p-4 bg-slate-50 rounded-xl border border-slate-200 animate-in fade-in">
-                      <label className="text-sm font-medium text-slate-700">Please list all medications:</label>
+                      <label className="text-sm font-medium text-slate-700">{t('listMedications')}</label>
                       {formData.medications.map((med: any, index: number) => (
                         <div key={med.id} className="flex gap-3 items-center">
                           <input 
                             type="text" 
-                            placeholder="Medication name" 
+                            placeholder={t('medicationName')} 
                             value={med.name}
                             onChange={(e) => {
                               const newMeds = [...formData.medications];
@@ -815,7 +872,7 @@ export function NewPatient() {
                           />
                           <input 
                             type="text" 
-                            placeholder="Dosage" 
+                            placeholder={t('dosage')} 
                             value={med.dosage}
                             onChange={(e) => {
                               const newMeds = [...formData.medications];
@@ -826,7 +883,7 @@ export function NewPatient() {
                           />
                           <input 
                             type="text" 
-                            placeholder="Frequency" 
+                            placeholder={t('frequency')} 
                             value={med.frequency}
                             onChange={(e) => {
                               const newMeds = [...formData.medications];
@@ -850,7 +907,7 @@ export function NewPatient() {
                         onClick={() => updateField('medications', [...formData.medications, { id: Date.now(), name: "", dosage: "", frequency: "" }])} 
                         className="text-sm font-medium text-indigo-600 hover:text-indigo-700 flex items-center gap-1 mt-2"
                       >
-                        <Plus className="w-4 h-4" /> Add Another Medication
+                        <Plus className="w-4 h-4" /> {t('addAnotherMedication')}
                       </button>
                     </div>
                   )}
@@ -859,9 +916,9 @@ export function NewPatient() {
                 {/* Family Medical History */}
                 <div className="space-y-4 pt-4 border-t border-slate-100">
                   <h4 className="text-md font-semibold text-slate-800 flex items-center gap-2">
-                    <Users className="w-4 h-4 text-indigo-500" /> Family Medical History
+                    <Users className="w-4 h-4 text-indigo-500" /> {t('familyMedicalHistory')}
                   </h4>
-                  <p className="text-sm text-slate-500">Please indicate if any immediate family members (parents, siblings, grandparents) have had significant medical conditions.</p>
+                  <p className="text-sm text-slate-500">{t('familyMedicalHistoryDesc')}</p>
                   
                   <div className="space-y-3 p-4 bg-slate-50 rounded-xl border border-slate-200">
                     {formData.familyHistory.map((entry: any, index: number) => (
@@ -869,7 +926,7 @@ export function NewPatient() {
                         <div className="w-full sm:flex-1">
                           <input 
                             type="text" 
-                            placeholder="Relation (e.g., Mother)" 
+                            placeholder={t('relation')} 
                             value={entry.relation}
                             onChange={(e) => {
                               const newHistory = [...formData.familyHistory];
@@ -882,7 +939,7 @@ export function NewPatient() {
                         <div className="w-full sm:flex-[2]">
                           <input 
                             type="text" 
-                            placeholder="Condition (e.g., Diabetes)" 
+                            placeholder={t('condition')} 
                             value={entry.condition}
                             onChange={(e) => {
                               const newHistory = [...formData.familyHistory];
@@ -895,7 +952,7 @@ export function NewPatient() {
                         <div className="w-full sm:w-32">
                           <input 
                             type="text" 
-                            placeholder="Age of Dx" 
+                            placeholder={t('ageOfDx')} 
                             value={entry.age}
                             onChange={(e) => {
                               const newHistory = [...formData.familyHistory];
@@ -920,34 +977,40 @@ export function NewPatient() {
                       onClick={() => updateField('familyHistory', [...formData.familyHistory, { id: Date.now(), relation: "", condition: "", age: "" }])} 
                       className="text-sm font-medium text-indigo-600 hover:text-indigo-700 flex items-center gap-1 mt-2"
                     >
-                      <Plus className="w-4 h-4" /> Add Family Member
+                      <Plus className="w-4 h-4" /> {t('addFamilyMember')}
                     </button>
                   </div>
                 </div>
 
                 {/* Surgeries & Family History */}
                 <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-slate-700">Previous Surgeries (if any):</label>
+                  <label className="text-sm font-medium text-slate-700">{t('previousSurgeries')}</label>
                   <div className="relative">
-                    <Scissors className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+                    <Scissors className={cn("absolute top-3 w-4 h-4 text-slate-400", isRTL ? "right-3" : "left-3")} />
                     <Textarea 
                       rows={2} 
                       value={formData.surgeries || ""}
                       onChange={(e) => updateField('surgeries', e.target.value)}
-                      className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none resize-none text-sm"
+                      className={cn(
+                        "w-full py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none resize-none text-sm",
+                        isRTL ? "pr-9 pl-3" : "pl-9 pr-3"
+                      )}
                     />
                   </div>
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-slate-700">Additional Family Medical History Notes:</label>
+                  <label className="text-sm font-medium text-slate-700">{t('additionalFamilyHistoryNotes')}</label>
                   <div className="relative">
-                    <Users className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+                    <Users className={cn("absolute top-3 w-4 h-4 text-slate-400", isRTL ? "right-3" : "left-3")} />
                     <Textarea 
                       rows={2} 
                       value={formData.familyHistoryText || ""}
                       onChange={(e) => updateField('familyHistoryText', e.target.value)}
-                      className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none resize-none text-sm"
+                      className={cn(
+                        "w-full py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none resize-none text-sm",
+                        isRTL ? "pr-9 pl-3" : "pl-9 pr-3"
+                      )}
                     />
                   </div>
                 </div>
@@ -955,10 +1018,10 @@ export function NewPatient() {
 
               <div className="flex justify-between pt-4 border-t border-slate-100">
                 <button onClick={() => setStep(step - 1)} className="px-6 py-2.5 rounded-lg font-medium border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors">
-                  Back
+                  {t('back')}
                 </button>
                 <button onClick={handleNext} className="bg-indigo-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-indigo-700 transition-colors shadow-sm">
-                  Continue to Consent
+                  {t('continueToConsent')}
                 </button>
               </div>
             </div>
@@ -967,13 +1030,13 @@ export function NewPatient() {
           {step === 3 && (
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2 border-b border-slate-100 pb-2">
-                <Shield className="w-5 h-5 text-indigo-500" /> Consent & Privacy
+                <Shield className="w-5 h-5 text-indigo-500" /> {t('consentSummary')}
               </h3>
               
               <div className="space-y-6">
                 <div className="p-5 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
-                  <h4 className="font-semibold text-slate-800">Treatment Consent</h4>
-                  <p className="text-sm text-slate-600 leading-relaxed">I hereby consent to the treatment provided by Physician Hiclinic. I authorize the healthcare providers to conduct examinations and perform procedures as are necessary in my care.</p>
+                  <h4 className="font-semibold text-slate-800">{t('treatmentConsent')}</h4>
+                  <p className="text-sm text-slate-600 leading-relaxed">{t('treatmentConsentDesc')}</p>
                   <label className="flex items-center gap-2 cursor-pointer pt-2">
                     <input 
                       type="checkbox" 
@@ -981,13 +1044,13 @@ export function NewPatient() {
                       onChange={(e) => updateField('consentTreatment', e.target.checked)}
                       className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4" 
                     />
-                    <span className="text-sm font-medium text-slate-800">I agree to treatment consent <span className="text-red-500">*</span></span>
+                    <span className="text-sm font-medium text-slate-800">{t('agreeTreatmentConsent')} <span className="text-red-500">*</span></span>
                   </label>
                 </div>
 
                 <div className="p-5 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
-                  <h4 className="font-semibold text-slate-800">Privacy Practices</h4>
-                  <p className="text-sm text-slate-600 leading-relaxed">I acknowledge that I have received or been offered a copy of the clinic's Notice of Privacy Practices, which explains how my medical information will be used and disclosed.</p>
+                  <h4 className="font-semibold text-slate-800">{t('privacyPractices')}</h4>
+                  <p className="text-sm text-slate-600 leading-relaxed">{t('privacyPracticesDesc')}</p>
                   <label className="flex items-center gap-2 cursor-pointer pt-2">
                     <input 
                       type="checkbox" 
@@ -995,13 +1058,13 @@ export function NewPatient() {
                       onChange={(e) => updateField('consentPrivacy', e.target.checked)}
                       className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4" 
                     />
-                    <span className="text-sm font-medium text-slate-800">I acknowledge receipt of privacy practices <span className="text-red-500">*</span></span>
+                    <span className="text-sm font-medium text-slate-800">{t('acknowledgePrivacyPractices')} <span className="text-red-500">*</span></span>
                   </label>
                 </div>
 
                 <div className="p-5 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
-                  <h4 className="font-semibold text-slate-800">Financial Agreement</h4>
-                  <p className="text-sm text-slate-600 leading-relaxed">I understand that I am financially responsible for all charges not covered by insurance. I authorize the release of any medical information necessary to process insurance claims.</p>
+                  <h4 className="font-semibold text-slate-800">{t('financialAgreement')}</h4>
+                  <p className="text-sm text-slate-600 leading-relaxed">{t('financialAgreementDesc')}</p>
                   <label className="flex items-center gap-2 cursor-pointer pt-2">
                     <input 
                       type="checkbox" 
@@ -1009,13 +1072,13 @@ export function NewPatient() {
                       onChange={(e) => updateField('consentFinancial', e.target.checked)}
                       className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4" 
                     />
-                    <span className="text-sm font-medium text-slate-800">I agree to financial terms <span className="text-red-500">*</span></span>
+                    <span className="text-sm font-medium text-slate-800">{t('agreeFinancialTerms')} <span className="text-red-500">*</span></span>
                   </label>
                 </div>
 
                 <div className="p-5 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
-                  <h4 className="font-semibold text-slate-800">Communication Consent</h4>
-                  <p className="text-sm text-slate-600">I consent to receive communications via:</p>
+                  <h4 className="font-semibold text-slate-800">{t('communicationConsent')}</h4>
+                  <p className="text-sm text-slate-600">{t('communicationConsentDesc')}</p>
                   <div className="flex flex-wrap gap-6 pt-2">
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input 
@@ -1024,7 +1087,7 @@ export function NewPatient() {
                         onChange={(e) => updateField('communication', { ...formData.communication, email: e.target.checked })}
                         className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4" 
                       />
-                      <span className="text-sm font-medium text-slate-800">Email</span>
+                      <span className="text-sm font-medium text-slate-800">{t('email')}</span>
                     </label>
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input 
@@ -1033,7 +1096,7 @@ export function NewPatient() {
                         onChange={(e) => updateField('communication', { ...formData.communication, sms: e.target.checked })}
                         className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4" 
                       />
-                      <span className="text-sm font-medium text-slate-800">SMS/Text</span>
+                      <span className="text-sm font-medium text-slate-800">{t('smsText')}</span>
                     </label>
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input 
@@ -1042,14 +1105,14 @@ export function NewPatient() {
                         onChange={(e) => updateField('communication', { ...formData.communication, phone: e.target.checked })}
                         className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4" 
                       />
-                      <span className="text-sm font-medium text-slate-800">Phone Call</span>
+                      <span className="text-sm font-medium text-slate-800">{t('phoneCall')}</span>
                     </label>
                   </div>
                 </div>
 
                 <div className="space-y-4">
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-slate-700">Digital Signature <span className="text-red-500">*</span></label>
+                    <label className="text-sm font-medium text-slate-700">{t('digitalSignature')} <span className="text-red-500">*</span></label>
                     <div className="border border-slate-200 rounded-xl overflow-hidden bg-white h-48 relative">
                       <SignatureCanvas 
                         ref={sigCanvas}
@@ -1058,14 +1121,14 @@ export function NewPatient() {
                         onEnd={handleSignatureEnd}
                       />
                       <div className="absolute bottom-6 left-6 right-6 h-px bg-slate-200 pointer-events-none"></div>
-                      <div className="absolute bottom-2 right-4 text-xs text-slate-400 pointer-events-none">Sign above</div>
+                      <div className={cn("absolute bottom-2 text-xs text-slate-400 pointer-events-none", isRTL ? "left-4" : "right-4")}>Sign above</div>
                     </div>
                     <div className="flex justify-end">
                       <button 
                         onClick={clearSignature}
                         className="text-sm font-medium text-slate-500 hover:text-slate-700"
                       >
-                        Clear Signature
+                        {t('clearSignature')}
                       </button>
                     </div>
                   </div>
@@ -1073,8 +1136,8 @@ export function NewPatient() {
                   <div className="space-y-1.5 w-full md:w-1/3">
                     <label className="text-sm font-medium text-slate-700">Date <span className="text-red-500">*</span></label>
                     <div className="relative">
-                      <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                      <input type="date" defaultValue={new Date().toISOString().split('T')[0]} className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" />
+                      <Calendar className={cn("absolute top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400", isRTL ? "right-3" : "left-3")} />
+                      <input type="date" defaultValue={new Date().toISOString().split('T')[0]} className={cn("w-full py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none", isRTL ? "pr-9 pl-3" : "pl-9 pr-3")} />
                     </div>
                   </div>
                 </div>
@@ -1082,10 +1145,10 @@ export function NewPatient() {
 
               <div className="flex justify-between pt-4 border-t border-slate-100">
                 <button onClick={() => setStep(2)} className="px-6 py-2.5 rounded-lg font-medium border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors">
-                  Back
+                  {t('back')}
                 </button>
                 <button onClick={handleNext} className="bg-indigo-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-indigo-700 transition-colors shadow-sm">
-                  Review Registration
+                  {t('continueToReview')}
                 </button>
               </div>
             </div>
@@ -1094,13 +1157,13 @@ export function NewPatient() {
           {step === 4 && (
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2 border-b border-slate-100 pb-2">
-                <Eye className="w-5 h-5 text-indigo-500" /> Review & Submit
+                <Eye className="w-5 h-5 text-indigo-500" /> {t('reviewAndSubmit')}
               </h3>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="space-y-6">
                   <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 relative overflow-hidden">
-                    <div className="absolute top-4 right-4 text-center">
+                    <div className={cn("absolute top-4 text-center", isRTL ? "left-4" : "right-4")}>
                       <QRCodeSVG value={formData.patientId} size={64} />
                       <p className="text-[8px] font-mono mt-1 text-slate-400">{formData.patientId}</p>
                     </div>
@@ -1129,11 +1192,11 @@ export function NewPatient() {
                   </div>
 
                   <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
-                    <h4 className="font-semibold text-slate-800 mb-3">Insurance & Billing</h4>
+                    <h4 className="font-semibold text-slate-800 mb-3">{t('insuranceInformation')}</h4>
                     <div className="space-y-4 text-sm">
                       <div className="space-y-1">
-                        <p><span className="text-slate-500">Provider:</span> {formData.insuranceProvider || 'N/A'}</p>
-                        <p><span className="text-slate-500">Policy:</span> {formData.policyNumber || 'N/A'}</p>
+                        <p><span className="text-slate-500">{t('insuranceProvider')}:</span> {formData.insuranceProvider || 'N/A'}</p>
+                        <p><span className="text-slate-500">{t('policyNumber')}:</span> {formData.policyNumber || 'N/A'}</p>
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <div className="aspect-video bg-white border border-slate-200 rounded-lg overflow-hidden flex items-center justify-center">
@@ -1149,16 +1212,16 @@ export function NewPatient() {
 
                 <div className="space-y-6">
                   <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
-                    <h4 className="font-semibold text-slate-800 mb-3">Emergency Contact</h4>
+                    <h4 className="font-semibold text-slate-800 mb-3">{t('emergencyContact')}</h4>
                     <div className="space-y-2 text-sm">
-                      <p><span className="text-slate-500">Name:</span> {formData.emergencyName || 'N/A'}</p>
-                      <p><span className="text-slate-500">Phone:</span> {formData.emergencyPhone || 'N/A'}</p>
-                      <p><span className="text-slate-500">Relation:</span> {formData.emergencyRelation || 'N/A'}</p>
+                      <p><span className="text-slate-500">{t('emergencyContactName')}:</span> {formData.emergencyName || 'N/A'}</p>
+                      <p><span className="text-slate-500">{t('emergencyContactPhone')}:</span> {formData.emergencyPhone || 'N/A'}</p>
+                      <p><span className="text-slate-500">{t('relationshipToPatient')}:</span> {formData.emergencyRelation || 'N/A'}</p>
                     </div>
                   </div>
 
                   <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
-                    <h4 className="font-semibold text-slate-800 mb-3">Medical Summary</h4>
+                    <h4 className="font-semibold text-slate-800 mb-3">{t('medicalHistorySummary')}</h4>
                     <div className="space-y-3 text-sm">
                       <div>
                         <p className="text-slate-500 font-medium">Allergies:</p>
@@ -1174,12 +1237,12 @@ export function NewPatient() {
                       </div>
                       {formData.surgeries && (
                         <div>
-                          <p className="text-slate-500 font-medium">Previous Surgeries:</p>
+                          <p className="text-slate-500 font-medium">{t('previousSurgeries')}</p>
                           <p>{formData.surgeries}</p>
                         </div>
                       )}
                       <div>
-                        <p className="text-slate-500 font-medium">Family History:</p>
+                        <p className="text-slate-500 font-medium">{t('familyMedicalHistory')}:</p>
                         <p>{formData.familyHistory.filter(f => f.condition).map(f => `${f.relation}: ${f.condition}`).join(', ') || 'None'}</p>
                         {formData.familyHistoryText && <p className="mt-1 text-xs italic">{formData.familyHistoryText}</p>}
                       </div>
@@ -1187,7 +1250,7 @@ export function NewPatient() {
                   </div>
 
                   <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
-                    <h4 className="font-semibold text-slate-800 mb-3">Signature</h4>
+                    <h4 className="font-semibold text-slate-800 mb-3">{t('digitalSignature')}</h4>
                     <div className="bg-white border border-slate-200 rounded-lg p-2 h-24 flex items-center justify-center">
                       {formData.signature ? (
                         <img src={formData.signature} alt="Signature" className="max-h-full" />
@@ -1201,7 +1264,7 @@ export function NewPatient() {
 
               <div className="flex justify-between pt-4 border-t border-slate-100 dark:border-slate-800">
                 <button onClick={() => setStep(3)} className="px-6 py-2.5 rounded-lg font-medium border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-                  Back
+                  {t('back')}
                 </button>
                 <button 
                     onClick={async () => {
@@ -1284,7 +1347,7 @@ export function NewPatient() {
                   }}
                   className="bg-indigo-600 text-white px-8 py-2.5 rounded-lg font-bold hover:bg-indigo-700 transition-colors shadow-lg flex items-center gap-2 glow-indigo"
                 >
-                  <Check className="w-5 h-5" /> Complete Registration
+                  <Check className="w-5 h-5" /> {t('submitRegistration')}
                 </button>
               </div>
             </div>

@@ -63,6 +63,14 @@ export function NotificationSettings() {
               <div>
                 <h3 className="text-sm font-medium text-slate-900 dark:text-slate-200">Push Notifications</h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400">Receive desktop and mobile browser notifications.</p>
+                {pushNotifications && Notification.permission !== 'granted' && (
+                  <button 
+                    onClick={() => Notification.requestPermission().then(() => window.location.reload())}
+                    className="mt-2 text-[10px] font-bold text-indigo-600 hover:underline"
+                  >
+                    Request Browser Permission
+                  </button>
+                )}
               </div>
             </div>
             <button 

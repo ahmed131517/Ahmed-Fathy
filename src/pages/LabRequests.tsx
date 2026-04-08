@@ -65,6 +65,7 @@ interface LabRequest {
   results?: any[];
   aiAnalysis?: string;
   signature?: string;
+  uploadedLabUrl?: string;
   notifyPatient: boolean;
   lastModified: number;
   isDeleted: number;
@@ -89,6 +90,10 @@ export function LabRequests() {
   const [showTrendId, setShowTrendId] = useState<string | null>(null);
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
   const [isSuggesting, setIsSuggesting] = useState(false);
+  
+  const [isResultsModalOpen, setIsResultsModalOpen] = useState(false);
+  const [selectedRequest, setSelectedRequest] = useState<LabRequest | null>(null);
+  const [resultsInput, setResultsInput] = useState<any[]>([]);
   
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
   const [templateName, setTemplateName] = useState('');
@@ -173,6 +178,31 @@ export function LabRequests() {
     }
   };
 
+  const handleSaveResults = async () => {
+    if (!selectedRequest) return;
+    
+    await db.lab_requests.update(selectedRequest.localId!, { 
+      status: 'completed', 
+      results: resultsInput,
+      lastModified: Date.now()
+    }).then(() => {
+      syncToRecords({ ...selectedRequest, results: resultsInput, status: 'completed' });
+      toast.success("Results entered and synced.");
+      setIsResultsModalOpen(false);
+      setResultsInput([]);
+      setSelectedRequest(null);
+    });
+  };
+
+  const handleFileUpload = async (req: LabRequest, file: File) => {
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const dataUrl = e.target?.result as string;
+      await db.lab_requests.update(req.localId!, { uploadedLabUrl: dataUrl, lastModified: Date.now() });
+      toast.success("Lab report uploaded successfully.");
+    };
+    reader.readAsDataURL(file);
+  };
   const clearSignature = () => sigCanvas.current?.clear();
   const saveSignature = () => {
     if (sigCanvas.current) {
@@ -838,20 +868,15 @@ export function LabRequests() {
                           <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> Est. 24-48h</span>
                           <button 
                             onClick={() => {
-                              // Open modal to enter results
-                              // For now, just simulate entering results
-                              const results = [
-                                { test: "Hemoglobin", value: 13.5, unit: "g/dL", range: "12.0-15.5", status: "normal" },
-                                { test: "WBC", value: 7.5, unit: "K/uL", range: "4.5-11.0", status: "normal" }
-                              ];
-                              db.lab_requests.update(req.localId!, { 
-                                status: 'completed', 
-                                results: results,
-                                lastModified: Date.now()
-                              }).then(() => {
-                                syncToRecords({ ...req, results, status: 'completed' });
-                                toast.success("Results entered and synced.");
-                              });
+                              setSelectedRequest(req);
+                              setResultsInput(req.tests.map(t => ({ 
+                                test: t.name, 
+                                value: '', 
+                                unit: t.unit || '', 
+                                range: t.referenceRange || '', 
+                                status: 'normal' 
+                              })));
+                              setIsResultsModalOpen(true);
                             }}
                             className="text-indigo-600 font-medium hover:underline flex items-center gap-1"
                           >
@@ -908,6 +933,21 @@ export function LabRequests() {
                         <Database className="w-4 h-4 text-indigo-500" />
                         Sync to Records
                       </button>
+                      <div className="relative">
+                        <input 
+                          type="file" 
+                          id={`upload-${req.id}`}
+                          className="hidden" 
+                          onChange={(e) => e.target.files?.[0] && handleFileUpload(req, e.target.files[0])}
+                        />
+                        <label 
+                          htmlFor={`upload-${req.id}`}
+                          className="px-4 py-2 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg text-sm font-medium flex items-center gap-2 transition-all shadow-sm cursor-pointer"
+                        >
+                          <FolderOpen className="w-4 h-4 text-indigo-500" />
+                          {req.uploadedLabUrl ? "Replace Lab Report" : "Upload Lab Report"}
+                        </label>
+                      </div>
                     </div>
                     
                     <div className="p-6 grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -994,6 +1034,54 @@ export function LabRequests() {
           )}
         </div>
       </div>
+      {/* Results Modal */}
+      <Dialog open={isResultsModalOpen} onOpenChange={setIsResultsModalOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Enter Lab Results</DialogTitle>
+            <DialogDescription>Enter the results for the requested tests.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {resultsInput.map((res, idx) => (
+              <div key={idx} className="grid grid-cols-3 gap-2">
+                <div className="col-span-3 font-medium text-sm">{res.test}</div>
+                <Input 
+                  placeholder="Value"
+                  value={res.value}
+                  onChange={(e) => {
+                    const newResults = [...resultsInput];
+                    newResults[idx].value = e.target.value;
+                    setResultsInput(newResults);
+                  }}
+                />
+                <Input 
+                  placeholder="Unit"
+                  value={res.unit}
+                  onChange={(e) => {
+                    const newResults = [...resultsInput];
+                    newResults[idx].unit = e.target.value;
+                    setResultsInput(newResults);
+                  }}
+                />
+                <Input 
+                  placeholder="Range"
+                  value={res.range}
+                  onChange={(e) => {
+                    const newResults = [...resultsInput];
+                    newResults[idx].range = e.target.value;
+                    setResultsInput(newResults);
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsResultsModalOpen(false)}>Cancel</Button>
+            <Button onClick={handleSaveResults}>Save Results</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Signature Modal */}
       <AnimatePresence>
         {showSignature && (

@@ -4,6 +4,8 @@ import { motion, AnimatePresence } from "motion/react";
 import { useNavigate } from "react-router-dom";
 import { useUser } from "../../lib/UserContext";
 import { useNotifications } from "../../lib/NotificationContext";
+import { useSettings } from "../../lib/SettingsContext";
+import { useTranslation } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
 import { toast } from "sonner";
 import { medicationsDatabase } from '@/data/medications';
@@ -44,6 +46,8 @@ export function Header() {
   const navigate = useNavigate();
   const { profile } = useUser();
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
+  const { language, updateSettings } = useSettings();
+  const { t, isRTL } = useTranslation();
 
   // Voice Search Implementation
   const startVoiceSearch = () => {
@@ -146,13 +150,13 @@ export function Header() {
           <Menu className="w-5 h-5" />
         </button>
         <div className="relative w-full max-w-md hidden md:block" ref={searchRef}>
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <Search className="h-4 w-4 text-slate-400 dark:text-slate-500" />
-          </div>
           <input
             type="text"
-            className="block w-full pl-10 pr-12 py-2 border border-slate-200 dark:border-slate-800 rounded-lg leading-5 bg-slate-50 dark:bg-slate-950/50 placeholder-slate-400 dark:placeholder-slate-500 text-slate-900 dark:text-slate-200 focus:outline-none focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm transition-colors"
-            placeholder="Search patients or clinical knowledge..."
+            className={cn(
+              "block w-full py-2 border border-slate-200 dark:border-slate-800 rounded-lg leading-5 bg-slate-50 dark:bg-slate-950/50 placeholder-slate-400 dark:placeholder-slate-500 text-slate-900 dark:text-slate-200 focus:outline-none focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm transition-colors",
+              isRTL ? "pr-10 pl-12" : "pl-10 pr-12"
+            )}
+            placeholder={t('searchPlaceholder')}
             value={searchQuery}
             onChange={(e) => {
               setSearchQuery(e.target.value);
@@ -160,7 +164,10 @@ export function Header() {
             }}
             onFocus={() => setIsSearchOpen(true)}
           />
-          <div className="absolute inset-y-0 right-0 pr-1.5 flex items-center">
+          <div className={cn("absolute inset-y-0 flex items-center", isRTL ? "right-0 pr-3" : "left-0 pl-3")}>
+            <Search className="h-4 w-4 text-slate-400 dark:text-slate-500" />
+          </div>
+          <div className={cn("absolute inset-y-0 flex items-center", isRTL ? "left-0 pl-1.5" : "right-0 pr-1.5")}>
             <button 
               onClick={startVoiceSearch}
               className={cn(
@@ -169,7 +176,7 @@ export function Header() {
                   ? "text-red-600 bg-red-50 dark:bg-red-500/10 animate-pulse scale-110" 
                   : "text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10"
               )}
-              title="Voice Search"
+              title={t('voiceSearch')}
             >
               <Mic className={cn("h-4 w-4", isListening && "fill-current")} />
             </button>
@@ -233,10 +240,17 @@ export function Header() {
           )}
         </div>
       </div>
-      <div className="flex items-center space-x-4">
-        <select className="text-sm border-slate-200 dark:border-slate-800 bg-transparent text-slate-700 dark:text-slate-300 rounded-md py-1.5 pl-3 pr-8 focus:ring-indigo-500 focus:border-indigo-500 hidden sm:block">
+      <div className={cn("flex items-center space-x-4", isRTL && "space-x-reverse")}>
+        <select 
+          value={language}
+          onChange={(e) => updateSettings({ language: e.target.value })}
+          className="text-sm border-slate-200 dark:border-slate-800 bg-transparent text-slate-700 dark:text-slate-300 rounded-md py-1.5 pl-3 pr-8 focus:ring-indigo-500 focus:border-indigo-500 hidden sm:block outline-none"
+        >
           <option value="en" className="dark:bg-slate-900">English</option>
           <option value="ar" className="dark:bg-slate-900">العربية</option>
+          <option value="es" className="dark:bg-slate-900">Español</option>
+          <option value="fr" className="dark:bg-slate-900">Français</option>
+          <option value="de" className="dark:bg-slate-900">Deutsch</option>
         </select>
         
         <div className="relative" ref={notificationsRef}>
@@ -262,13 +276,13 @@ export function Header() {
                 className="absolute right-0 mt-2 w-80 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-100 dark:border-slate-800 overflow-hidden z-50 origin-top-right"
               >
                 <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-950/50">
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">Notifications</h3>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">{t('notifications')}</h3>
                   {unreadCount > 0 && (
                     <button 
                       onClick={markAllAsRead}
                       className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline uppercase tracking-wider"
                     >
-                      Mark all as read
+                      {t('markAllAsRead')}
                     </button>
                   )}
                 </div>
@@ -312,7 +326,7 @@ export function Header() {
                   ) : (
                     <div className="p-8 text-center">
                       <Bell className="w-8 h-8 text-slate-200 dark:text-slate-800 mx-auto mb-2" />
-                      <p className="text-sm text-slate-500 dark:text-slate-400">No new notifications</p>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">{t('noNotifications')}</p>
                     </div>
                   )}
                 </div>
@@ -324,17 +338,20 @@ export function Header() {
                     }}
                     className="text-xs font-bold text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
                   >
-                    View all notifications
+                    {t('viewAllNotifications')}
                   </button>
                 </div>
               </motion.div>
             )}
           </AnimatePresence>
         </div>
-        <div className="flex items-center space-x-3 border-l border-slate-200 dark:border-slate-800 pl-4">
+        <div className={cn("flex items-center space-x-3 border-l border-slate-200 dark:border-slate-800 pl-4", isRTL && "space-x-reverse border-l-0 border-r pr-4 pl-0")}>
           <div className="relative" ref={profileRef}>
             <button 
-              className="flex items-center space-x-3 cursor-pointer focus:outline-none hover:bg-slate-50 dark:hover:bg-slate-800/50 p-1.5 rounded-lg transition-colors"
+              className={cn(
+                "flex items-center space-x-3 cursor-pointer focus:outline-none hover:bg-slate-50 dark:hover:bg-slate-800/50 p-1.5 rounded-lg transition-colors",
+                isRTL && "space-x-reverse"
+              )}
               onClick={() => setIsProfileOpen(!isProfileOpen)}
               aria-expanded={isProfileOpen}
               aria-haspopup="true"
@@ -344,10 +361,10 @@ export function Header() {
                      style={profile.avatarImage ? { backgroundImage: `url(${profile.avatarImage})` } : {}}>
                   {!profile.avatarImage && profile.avatarInitials}
                 </div>
-                <span className="absolute bottom-0 right-0 block h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-slate-900" />
+                <span className={cn("absolute bottom-0 block h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-slate-900", isRTL ? "left-0" : "right-0")} />
               </div>
               <div className="hidden sm:flex flex-col items-start">
-                <span className="text-[15px] font-semibold text-[#1e293b] dark:text-slate-200">Dr. {profile.firstName} {profile.lastName}</span>
+                <span className="text-[15px] font-semibold text-[#1e293b] dark:text-slate-200">{isRTL ? "د." : "Dr."} {profile.firstName} {profile.lastName}</span>
                 <span className="text-[13px] font-medium text-slate-500 dark:text-slate-400">{profile.specialty}</span>
               </div>
               <ChevronDown className={`h-4 w-4 text-slate-500 dark:text-slate-400 hidden sm:block transition-transform duration-200 ${isProfileOpen ? 'rotate-180' : ''}`} />
@@ -364,7 +381,7 @@ export function Header() {
                   role="menu"
                 >
                   <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800">
-                    <p className="text-[15px] font-semibold text-[#2c3e50] dark:text-slate-200">My Account</p>
+                    <p className="text-[15px] font-semibold text-[#2c3e50] dark:text-slate-200">{t('myAccount')}</p>
                     <p className="text-[13px] text-slate-500 dark:text-slate-400 truncate mt-0.5">{profile.email}</p>
                   </div>
                   <ul className="py-1">
@@ -375,7 +392,7 @@ export function Header() {
                         className="w-full text-left px-4 py-2.5 text-[15px] text-[#2c3e50] dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors flex items-center gap-3 focus:bg-slate-50 dark:focus:bg-slate-800 focus:outline-none"
                       >
                         <User className="h-4 w-4 text-slate-400 dark:text-slate-500" />
-                        Profile
+                        {t('profile')}
                       </button>
                     </li>
                     <li>
@@ -385,7 +402,7 @@ export function Header() {
                         className="w-full text-left px-4 py-2.5 text-[15px] text-[#2c3e50] dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors flex items-center gap-3 focus:bg-slate-50 dark:focus:bg-slate-800 focus:outline-none"
                       >
                         <Calendar className="h-4 w-4 text-slate-400 dark:text-slate-500" />
-                        Schedule
+                        {t('schedule')}
                       </button>
                     </li>
                     <li>
@@ -395,7 +412,7 @@ export function Header() {
                         className="w-full text-left px-4 py-2.5 text-[15px] text-[#2c3e50] dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors flex items-center gap-3 focus:bg-slate-50 dark:focus:bg-slate-800 focus:outline-none"
                       >
                         <Settings className="h-4 w-4 text-slate-400 dark:text-slate-500" />
-                        Settings
+                        {t('settings')}
                       </button>
                     </li>
                   </ul>
@@ -409,7 +426,7 @@ export function Header() {
                       className="w-full text-left px-4 py-2.5 text-[15px] text-[#e74c3c] dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors flex items-center gap-3 focus:bg-red-50 dark:focus:bg-red-500/10 focus:outline-none"
                     >
                       <LogOut className="h-4 w-4 text-[#e74c3c] dark:text-red-400" />
-                      Sign out
+                      {t('signOut')}
                     </button>
                   </div>
                 </motion.div>

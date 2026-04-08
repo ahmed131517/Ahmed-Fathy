@@ -18,27 +18,28 @@ import {
   ListTodo,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-
+import { useTranslation, TranslationKey } from "@/lib/i18n";
 import { toast } from "sonner";
 
-const navItems = [
-  { name: "Dashboard", path: "/", icon: LayoutGrid },
-  { name: "Appointments", path: "/appointments", icon: Calendar },
-  { name: "New Patient", path: "/new-patient", icon: UserPlus },
-  { name: "Symptom Analysis", path: "/symptom-analysis", icon: Activity },
-  { name: "Physical Exam", path: "/physical-exam", icon: ClipboardList },
-  { name: "Lab Requests", path: "/lab-requests", icon: FilePlus },
-  { name: "Final Diagnosis", path: "/final-diagnosis", icon: CheckCircle },
-  { name: "Prescriptions", path: "/prescriptions", icon: FileText },
-  { name: "Pharmacies", path: "/pharmacies", icon: ShoppingBag },
-  { name: "Medical Records", path: "/medical-records", icon: Folder },
-  { name: "Knowledge", path: "/knowledge", icon: BookOpen },
-  { name: "Ask AI", path: "/ask-ai", icon: Bot },
-  { name: "Tasks", path: "/tasks", icon: ListTodo },
-  { name: "Settings", path: "/settings", icon: Settings },
+const navItems: { name: string; key: TranslationKey; path: string; icon: any }[] = [
+  { name: "Dashboard", key: "dashboard", path: "/", icon: LayoutGrid },
+  { name: "Appointments", key: "appointments", path: "/appointments", icon: Calendar },
+  { name: "New Patient", key: "newPatient", path: "/new-patient", icon: UserPlus },
+  { name: "Symptom Analysis", key: "symptomAnalysis", path: "/symptom-analysis", icon: Activity },
+  { name: "Physical Exam", key: "physicalExam", path: "/physical-exam", icon: ClipboardList },
+  { name: "Lab Requests", key: "labRequests", path: "/lab-requests", icon: FilePlus },
+  { name: "Final Diagnosis", key: "finalDiagnosis", path: "/final-diagnosis", icon: CheckCircle },
+  { name: "Prescriptions", key: "prescriptions", path: "/prescriptions", icon: FileText },
+  { name: "Pharmacies", key: "pharmacies", path: "/pharmacies", icon: ShoppingBag },
+  { name: "Medical Records", key: "medicalRecords", path: "/medical-records", icon: Folder },
+  { name: "Knowledge", key: "knowledge", path: "/knowledge", icon: BookOpen },
+  { name: "Ask AI", key: "askAI", path: "/ask-ai", icon: Bot },
+  { name: "Settings", key: "settings", path: "/settings", icon: Settings },
 ];
 
 export function Sidebar() {
+  const { t, isRTL } = useTranslation();
+
   return (
     <aside className={cn(
       "w-64 flex flex-col h-full hidden md:flex transition-colors duration-200",
@@ -66,8 +67,8 @@ export function Sidebar() {
               )
             }
           >
-            <item.icon className="w-5 h-5 mr-3 flex-shrink-0" />
-            {item.name}
+            <item.icon className={cn("w-5 h-5 flex-shrink-0", isRTL ? "ml-3" : "mr-3")} />
+            {t(item.key)}
           </NavLink>
         ))}
       </nav>
@@ -78,8 +79,8 @@ export function Sidebar() {
           onClick={() => toast.success("Signed out successfully")}
           className="flex items-center w-full px-3 py-2.5 rounded-lg text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
         >
-          <LogOut className="w-5 h-5 mr-3 flex-shrink-0" />
-          Sign Out
+          <LogOut className={cn("w-5 h-5 flex-shrink-0", isRTL ? "ml-3" : "mr-3")} />
+          {t('logout')}
         </button>
       </div>
     </aside>

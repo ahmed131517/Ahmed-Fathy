@@ -23,7 +23,7 @@ export function SettingsDashboard() {
     { 
       title: "General & Appearance", 
       items: [
-        { name: "General Settings", path: "/settings", icon: Monitor, desc: "Basic system configuration and info" },
+        { name: "General Settings", path: "/settings/general", icon: Monitor, desc: "Basic system configuration and info" },
         { name: "Appearance", path: "/settings/appearance", icon: Palette, desc: "Themes, colors, and visual styles" },
         { name: "Language & Region", path: "/settings/language", icon: Globe, desc: "Timezones and localization" },
       ]

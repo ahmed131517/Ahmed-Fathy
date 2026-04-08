@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { NewAppointmentModal } from "@/components/modals/NewAppointmentModal";
 import { AppointmentDetailsModal } from "@/components/modals/AppointmentDetailsModal";
 import { useSettings } from "@/lib/SettingsContext";
+import { useTranslation } from "@/lib/i18n";
 import { DndContext, DragOverlay, useDraggable, useDroppable, DragEndEvent, DragStartEvent } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { db } from "@/lib/db";
@@ -93,6 +94,7 @@ const DroppableCell: React.FC<DroppableCellProps> = ({ time, dayIndex, children,
 
 export function Appointments() {
   const { compactMode, showPatientIds } = useSettings();
+  const { t, isRTL } = useTranslation();
   const [view, setView] = useState<"list" | "calendar">("list");
   const [statusFilter, setStatusFilter] = useState("all");
   const [doctorFilter, setDoctorFilter] = useState("all");
@@ -266,8 +268,8 @@ export function Appointments() {
               onClick={() => setIsNewModalOpen(true)}
               className="w-full flex items-center justify-center space-x-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-3 rounded-xl font-medium transition-colors shadow-sm"
             >
-              <Plus className="w-5 h-5" />
-              <span>New Appointment</span>
+              <Plus className={cn("w-5 h-5", isRTL ? "ml-2" : "mr-2")} />
+              <span>{t('newAppointment')}</span>
             </button>
             <button 
               onClick={handleSendAllReminders}
@@ -279,9 +281,9 @@ export function Appointments() {
                   : "bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800"
               )}
             >
-              <Bell className="w-5 h-5" />
+              <Bell className={cn("w-5 h-5", isRTL ? "ml-2" : "mr-2")} />
               <span>
-                {isSendingReminders ? "Sending..." : remindersSent ? "Reminders Sent!" : "Send Daily Reminders"}
+                {isSendingReminders ? t('sending') : remindersSent ? t('remindersSent') : t('sendDailyReminders')}
               </span>
             </button>
           </div>
@@ -290,63 +292,66 @@ export function Appointments() {
             "card-panel p-5"
           )}>
             <div className="flex items-center space-x-2 text-slate-800 dark:text-slate-200 font-semibold pb-2 border-b border-slate-100 dark:border-slate-800">
-              <Filter className="w-4 h-4 text-indigo-500 dark:text-indigo-400" />
-              <h3 className="mono-label">Filters</h3>
+              <Filter className={cn("w-4 h-4 text-indigo-500 dark:text-indigo-400", isRTL ? "ml-2" : "mr-2")} />
+              <h3 className="mono-label">{t('filters')}</h3>
             </div>
             
-            <div className="space-y-3">
+            <div className="space-y-3 mt-3">
               <div>
-                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Search Patient</label>
+                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">{t('searchPatient')}</label>
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <Search className={cn("absolute top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400", isRTL ? "right-3" : "left-3")} />
                   <input
                     type="text"
-                    placeholder="Name or ID..."
-                    className="w-full pl-9 pr-3 py-2 text-sm bg-white dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+                    placeholder={t('nameOrId')}
+                    className={cn(
+                      "w-full py-2 text-sm bg-white dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all",
+                      isRTL ? "pr-9 pl-3" : "pl-9 pr-3"
+                    )}
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Status</label>
+                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">{t('status')}</label>
                 <select 
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
                   className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
                 >
-                  <option value="all" className="dark:bg-slate-900">All Statuses</option>
-                  <option value="scheduled" className="dark:bg-slate-900">Scheduled</option>
-                  <option value="completed" className="dark:bg-slate-900">Completed</option>
-                  <option value="canceled" className="dark:bg-slate-900">Canceled</option>
-                  <option value="no-show" className="dark:bg-slate-900">No-Show</option>
+                  <option value="all" className="dark:bg-slate-900">{t('allStatuses')}</option>
+                  <option value="scheduled" className="dark:bg-slate-900">{t('scheduled')}</option>
+                  <option value="completed" className="dark:bg-slate-900">{t('completed')}</option>
+                  <option value="canceled" className="dark:bg-slate-900">{t('canceled')}</option>
+                  <option value="no-show" className="dark:bg-slate-900">{t('noShow')}</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Doctor</label>
+                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">{t('doctor')}</label>
                 <select 
                   value={doctorFilter}
                   onChange={(e) => setDoctorFilter(e.target.value)}
                   className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
                 >
-                  <option value="all" className="dark:bg-slate-900">All Doctors</option>
+                  <option value="all" className="dark:bg-slate-900">{t('allDoctors')}</option>
                   <option value="Dr. Ahmed Fathy" className="dark:bg-slate-900">Dr. Ahmed Fathy</option>
                   <option value="Dr. Sarah Connor" className="dark:bg-slate-900">Dr. Sarah Connor</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Type</label>
+                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">{t('type')}</label>
                 <select 
                   value={typeFilter}
                   onChange={(e) => setTypeFilter(e.target.value)}
                   className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
                 >
-                  <option value="all" className="dark:bg-slate-900">All Types</option>
-                  <option value="Check-up" className="dark:bg-slate-900">Check-up</option>
-                  <option value="Follow-up" className="dark:bg-slate-900">Follow-up</option>
-                  <option value="Consultation" className="dark:bg-slate-900">Consultation</option>
-                  <option value="Emergency" className="dark:bg-slate-900">Emergency</option>
+                  <option value="all" className="dark:bg-slate-900">{t('allTypes')}</option>
+                  <option value="Check-up" className="dark:bg-slate-900">{t('checkUp')}</option>
+                  <option value="Follow-up" className="dark:bg-slate-900">{t('followUp')}</option>
+                  <option value="Consultation" className="dark:bg-slate-900">{t('consultation')}</option>
+                  <option value="Emergency" className="dark:bg-slate-900">{t('emergency')}</option>
                 </select>
               </div>
             </div>
@@ -356,16 +361,16 @@ export function Appointments() {
             "card-panel p-5 hidden md:block"
           )}>
             <div className="flex items-center space-x-2 text-slate-800 dark:text-slate-200 font-semibold pb-2 border-b border-slate-100 dark:border-slate-800">
-              <PieChart className="w-4 h-4 text-indigo-500 dark:text-indigo-400" />
-              <h3 className="mono-label">Quick Stats</h3>
+              <PieChart className={cn("w-4 h-4 text-indigo-500 dark:text-indigo-400", isRTL ? "ml-2" : "mr-2")} />
+              <h3 className="mono-label">{t('quickStats')}</h3>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-3 mt-3">
               <div className="bg-slate-50 dark:bg-slate-800 p-3 rounded-lg border border-slate-100 dark:border-slate-700">
-                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Total</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">{t('total')}</p>
                 <p className="text-xl font-bold text-slate-800 dark:text-white mt-1">24</p>
               </div>
               <div className="bg-indigo-50 dark:bg-indigo-500/10 p-3 rounded-lg border border-indigo-100 dark:border-indigo-500/20">
-                <p className="text-xs text-indigo-600 dark:text-indigo-400 font-medium">Today</p>
+                <p className="text-xs text-indigo-600 dark:text-indigo-400 font-medium">{t('today')}</p>
                 <p className="text-xl font-bold text-indigo-900 dark:text-indigo-300 mt-1">8</p>
               </div>
             </div>
@@ -375,10 +380,10 @@ export function Appointments() {
             "card-panel gradient-indigo p-5 hidden md:block"
           )}>
             <div className="flex items-center space-x-2 text-indigo-900 dark:text-indigo-300 font-semibold pb-2 border-b border-indigo-100/50 dark:border-indigo-900/50">
-              <CalendarIcon className="w-4 h-4 text-indigo-500 dark:text-indigo-400" />
-              <h3 className="mono-label">Suggested Follow-ups</h3>
+              <CalendarIcon className={cn("w-4 h-4 text-indigo-500 dark:text-indigo-400", isRTL ? "ml-2" : "mr-2")} />
+              <h3 className="mono-label">{t('suggestedFollowUps')}</h3>
             </div>
-            <div className="space-y-3">
+            <div className="space-y-3 mt-3">
               <div className="bg-white dark:bg-slate-900 p-3 rounded-lg border border-indigo-50 dark:border-indigo-900/30 shadow-sm">
                 <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">Sarah Connor</p>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Post-op checkup due (2 weeks)</p>
@@ -386,7 +391,7 @@ export function Appointments() {
                   onClick={() => setIsNewModalOpen(true)}
                   className="mt-2 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 flex items-center gap-1"
                 >
-                  <Plus className="w-3 h-3" /> Schedule Now
+                  <Plus className="w-3 h-3" /> {t('scheduleNow')}
                 </button>
               </div>
               <div className="bg-white dark:bg-slate-900 p-3 rounded-lg border border-indigo-50 dark:border-indigo-900/30 shadow-sm">
@@ -396,7 +401,7 @@ export function Appointments() {
                   onClick={() => setIsNewModalOpen(true)}
                   className="mt-2 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 flex items-center gap-1"
                 >
-                  <Plus className="w-3 h-3" /> Schedule Now
+                  <Plus className="w-3 h-3" /> {t('scheduleNow')}
                 </button>
               </div>
             </div>
@@ -414,8 +419,8 @@ export function Appointments() {
                   view === "list" ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm" : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
                 )}
               >
-                <List className="w-4 h-4" />
-                <span>List View</span>
+                <List className={cn("w-4 h-4", isRTL ? "ml-2" : "mr-2")} />
+                <span>{t('listView')}</span>
               </button>
               <button
                 onClick={() => setView("calendar")}
@@ -424,8 +429,8 @@ export function Appointments() {
                   view === "calendar" ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm" : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
                 )}
               >
-                <CalendarIcon className="w-4 h-4" />
-                <span>Calendar</span>
+                <CalendarIcon className={cn("w-4 h-4", isRTL ? "ml-2" : "mr-2")} />
+                <span>{t('calendar')}</span>
               </button>
             </div>
 
@@ -442,7 +447,7 @@ export function Appointments() {
                         : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800"
                     )}
                   >
-                    {status}
+                    {status === 'all' ? t('all') : t(status as any)}
                   </button>
                 ))}
               </div>
@@ -450,7 +455,7 @@ export function Appointments() {
 
             {view === "calendar" && (
               <div className="flex items-center gap-2 px-2">
-                <div className="flex items-center gap-1.5 mr-2 border-r border-slate-200 dark:border-slate-800 pr-3">
+                <div className={cn("flex items-center gap-1.5 border-slate-200 dark:border-slate-800", isRTL ? "ml-2 border-l pl-3" : "mr-2 border-r pr-3")}>
                   {['all', 'scheduled', 'completed', 'canceled', 'no-show'].map(status => (
                     <button
                       key={status}
@@ -462,7 +467,7 @@ export function Appointments() {
                           : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800"
                       )}
                     >
-                      {status}
+                      {status === 'all' ? t('all') : t(status as any)}
                     </button>
                   ))}
                   <select 
@@ -470,11 +475,11 @@ export function Appointments() {
                     onChange={(e) => setStatusFilter(e.target.value)}
                     className="lg:hidden px-2 py-1.5 text-[10px] font-bold bg-white dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-all uppercase"
                   >
-                    <option value="all" className="dark:bg-slate-900">All</option>
-                    <option value="scheduled" className="dark:bg-slate-900">Scheduled</option>
-                    <option value="completed" className="dark:bg-slate-900">Completed</option>
-                    <option value="canceled" className="dark:bg-slate-900">Canceled</option>
-                    <option value="no-show" className="dark:bg-slate-900">No-Show</option>
+                    <option value="all" className="dark:bg-slate-900">{t('all')}</option>
+                    <option value="scheduled" className="dark:bg-slate-900">{t('scheduled')}</option>
+                    <option value="completed" className="dark:bg-slate-900">{t('completed')}</option>
+                    <option value="canceled" className="dark:bg-slate-900">{t('canceled')}</option>
+                    <option value="no-show" className="dark:bg-slate-900">{t('noShow')}</option>
                   </select>
                 </div>
                 <div className="flex items-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg overflow-hidden shadow-sm">
@@ -482,7 +487,7 @@ export function Appointments() {
                     onClick={() => setCurrentWeekOffset(prev => prev - 1)}
                     className="p-1.5 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
                   >
-                    <ChevronLeft className="w-4 h-4" />
+                    <ChevronLeft className={cn("w-4 h-4", isRTL && "rotate-180")} />
                   </button>
                   <span className="px-3 py-1.5 text-[10px] font-bold text-slate-700 dark:text-slate-300 border-x border-slate-100 dark:border-slate-800 min-w-[110px] text-center uppercase tracking-widest">
                     {getMonthName()}
@@ -491,14 +496,14 @@ export function Appointments() {
                     onClick={() => setCurrentWeekOffset(prev => prev + 1)}
                     className="p-1.5 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
                   >
-                    <ChevronRight className="w-4 h-4" />
+                    <ChevronRight className={cn("w-4 h-4", isRTL && "rotate-180")} />
                   </button>
                 </div>
                 <button 
                   onClick={() => setCurrentWeekOffset(0)}
                   className="px-3 py-1.5 text-[10px] font-bold text-slate-600 dark:text-slate-400 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-all active:scale-95 uppercase tracking-wider shadow-sm"
                 >
-                  Today
+                  {t('today')}
                 </button>
               </div>
             )}
@@ -606,15 +611,15 @@ export function Appointments() {
                     <div className="w-20 h-20 bg-slate-50 dark:bg-slate-800/50 rounded-full flex items-center justify-center mx-auto mb-4 border-2 border-dashed border-slate-200 dark:border-slate-700">
                       <CalendarIcon className="w-10 h-10 text-slate-400 dark:text-slate-500" />
                     </div>
-                    <h3 className="text-lg font-medium text-slate-900 dark:text-white mb-1">No appointments found</h3>
-                    <p className="text-slate-500 dark:text-slate-400 max-w-sm mx-auto mb-6">We couldn't find any appointments matching your current filters. Try adjusting your search or create a new appointment.</p>
+                    <h3 className="text-lg font-medium text-slate-900 dark:text-white mb-1">{t('noAppointmentsFound')}</h3>
+                    <p className="text-slate-500 dark:text-slate-400 max-w-sm mx-auto mb-6">{t('noAppointmentsDesc')}</p>
                     <button 
                       onClick={() => {
                         setStatusFilter('all');
                       }}
                       className="text-indigo-600 dark:text-indigo-400 font-medium hover:text-indigo-700 dark:hover:text-indigo-300 text-sm"
                     >
-                      Clear all filters
+                      {t('clearAllFilters')}
                     </button>
                   </div>
                 )}
@@ -623,9 +628,9 @@ export function Appointments() {
               <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
                 <div className="flex flex-col h-full border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden bg-white dark:bg-slate-900">
                   <div className="grid grid-cols-8 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50">
-                    <div className="p-3 border-r border-slate-200 dark:border-slate-800 text-center text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Time</div>
+                    <div className={cn("p-3 border-slate-200 dark:border-slate-800 text-center text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider", isRTL ? "border-l" : "border-r")}>{t('time')}</div>
                     {weekDays.map(day => (
-                      <div key={day} className="p-3 border-r border-slate-200 dark:border-slate-800 last:border-r-0 text-center text-sm font-medium text-slate-700 dark:text-slate-300">
+                      <div key={day} className={cn("p-3 border-slate-200 dark:border-slate-800 text-center text-sm font-medium text-slate-700 dark:text-slate-300", isRTL ? "border-l last:border-l-0" : "border-r last:border-r-0")}>
                         {day}
                       </div>
                     ))}
@@ -633,7 +638,7 @@ export function Appointments() {
                   <div className="flex-1 overflow-y-auto">
                     {['09:00 AM', '10:00 AM', '11:00 AM', '12:00 PM', '01:00 PM', '02:00 PM', '03:00 PM', '04:00 PM'].map(time => (
                       <div key={time} className="grid grid-cols-8 border-b border-slate-100 dark:border-slate-800 last:border-b-0 min-h-[80px]">
-                        <div className="p-3 border-r border-slate-100 dark:border-slate-800 text-center text-xs font-medium text-slate-500 dark:text-slate-400 bg-slate-50/50 dark:bg-slate-950/30 flex items-center justify-center">
+                        <div className={cn("p-3 border-slate-100 dark:border-slate-800 text-center text-xs font-medium text-slate-500 dark:text-slate-400 bg-slate-50/50 dark:bg-slate-950/30 flex items-center justify-center", isRTL ? "border-l" : "border-r")}>
                           {time}
                         </div>
                         {Array.from({ length: 7 }).map((_, dayIndex) => {
@@ -713,9 +718,9 @@ export function Appointments() {
               <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-500/20 text-red-600 dark:text-red-400 flex items-center justify-center mx-auto mb-4">
                 <AlertTriangle className="w-6 h-6" />
               </div>
-              <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">Cancel Appointment?</h3>
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">{t('cancelAppointment')}</h3>
               <p className="text-sm text-slate-500 dark:text-slate-400">
-                Are you sure you want to cancel this appointment? This action cannot be undone.
+                {t('cancelAppointmentDesc')}
               </p>
             </div>
             <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50 rounded-b-xl flex gap-3">
@@ -723,13 +728,13 @@ export function Appointments() {
                 onClick={() => setAppointmentToDelete(null)}
                 className="flex-1 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
               >
-                Keep it
+                {t('keepIt')}
               </button>
               <button 
                 onClick={() => handleDelete(appointmentToDelete)}
                 className="flex-1 px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors shadow-sm"
               >
-                Yes, Cancel
+                {t('yesCancel')}
               </button>
             </div>
           </div>

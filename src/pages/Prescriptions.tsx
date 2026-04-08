@@ -3,12 +3,14 @@ import { useState, useMemo, useEffect } from "react";
 import { 
   FileText, Plus, Layout, Cpu, History, Eye, CheckCircle, 
   Search, ShoppingCart, Trash2, AlertCircle, X, PlusCircle,
-  Hash, Clock, Calendar, Info, Sparkles, Loader2, RefreshCw
+  Hash, Clock, Calendar, Info, Sparkles, Loader2, RefreshCw,
+  Activity, Printer
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Textarea } from "@/components/ui/textarea";
 import { medicationsDatabase } from "@/data/medications";
 import { prescriptionTemplates } from "@/data/templates";
+import { PrescriptionPreview } from "@/components/PrescriptionPreview";
 import { usePatient } from "@/lib/PatientContext";
 import { generateContentWithRetry } from "../utils/gemini";
 import { toast } from "sonner";
@@ -21,7 +23,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 const allMedications = Object.values(medicationsDatabase).flat();
 
 export function Prescriptions() {
-  const { selectedPatient, confirmedDiagnosis } = usePatient();
+  const { selectedPatient, confirmedDiagnosis, setConfirmedDiagnosis } = usePatient();
   const [activeTab, setActiveTab] = useState('new');
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
@@ -46,6 +48,17 @@ export function Prescriptions() {
   const [currentPrescription, setCurrentPrescription] = useState<any[]>([]);
   const [prescriptionNotes, setPrescriptionNotes] = useState("");
   const [refills, setRefills] = useState("0");
+  const [vitals, setVitals] = useState({
+    bp: "",
+    p: "",
+    temp: "",
+    rr: "",
+    sao2: "",
+    rbs: "",
+    oe: "",
+    co: "",
+    ph: ""
+  });
   const [interactionAlerts, setInteractionAlerts] = useState<string[]>([]);
   const [isCheckingInteractions, setIsCheckingInteractions] = useState(false);
   
@@ -63,6 +76,62 @@ export function Prescriptions() {
   useEffect(() => {
     localStorage.setItem('userTemplates', JSON.stringify(userTemplates));
   }, [userTemplates]);
+
+  // Automatically populate vitals when a patient is selected
+  useEffect(() => {
+    const fetchLatestVitals = async () => {
+      if (!selectedPatient?.id) return;
+      
+      try {
+        // Fetch latest vitals from DB
+        const latestVitals = await db.vitals
+          .where('patientId')
+          .equals(selectedPatient.id)
+          .reverse()
+          .first();
+          
+        if (latestVitals) {
+          setVitals({
+            bp: latestVitals.bp_systolic && latestVitals.bp_diastolic 
+              ? `${latestVitals.bp_systolic}/${latestVitals.bp_diastolic}` 
+              : "",
+            p: latestVitals.hr?.toString() || "",
+            temp: latestVitals.temp?.toString() || "",
+            rr: latestVitals.rr?.toString() || "",
+            sao2: latestVitals.spo2 ? `${latestVitals.spo2}%` : "",
+            rbs: "", // RBS might not be in the standard vitals table if it's a separate field
+            oe: "",
+            co: latestVitals.notes || "",
+            ph: ""
+          });
+        }
+      } catch (error) {
+        console.error("Failed to fetch latest vitals:", error);
+      }
+    };
+    
+    fetchLatestVitals();
+    
+    const fetchLatestDiagnosis = async () => {
+      if (!selectedPatient?.id || confirmedDiagnosis) return;
+      
+      try {
+        const latestDiagnosis = await db.diagnoses
+          .where('patientId')
+          .equals(selectedPatient.id)
+          .reverse()
+          .first();
+          
+        if (latestDiagnosis) {
+          setConfirmedDiagnosis(latestDiagnosis.description || latestDiagnosis.condition);
+        }
+      } catch (error) {
+        console.error("Failed to fetch latest diagnosis:", error);
+      }
+    };
+    
+    fetchLatestDiagnosis();
+  }, [selectedPatient, confirmedDiagnosis, setConfirmedDiagnosis]);
 
   useEffect(() => {
     const check = async () => {
@@ -500,6 +569,53 @@ export function Prescriptions() {
     setAiSuggestions([]);
   };
 
+  const handleGetAlternative = async (suggestion: any, idx: number) => {
+    setIsAiLoading(true);
+    try {
+      const prompt = `As a clinical assistant, provide an alternative medication for ${suggestion.medication} for a patient with diagnosis: ${confirmedDiagnosis}.
+      Patient: ${selectedPatient?.name || "Unknown"}
+      Age: ${selectedPatient?.age || "N/A"}
+      Gender: ${selectedPatient?.gender || "N/A"}
+      Weight: [Not provided]
+      Allergies: ${selectedPatient?.allergies || "None reported"}
+      Renal/Hepatic Impairment: [Not provided]
+      
+      Rules:
+      1. Provide a medically logical and evidence-based alternative.
+      2. The alternative MUST be in the same therapeutic category as ${suggestion.medication}.
+      3. Adjust drug dose according to patient context (age, weight, allergies, renal/hepatic function).
+      4. Avoid drug interactions.
+      5. Provide reasoning.
+      
+      Return the response as a JSON object with:
+      - medication: string (name)
+      - form: string (e.g., Tablet, Capsule)
+      - dosage: string (suggested dose)
+      - frequency: string (e.g., Daily, BID)
+      - duration: string (e.g., 7 days)
+      - reasoning: string (brief clinical reasoning)
+      
+      Only return the JSON object.`;
+      
+      const response = await generateContentWithRetry({
+        model: "gemini-3-flash-preview",
+        contents: prompt,
+        config: { responseMimeType: "application/json" }
+      });
+      
+      const alternative = JSON.parse(response.text || "{}");
+      const newSuggestions = [...aiSuggestions];
+      newSuggestions[idx] = alternative;
+      setAiSuggestions(newSuggestions);
+      toast.success("Alternative medication suggested.");
+    } catch (e) {
+      console.error("Failed to get alternative:", e);
+      toast.error("Failed to get alternative medication.");
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6 h-full flex flex-col">
       <div className="flex justify-between items-center">
@@ -597,8 +713,10 @@ export function Prescriptions() {
       </div>
 
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0">
-        {/* Left Side: Medication Catalog */}
+        {/* Left Side: Medication Catalog & Vitals */}
         <div className="lg:col-span-4 flex flex-col gap-4 min-h-0">
+          {/* Vitals Section */}
+
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col flex-1 overflow-hidden">
             <div className="p-4 border-b border-slate-200">
               <h3 className="font-semibold text-slate-800 flex items-center gap-2 mb-3">
@@ -1160,15 +1278,27 @@ export function Prescriptions() {
                             <p className="text-xs text-indigo-600">{suggestion.dosage} • {suggestion.frequency}</p>
                           </div>
                         </div>
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            applyAiSuggestion(suggestion);
-                          }}
-                          className="px-3 py-1 bg-white border border-indigo-200 text-indigo-600 rounded-lg text-xs font-bold hover:bg-indigo-50 transition-colors"
-                        >
-                          Add
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleGetAlternative(suggestion, idx);
+                            }}
+                            className="p-1.5 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                            title="Get alternative"
+                          >
+                            <RefreshCw className="w-4 h-4" />
+                          </button>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              applyAiSuggestion(suggestion);
+                            }}
+                            className="px-3 py-1 bg-white border border-indigo-200 text-indigo-600 rounded-lg text-xs font-bold hover:bg-indigo-50 transition-colors"
+                          >
+                            Add
+                          </button>
+                        </div>
                       </div>
                       <p className="text-xs text-slate-600 leading-relaxed italic ml-8">
                         <span className="font-bold not-italic">Reasoning:</span> {suggestion.reasoning}
@@ -1194,73 +1324,74 @@ export function Prescriptions() {
       )}
 
       {isPreviewOpen && (
-        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
-            <div className="p-4 border-b border-slate-200 flex justify-between items-center">
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4 print:bg-transparent print:p-0 print:static print:block print-modal">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-5xl max-h-[95vh] flex flex-col print:shadow-none print:border-none print:w-full print:max-w-none print:max-h-none print:static print:block">
+            <div className="p-4 border-b border-slate-200 flex justify-between items-center no-print">
               <h3 className="text-lg font-bold text-slate-900">Prescription Preview</h3>
               <button onClick={() => setIsPreviewOpen(false)} className="text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-8 overflow-y-auto flex-1 font-sans">
-              <div className="flex justify-between items-start border-b-2 border-slate-800 pb-6 mb-6">
-                <div>
-                  <h2 className="text-2xl font-black text-slate-900 m-0">Physician Hiclinic</h2>
-                  <p className="text-slate-600 text-sm mt-1">123 Medical Plaza, Suite 101</p>
-                  <p className="text-slate-600 text-sm">Phone: (555) 123-4567</p>
-                </div>
-                <div className="text-5xl font-bold text-slate-900 leading-none">℞</div>
-              </div>
-              
-              <div className="bg-slate-50 p-4 rounded-lg mb-6 grid grid-cols-3 gap-4">
-                <div>
-                  <span className="text-xs font-bold text-slate-500 uppercase">Patient:</span>
-                  <p className="font-medium text-slate-900">John Doe</p>
-                </div>
-                <div>
-                  <span className="text-xs font-bold text-slate-500 uppercase">Date:</span>
-                  <p className="font-medium text-slate-900">{new Date().toLocaleDateString()}</p>
-                </div>
-              </div>
-
-              <div className="space-y-6 mb-8">
-                {currentPrescription.map((item, idx) => (
-                  <div key={item.id} className="border-b border-slate-200 pb-4 last:border-0">
-                    <p className="font-bold text-lg text-slate-900">{idx + 1}. {item.medication} <span className="text-sm font-normal text-slate-500">({item.form})</span></p>
-                    <p className="text-slate-700 mt-1"><strong>Sig:</strong> {item.dosage}, {item.frequency}, for {item.duration}</p>
-                    {item.instructions && <p className="text-slate-600 text-sm mt-1">{item.instructions}</p>}
-                  </div>
-                ))}
-              </div>
-
-              {prescriptionNotes && (
-                <div className="bg-slate-50 p-4 rounded-lg mb-8">
-                  <h4 className="text-xs font-bold text-slate-500 uppercase mb-1">Notes</h4>
-                  <p className="text-slate-700 text-sm">{prescriptionNotes}</p>
-                </div>
-              )}
-
-              <div className="flex justify-end mt-12">
-                <div className="w-64 text-center">
-                  <div className="border-t border-slate-800 mb-2"></div>
-                  <p className="font-bold text-slate-900">Dr. Ahmed Fathy</p>
-                  <p className="text-xs text-slate-500">License #: MD12345</p>
-                </div>
+            <div className="p-8 overflow-y-auto flex-1 bg-slate-100 print:bg-white print:p-0 print:overflow-visible">
+              <div id="prescription-to-print" className="print:m-0">
+                <PrescriptionPreview data={{
+                  id: selectedPatient?.id || "PREVIEW",
+                  name: selectedPatient?.name || "",
+                  age: String(selectedPatient?.age || ""),
+                  gender: selectedPatient?.gender || "",
+                  contact: selectedPatient?.phone || "",
+                  ph: vitals.ph,
+                  co: vitals.co,
+                  bp: vitals.bp,
+                  p: vitals.p,
+                  temp: vitals.temp,
+                  rr: vitals.rr,
+                  sao2: vitals.sao2,
+                  rbs: vitals.rbs,
+                  oe: vitals.oe,
+                  dx: confirmedDiagnosis || "",
+                  medications: currentPrescription.map(item => `${item.medication} (${item.form}) - ${item.dosage}, ${item.frequency}, for ${item.duration} ${item.instructions ? `[${item.instructions}]` : ''}`)
+                }} />
               </div>
             </div>
-            <div className="p-4 border-t border-slate-200 flex justify-end gap-3 bg-slate-50 rounded-b-xl">
-              <button onClick={() => window.print()} className="px-4 py-2 text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 font-medium flex items-center gap-2">
-                <FileText className="w-4 h-4" /> Print
-              </button>
-              <button onClick={() => setIsPreviewOpen(false)} className="px-4 py-2 text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 font-medium">
-                Close
-              </button>
-              <button onClick={() => {
-                setIsPreviewOpen(false);
-                handleSavePrescription();
-              }} className="px-4 py-2 text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 font-medium">
-                Save & Send
-              </button>
+            <div className="p-4 border-t border-slate-200 flex justify-between items-center bg-slate-50 rounded-b-xl no-print">
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => setIsPreviewOpen(false)} 
+                  className="px-4 py-2 text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 font-medium transition-colors"
+                >
+                  Close Preview
+                </button>
+              </div>
+              <div className="flex gap-3">
+                <button 
+                  type="button"
+                  onClick={() => {
+                    setTimeout(() => {
+                      window.focus();
+                      window.print();
+                    }, 100);
+                  }} 
+                  className="px-6 py-2.5 bg-white text-indigo-600 border-2 border-indigo-600 rounded-lg hover:bg-indigo-50 font-bold flex items-center gap-2 transition-all shadow-sm active:scale-95"
+                >
+                  <Printer className="w-5 h-5" /> Print Only
+                </button>
+                <button 
+                  onClick={async () => {
+                    // Print first while data is still in state
+                    setTimeout(async () => {
+                      window.focus();
+                      window.print();
+                      // Then save which clears the state
+                      await handleSavePrescription();
+                      setIsPreviewOpen(false);
+                    }, 100);
+                  }} 
+                  className="px-6 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-bold flex items-center gap-2 transition-all shadow-md hover:shadow-lg active:scale-95"
+                >
+                  <CheckCircle className="w-5 h-5" /> Save & Print
+                </button>
+              </div>
             </div>
           </div>
         </div>

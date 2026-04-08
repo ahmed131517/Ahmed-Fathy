@@ -3,58 +3,61 @@ import { ArrowLeft, Settings as SettingsIcon, Bell, Lock, Globe, Monitor, Palett
 import { cn } from "../../lib/utils";
 import { toast } from "sonner";
 import { useUser } from "../../lib/UserContext";
+import { useTranslation, TranslationKey } from "../../lib/i18n";
 
 export function SettingsLayout() {
   const { profile, hasRole } = useUser();
   const location = useLocation();
+  const { t, isRTL } = useTranslation();
+
   const isActive = (path: string) => {
     if (path === '/settings') return location.pathname === '/settings' || location.pathname === '/settings/';
     return location.pathname.includes(path);
   };
 
-  if (!hasRole('admin')) {
+  if (!hasRole('admin') && !hasRole('doctor')) {
     return (
       <div className="flex items-center justify-center h-screen bg-slate-50">
         <div className="text-center bg-white p-8 rounded-2xl border border-slate-200 shadow-sm max-w-md mx-4">
           <Shield className="w-16 h-16 text-red-500 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-slate-900">Access Denied</h2>
+          <h2 className="text-2xl font-bold text-slate-900">{t('accessDenied')}</h2>
           <p className="text-slate-500 mt-2">You do not have administrative permissions to access the system settings.</p>
           <Link to="/" className="inline-block mt-6 px-6 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors">
-            Back to Dashboard
+            {t('backToDashboard')}
           </Link>
         </div>
       </div>
     );
   }
 
-  const tabs = [
-    { id: 'overview', name: 'Overview', icon: Grid, path: '/settings' },
-    { id: 'general', name: 'General', icon: Monitor, path: '/settings/general' },
-    { id: 'appearance', name: 'Appearance', icon: Palette, path: '/settings/appearance' },
-    { id: 'users', name: 'Staff Management', icon: Users, path: '/settings/users' },
-    { id: 'system', name: 'Inventory & System', icon: SettingsIcon, path: '/settings/system' },
-    { id: 'notifications', name: 'Notifications', icon: Bell, path: '/settings/notifications' },
-    { id: 'pharmacy', name: 'Pharmacy Operations', icon: Stethoscope, path: '/settings/pharmacy' },
-    { id: 'billing', name: 'Billing & Payment', icon: CreditCard, path: '/settings/billing' },
-    { id: 'security', name: 'Security & Privacy', icon: Lock, path: '/settings/security' },
-    { id: 'backup', name: 'Backup & Restore', icon: HardDrive, path: '/settings/backup' },
-    { id: 'audit', name: 'Audit Logs', icon: FileText, path: '/settings/audit' },
-    { id: 'integration', name: 'Supplier & Integration', icon: LinkIcon, path: '/settings/integration' },
-    { id: 'ai', name: 'AI Settings', icon: Sparkles, path: '/settings/ai' },
-    { id: 'language', name: 'Language & Region', icon: Globe, path: '/settings/language' },
+  const tabs: { id: string; name: string; key: TranslationKey; icon: any; path: string }[] = [
+    { id: 'overview', name: 'Overview', key: 'overview', icon: Grid, path: '/settings' },
+    { id: 'general', name: 'General', key: 'general', icon: Monitor, path: '/settings/general' },
+    { id: 'appearance', name: 'Appearance', key: 'appearance', icon: Palette, path: '/settings/appearance' },
+    { id: 'users', name: 'Staff Management', key: 'staffManagement', icon: Users, path: '/settings/users' },
+    { id: 'system', name: 'Inventory & System', key: 'inventorySystem', icon: SettingsIcon, path: '/settings/system' },
+    { id: 'notifications', name: 'Notifications', key: 'notifications', icon: Bell, path: '/settings/notifications' },
+    { id: 'pharmacy', name: 'Pharmacy Operations', key: 'pharmacyOperations', icon: Stethoscope, path: '/settings/pharmacy' },
+    { id: 'billing', name: 'Billing & Payment', key: 'billingPayment', icon: CreditCard, path: '/settings/billing' },
+    { id: 'security', name: 'Security & Privacy', key: 'securityPrivacy', icon: Lock, path: '/settings/security' },
+    { id: 'backup', name: 'Backup & Restore', key: 'backupRestore', icon: HardDrive, path: '/settings/backup' },
+    { id: 'audit', name: 'Audit Logs', key: 'auditLogs', icon: FileText, path: '/settings/audit' },
+    { id: 'integration', name: 'Supplier & Integration', key: 'supplierIntegration', icon: LinkIcon, path: '/settings/integration' },
+    { id: 'ai', name: 'AI Settings', key: 'aiAssistant', icon: Sparkles, path: '/settings/ai' },
+    { id: 'language', name: 'Language & Region', key: 'language', icon: Globe, path: '/settings/language' },
   ];
 
   return (
-    <div className="flex h-screen bg-slate-50">
+    <div className={cn("flex h-screen bg-slate-50", isRTL && "flex-row-reverse")}>
       {/* Sidebar */}
-      <aside className="w-64 bg-white border-r border-slate-200 flex flex-col">
+      <aside className={cn("w-64 bg-white border-slate-200 flex flex-col", isRTL ? "border-l" : "border-r")}>
         <div className="p-4 border-b border-slate-200 flex items-center gap-3">
           <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold">
             S
           </div>
           <div>
-            <h1 className="font-bold text-slate-900">Settings</h1>
-            <p className="text-xs text-slate-500">System Configuration</p>
+            <h1 className="font-bold text-slate-900">{t('settings')}</h1>
+            <p className="text-xs text-slate-500">{t('systemConfiguration')}</p>
           </div>
         </div>
 
@@ -71,7 +74,7 @@ export function SettingsLayout() {
               )}
             >
               <tab.icon className="w-4 h-4" />
-              {tab.name}
+              {t(tab.key)}
             </Link>
           ))}
         </nav>
@@ -81,15 +84,15 @@ export function SettingsLayout() {
             to="/"
             className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors mb-1"
           >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Dashboard
+            <ArrowLeft className={cn("w-4 h-4", isRTL && "rotate-180")} />
+            {t('backToDashboard')}
           </Link>
           <button 
             onClick={() => toast.success("Signed out successfully")}
             className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
           >
             <LogOut className="w-4 h-4" />
-            Sign Out
+            {t('signOut')}
           </button>
         </div>
       </aside>
@@ -98,7 +101,7 @@ export function SettingsLayout() {
       <main className="flex-1 overflow-auto">
         <header className="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center sticky top-0 z-10">
           <h2 className="text-xl font-bold text-slate-900">
-            {tabs.find(t => isActive(t.path))?.name || "Settings"}
+            {t(tabs.find(t => isActive(t.path))?.key || 'settings')}
           </h2>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-3">

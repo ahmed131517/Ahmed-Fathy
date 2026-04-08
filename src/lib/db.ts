@@ -57,6 +57,7 @@ export interface Appointment {
   type: string;
   status: string;
   doctor: string;
+  reminderSent?: number; // 0 for false, 1 for true
   lastModified: number;
   isDeleted: number;
   isSynced: number;
@@ -287,6 +288,7 @@ export interface LabRequest {
   results?: any[]; // JSON string of results
   aiAnalysis?: string;
   signature?: string;
+  uploadedLabUrl?: string;
   notifyPatient: boolean;
   lastModified: number;
   isDeleted: number;
@@ -301,6 +303,13 @@ export interface AuditLog {
   entity: string;
   entityId: string;
   timestamp: number;
+}
+
+export interface Backup {
+  id?: number;
+  timestamp: number;
+  data: string; // JSON string of the entire DB
+  size: number;
 }
 
 export interface Template {
@@ -352,6 +361,7 @@ export class AppDatabase extends Dexie {
   pharmacy_inventory!: Table<PharmacyInventoryItem>;
   notifications!: Table<Notification>;
   audit_logs!: Table<AuditLog>;
+  backups!: Table<Backup>;
   templates!: Table<Template>;
   chat_messages!: Table<ChatMessage>;
   tasks!: Table<Task>;
@@ -369,7 +379,7 @@ export class AppDatabase extends Dexie {
 
   constructor() {
     super('MedicalAppDB');
-    this.version(11).stores({
+    this.version(12).stores({
       patients: '++localId, id, name, lastModified, isDeleted, isSynced',
       appointments: '++localId, id, patientId, date, lastModified, isDeleted, isSynced',
       prescriptions: '++localId, id, patientId, lastModified, isDeleted, isSynced',
@@ -383,6 +393,7 @@ export class AppDatabase extends Dexie {
       pharmacy_inventory: '++localId, id, medicationName, lastModified, isDeleted, isSynced',
       notifications: '++localId, id, type, category, isRead, createdAt, lastModified, isDeleted, isSynced',
       audit_logs: '++localId, id, userId, timestamp',
+      backups: '++id, timestamp',
       templates: '++localId, id, category, lastModified',
       chat_messages: 'id, patientId, timestamp',
       tasks: '++localId, id, patientId, status, type, dueDate, lastModified, isDeleted, isSynced',
@@ -399,32 +410,46 @@ export class AppDatabase extends Dexie {
 
     // Audit Hooks
     const tablesToAudit = ['patients', 'prescriptions', 'diagnoses', 'lab_results', 'vitals', 'physical_exams'];
+    
+    const getCurrentUser = () => {
+      try {
+        const saved = localStorage.getItem('user_profile');
+        if (saved) {
+          const profile = JSON.parse(saved);
+          return profile.email || 'system';
+        }
+      } catch (e) {
+        console.error('Failed to get user for audit', e);
+      }
+      return 'system';
+    };
+
     tablesToAudit.forEach(tableName => {
       const table = (this as any)[tableName];
       table.hook('creating', (primKey: any, obj: any) => {
         this.audit_logs.add({
-          userId: 'current-user', // Should be dynamic
+          userId: getCurrentUser(),
           action: 'create',
           entity: tableName,
-          entityId: primKey,
+          entityId: String(primKey || 'new'),
           timestamp: Date.now()
         });
       });
       table.hook('updating', (modifications: any, primKey: any) => {
         this.audit_logs.add({
-          userId: 'current-user',
+          userId: getCurrentUser(),
           action: 'update',
           entity: tableName,
-          entityId: primKey,
+          entityId: String(primKey),
           timestamp: Date.now()
         });
       });
       table.hook('deleting', (primKey: any) => {
         this.audit_logs.add({
-          userId: 'current-user',
+          userId: getCurrentUser(),
           action: 'delete',
           entity: tableName,
-          entityId: primKey,
+          entityId: String(primKey),
           timestamp: Date.now()
         });
       });
