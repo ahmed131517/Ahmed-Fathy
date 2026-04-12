@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useSettings } from "../../lib/SettingsContext";
-import { Check } from "lucide-react";
+import { Check, Plus, Trash2, Edit2, ChevronDown, ChevronUp, Layout, Pill } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 export function GeneralSettings() {
   const { 
@@ -28,6 +30,7 @@ export function GeneralSettings() {
     prescriptionFooterFont: globalPrescriptionFooterFont,
     prescriptionBodyFont: globalPrescriptionBodyFont,
     doctorSignature: globalDoctorSignature,
+    customPrescriptionTemplates: globalCustomTemplates,
     updateSettings 
   } = useSettings();
   
@@ -54,8 +57,78 @@ export function GeneralSettings() {
   const [prescriptionFooterFont, setPrescriptionFooterFont] = useState(globalPrescriptionFooterFont);
   const [prescriptionBodyFont, setPrescriptionBodyFont] = useState(globalPrescriptionBodyFont);
   const [doctorSignature, setDoctorSignature] = useState(globalDoctorSignature);
+  const [customTemplates, setCustomTemplates] = useState(globalCustomTemplates);
+  const [expandedTemplate, setExpandedTemplate] = useState<string | null>(null);
+  const [editingVariation, setEditingVariation] = useState<{template: string, variation: string} | null>(null);
+  const [isAddingTemplate, setIsAddingTemplate] = useState(false);
+  const [newTemplateName, setNewTemplateName] = useState("");
+  const [templateToDelete, setTemplateToDelete] = useState<string | null>(null);
 
   const [isSaved, setIsSaved] = useState(false);
+
+  const handleAddTemplate = () => {
+    if (newTemplateName && !customTemplates[newTemplateName]) {
+      const newTemplates = { ...customTemplates };
+      newTemplates[newTemplateName] = {
+        "Variation 1": [],
+        "Variation 2": [],
+        "Variation 3": [],
+        "Variation 4": [],
+        "Variation 5": []
+      };
+      setCustomTemplates(newTemplates);
+      setExpandedTemplate(newTemplateName);
+      setNewTemplateName("");
+      setIsAddingTemplate(false);
+      toast.success("Template category created.");
+    } else if (newTemplateName) {
+      toast.error("Template name already exists.");
+    }
+  };
+
+  const removeTemplate = (name: string) => {
+    const newTemplates = { ...customTemplates };
+    delete newTemplates[name];
+    setCustomTemplates(newTemplates);
+    if (expandedTemplate === name) setExpandedTemplate(null);
+    setTemplateToDelete(null);
+    toast.success("Template deleted.");
+  };
+
+  const addMedicationToVariation = (templateName: string, variationName: string) => {
+    const newTemplates = { ...customTemplates };
+    newTemplates[templateName][variationName] = [
+      ...newTemplates[templateName][variationName],
+      {
+        medication: "",
+        form: "",
+        dosage: "",
+        frequency: "",
+        duration: "",
+        instructions: ""
+      }
+    ];
+    setCustomTemplates(newTemplates);
+  };
+
+  const updateMedicationInVariation = (templateName: string, variationName: string, index: number, field: string, value: string) => {
+    const newTemplates = { ...customTemplates };
+    const updatedVariation = [...newTemplates[templateName][variationName]];
+    updatedVariation[index] = {
+      ...updatedVariation[index],
+      [field]: value
+    };
+    newTemplates[templateName][variationName] = updatedVariation;
+    setCustomTemplates(newTemplates);
+  };
+
+  const removeMedicationFromVariation = (templateName: string, variationName: string, index: number) => {
+    const newTemplates = { ...customTemplates };
+    const updatedVariation = [...newTemplates[templateName][variationName]];
+    updatedVariation.splice(index, 1);
+    newTemplates[templateName][variationName] = updatedVariation;
+    setCustomTemplates(newTemplates);
+  };
 
   const handleSave = () => {
     updateSettings({
@@ -81,6 +154,7 @@ export function GeneralSettings() {
       prescriptionFooterFont,
       prescriptionBodyFont,
       doctorSignature,
+      customPrescriptionTemplates: customTemplates,
     });
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 3000);
@@ -327,6 +401,7 @@ export function GeneralSettings() {
                   <option value="system">System Sans</option>
                   <option value="serif">Serif (Playfair)</option>
                   <option value="mono">Mono (JetBrains)</option>
+                  <option value="calligraphy">Lucida Calligraphy</option>
                 </select>
               </div>
               <div className="space-y-1">
@@ -341,6 +416,7 @@ export function GeneralSettings() {
                   <option value="system">System Sans</option>
                   <option value="serif">Serif (Playfair)</option>
                   <option value="mono">Mono (JetBrains)</option>
+                  <option value="calligraphy">Lucida Calligraphy</option>
                 </select>
               </div>
               <div className="space-y-1">
@@ -355,11 +431,219 @@ export function GeneralSettings() {
                   <option value="system">System Sans</option>
                   <option value="serif">Serif (Playfair)</option>
                   <option value="mono">Mono (JetBrains)</option>
+                  <option value="calligraphy">Lucida Calligraphy</option>
                 </select>
               </div>
             </div>
           </div>
         </div>
+      </div>
+      
+      <div className="card-panel">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold text-slate-900 dark:text-white">Prescription Templates</h2>
+          {!isAddingTemplate && (
+            <button 
+              onClick={() => setIsAddingTemplate(true)}
+              className="px-3 py-1.5 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 rounded-lg text-xs font-bold flex items-center gap-1.5 hover:bg-indigo-100 transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" /> Add Template
+            </button>
+          )}
+        </div>
+
+        {isAddingTemplate && (
+          <div className="mb-4 p-4 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800 rounded-xl flex items-center gap-3">
+            <input 
+              type="text" 
+              value={newTemplateName}
+              onChange={(e) => setNewTemplateName(e.target.value)}
+              placeholder="e.g. Hypertension"
+              className="flex-1 p-2 text-sm border rounded-lg dark:bg-slate-800 dark:border-slate-700"
+              autoFocus
+              onKeyDown={(e) => e.key === 'Enter' && handleAddTemplate()}
+            />
+            <button 
+              onClick={handleAddTemplate}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700"
+            >
+              Create
+            </button>
+            <button 
+              onClick={() => {
+                setIsAddingTemplate(false);
+                setNewTemplateName("");
+              }}
+              className="px-4 py-2 text-slate-600 dark:text-slate-400 text-sm font-medium"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+
+        {Object.keys(customTemplates).length === 0 ? (
+          <div className="text-center py-8 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-dashed border-slate-200 dark:border-slate-800">
+            <Layout className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+            <p className="text-sm text-slate-500">No custom templates created yet.</p>
+            <button onClick={() => setIsAddingTemplate(true)} className="text-xs text-indigo-600 font-bold mt-2 hover:underline">Create your first template</button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {Object.entries(customTemplates).map(([templateName, variations]) => (
+              <div key={templateName} className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+                <div 
+                  className="p-4 bg-slate-50 dark:bg-slate-900/50 flex items-center justify-between cursor-pointer"
+                  onClick={() => setExpandedTemplate(expandedTemplate === templateName ? null : templateName)}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center">
+                      <Layout className="w-4 h-4 text-indigo-600" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900 dark:text-white">{templateName}</h3>
+                      <p className="text-[10px] text-slate-500 uppercase tracking-wider">5 Variations Available</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setTemplateToDelete(templateName);
+                      }}
+                      className="p-1.5 text-slate-400 hover:text-red-500 transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                    {expandedTemplate === templateName ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+                  </div>
+                </div>
+
+                {expandedTemplate === templateName && (
+                  <div className="p-4 bg-white dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
+                      {Object.keys(variations).map((varName) => (
+                        <button
+                          key={varName}
+                          onClick={() => setEditingVariation({ template: templateName, variation: varName })}
+                          className={cn(
+                            "px-3 py-2 rounded-lg text-xs font-bold transition-all border",
+                            editingVariation?.template === templateName && editingVariation?.variation === varName
+                              ? "bg-indigo-600 border-indigo-600 text-white shadow-md"
+                              : "bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100"
+                          )}
+                        >
+                          {varName}
+                          <span className="block text-[9px] opacity-70 font-normal">{variations[varName].length} Meds</span>
+                        </button>
+                      ))}
+                    </div>
+
+                    {editingVariation?.template === templateName && (
+                      <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-4">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-widest flex items-center gap-2">
+                            <Edit2 className="w-3 h-3 text-indigo-600" />
+                            Editing {editingVariation.variation}
+                          </h4>
+                          <button 
+                            onClick={() => addMedicationToVariation(templateName, editingVariation.variation)}
+                            className="text-[10px] font-bold text-indigo-600 hover:underline flex items-center gap-1"
+                          >
+                            <Plus className="w-3 h-3" /> Add Medication
+                          </button>
+                        </div>
+
+                        {variations[editingVariation.variation].length === 0 ? (
+                          <div className="text-center py-6">
+                            <Pill className="w-6 h-6 text-slate-300 mx-auto mb-2" />
+                            <p className="text-[10px] text-slate-500">No medications in this variation.</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            {variations[editingVariation.variation].map((med, idx) => (
+                              <div key={idx} className="bg-white dark:bg-slate-950 p-3 rounded-lg border border-slate-200 dark:border-slate-800 relative group">
+                                <button 
+                                  onClick={() => removeMedicationFromVariation(templateName, editingVariation.variation, idx)}
+                                  className="absolute top-2 right-2 p-1 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                  <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase">Medication Name</label>
+                                    <input 
+                                      type="text" 
+                                      value={med.medication} 
+                                      onChange={(e) => updateMedicationInVariation(templateName, editingVariation.variation, idx, 'medication', e.target.value)}
+                                      className="w-full p-1.5 text-xs border rounded-md dark:bg-slate-900 dark:border-slate-700" 
+                                      placeholder="e.g. Paracetamol"
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase">Form / Strength</label>
+                                    <input 
+                                      type="text" 
+                                      value={med.form} 
+                                      onChange={(e) => updateMedicationInVariation(templateName, editingVariation.variation, idx, 'form', e.target.value)}
+                                      className="w-full p-1.5 text-xs border rounded-md dark:bg-slate-900 dark:border-slate-700" 
+                                      placeholder="e.g. 500mg Tablet"
+                                    />
+                                  </div>
+                                  <div className="grid grid-cols-3 gap-2 md:col-span-2">
+                                    <div className="space-y-1">
+                                      <label className="text-[10px] font-bold text-slate-400 uppercase">Dosage</label>
+                                      <input 
+                                        type="text" 
+                                        value={med.dosage} 
+                                        onChange={(e) => updateMedicationInVariation(templateName, editingVariation.variation, idx, 'dosage', e.target.value)}
+                                        className="w-full p-1.5 text-xs border rounded-md dark:bg-slate-900 dark:border-slate-700" 
+                                        placeholder="e.g. 1 tab"
+                                      />
+                                    </div>
+                                    <div className="space-y-1">
+                                      <label className="text-[10px] font-bold text-slate-400 uppercase">Frequency</label>
+                                      <input 
+                                        type="text" 
+                                        value={med.frequency} 
+                                        onChange={(e) => updateMedicationInVariation(templateName, editingVariation.variation, idx, 'frequency', e.target.value)}
+                                        className="w-full p-1.5 text-xs border rounded-md dark:bg-slate-900 dark:border-slate-700" 
+                                        placeholder="e.g. TDS"
+                                      />
+                                    </div>
+                                    <div className="space-y-1">
+                                      <label className="text-[10px] font-bold text-slate-400 uppercase">Duration</label>
+                                      <input 
+                                        type="text" 
+                                        value={med.duration} 
+                                        onChange={(e) => updateMedicationInVariation(templateName, editingVariation.variation, idx, 'duration', e.target.value)}
+                                        className="w-full p-1.5 text-xs border rounded-md dark:bg-slate-900 dark:border-slate-700" 
+                                        placeholder="e.g. 5 days"
+                                      />
+                                    </div>
+                                  </div>
+                                  <div className="md:col-span-2 space-y-1">
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase">Instructions</label>
+                                    <input 
+                                      type="text" 
+                                      value={med.instructions} 
+                                      onChange={(e) => updateMedicationInVariation(templateName, editingVariation.variation, idx, 'instructions', e.target.value)}
+                                      className="w-full p-1.5 text-xs border rounded-md dark:bg-slate-900 dark:border-slate-700" 
+                                      placeholder="e.g. Take after food"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
       
       <div className="card-panel">
@@ -406,6 +690,31 @@ export function GeneralSettings() {
           {isSaved ? 'Saved!' : 'Save Changes'}
         </button>
       </div>
+
+      {templateToDelete && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-sm p-6 border border-slate-200 dark:border-slate-800">
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Delete Template?</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
+              Are you sure you want to delete the template "{templateToDelete}"? This action cannot be undone.
+            </p>
+            <div className="flex gap-3">
+              <button 
+                onClick={() => removeTemplate(templateToDelete)}
+                className="flex-1 py-2.5 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-colors"
+              >
+                Delete
+              </button>
+              <button 
+                onClick={() => setTemplateToDelete(null)}
+                className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

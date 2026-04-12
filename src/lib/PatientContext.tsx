@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect, useMemo } from 'react';
 import { Patient } from '../data/patients';
 import { db } from './db';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -27,29 +27,36 @@ export function PatientProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(false);
 
   // Convert Dexie PatientRecord to UI Patient type
-  const uiPatients: Patient[] = patients.map(p => ({
+  const uiPatients: Patient[] = useMemo(() => patients.map(p => ({
     id: p.id || String(p.localId),
     name: p.name,
     age: p.age,
+    dob: p.dob,
     gender: p.gender,
     phone: p.phone,
     bloodType: p.bloodType,
     lastVisit: p.lastVisit,
     status: p.status,
-    allergies: p.allergies,
+    allergies: p.allergies ? JSON.parse(p.allergies) : [],
     chronicConditions: p.conditions ? JSON.parse(p.conditions) : [],
-    medications: p.medications ? JSON.parse(p.medications) : []
-  }));
+    medications: p.medications ? JSON.parse(p.medications) : [],
+    surgeries: p.surgeries ? JSON.parse(p.surgeries) : [],
+    familyHistory: p.familyHistory ? JSON.parse(p.familyHistory) : [],
+    familyHistoryNotes: p.familyHistoryNotes,
+    otherConditions: p.otherConditions
+  })), [patients]);
+
+  const contextValue = useMemo(() => ({ 
+    selectedPatient, 
+    setSelectedPatient, 
+    patients: uiPatients, 
+    confirmedDiagnosis, 
+    setConfirmedDiagnosis,
+    isLoading
+  }), [selectedPatient, uiPatients, confirmedDiagnosis, isLoading]);
 
   return (
-    <PatientContext.Provider value={{ 
-      selectedPatient, 
-      setSelectedPatient, 
-      patients: uiPatients, 
-      confirmedDiagnosis, 
-      setConfirmedDiagnosis,
-      isLoading
-    }}>
+    <PatientContext.Provider value={contextValue}>
       {children}
     </PatientContext.Provider>
   );

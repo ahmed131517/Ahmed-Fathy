@@ -14,7 +14,8 @@ import {
   Globe,
   ArrowRight,
   ShieldCheck,
-  Zap
+  Zap,
+  Database
 } from "lucide-react";
 import { Link } from "react-router-dom";
 
@@ -41,6 +42,7 @@ export function SettingsDashboard() {
       items: [
         { name: "Security & Privacy", path: "/settings/security", icon: Lock, desc: "Authentication and data protection" },
         { name: "Backup & Restore", path: "/settings/backup", icon: HardDrive, desc: "Database snapshots and recovery" },
+        { name: "Database Manager", path: "/settings/database", icon: Database, desc: "Manage clinical knowledge and AI insights" },
         { name: "Audit Logs", path: "/settings/audit", icon: FileText, desc: "Track all system activities" },
       ]
     },

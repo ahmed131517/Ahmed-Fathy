@@ -206,6 +206,7 @@ export interface Vitals {
   weight?: number;
   height?: number;
   bmi?: number;
+  glucose?: number; // RBS/FBS
   oxygenType?: string;
   oxygenDose?: string;
   oxygenInvasive?: string;
@@ -247,13 +248,24 @@ export interface PharmacyInventoryItem {
   isSynced: number;
 }
 
+export interface PharmacyBatch {
+  id?: string;
+  localId?: number;
+  inventoryItemId: string;
+  batchNumber: string;
+  expiryDate: string;
+  quantity: number;
+  lastModified: number;
+  isDeleted: number;
+}
+
 export interface Notification {
   id?: string;
   localId?: number;
   title: string;
   message: string;
   type: 'info' | 'success' | 'warning' | 'error';
-  category: 'appointment' | 'lab' | 'prescription' | 'system' | 'patient';
+  category: 'appointment' | 'lab' | 'prescription' | 'system' | 'patient' | 'pharmacy';
   isRead: number; // 0 for false, 1 for true
   link?: string;
   createdAt: number;
@@ -267,7 +279,7 @@ export interface User {
   localId?: number;
   name: string;
   email: string;
-  role: 'doctor' | 'pharmacist' | 'admin';
+  role: 'doctor' | 'nurse' | 'pharmacist' | 'receptionist' | 'admin';
   lastModified: number;
   isDeleted: number;
   isSynced: number;
@@ -315,10 +327,27 @@ export interface Backup {
 export interface Template {
   id?: string;
   localId?: number;
+  userId?: string; // Personal templates
   name: string;
   category: 'physical_exam' | 'diagnosis_reasoning' | 'soap_note' | 'lab_request';
   content: any;
   lastModified: number;
+}
+
+export interface InternalMessage {
+  id?: string;
+  localId?: number;
+  senderId: string;
+  senderName: string;
+  senderRole: string;
+  receiverId?: string;
+  receiverRole?: 'doctor' | 'nurse' | 'pharmacist' | 'receptionist' | 'admin' | 'all';
+  content: string;
+  type: 'chat' | 'handover';
+  patientId?: string;
+  patientName?: string;
+  isRead: number;
+  createdAt: number;
 }
 
 export interface ChatMessage {
@@ -327,6 +356,87 @@ export interface ChatMessage {
   content: string;
   patientId?: string;
   timestamp: number;
+}
+
+export interface KnowledgeArticle {
+  id?: number;
+  term: string;
+  definition: string;
+  symptoms: string[];
+  causes: string[];
+  treatments: string[];
+  prevention: string[];
+  category?: string;
+  lastUpdated: number;
+}
+
+export interface TreatmentProtocol {
+  id?: number;
+  condition: string;
+  category: string;
+  firstLine: string[];
+  secondLine: string[];
+  monitoring: string[];
+  lifestyle: string[];
+  clinicalPearls: string;
+  lastUpdated: number;
+}
+
+export interface LabReference {
+  id?: number;
+  name: string;
+  category: string;
+  normalRange: string;
+  unit: string;
+  description: string;
+  clinicalSignificance?: string;
+  highCauses?: string[];
+  lowCauses?: string[];
+  recommendations?: string;
+  lastUpdated: number;
+}
+
+export interface PatientNote {
+  id?: string;
+  localId?: number;
+  patientId: string;
+  title: string;
+  content: string;
+  category: 'clinical' | 'ai-insight' | 'follow-up' | 'other';
+  authorId?: string;
+  authorName?: string;
+  date: string;
+  lastModified: number;
+  isDeleted: number;
+  isSynced: number;
+}
+
+export interface MentalHealthAssessment {
+  id?: string;
+  localId?: number;
+  patientId: string;
+  type: 'PHQ-9' | 'GAD-7';
+  scores: Record<string, number>;
+  totalScore: number;
+  interpretation: string;
+  date: string;
+  lastModified: number;
+  isDeleted: number;
+}
+
+export interface ObstetricRecord {
+  id?: string;
+  localId?: number;
+  patientId: string;
+  lmp?: string;
+  edd?: string;
+  ultrasoundDate?: string;
+  gestationalAge?: string;
+  milestones?: any; // JSON string
+  notes?: string;
+  date: string;
+  lastModified: number;
+  isDeleted: number;
 }
 
 export interface Task {
@@ -365,6 +475,16 @@ export class AppDatabase extends Dexie {
   templates!: Table<Template>;
   chat_messages!: Table<ChatMessage>;
   tasks!: Table<Task>;
+  mental_health_assessments!: Table<MentalHealthAssessment>;
+  obstetric_records!: Table<ObstetricRecord>;
+  pharmacy_batches!: Table<PharmacyBatch>;
+  internal_messages!: Table<InternalMessage>;
+  
+  // Knowledge Base Tables
+  knowledge_encyclopedia!: Table<KnowledgeArticle>;
+  knowledge_protocols!: Table<TreatmentProtocol>;
+  knowledge_labs!: Table<LabReference>;
+  patient_notes!: Table<PatientNote>;
   
   // Medication Tables
   drugs!: Table<Drug>;
@@ -379,7 +499,7 @@ export class AppDatabase extends Dexie {
 
   constructor() {
     super('MedicalAppDB');
-    this.version(12).stores({
+    this.version(18).stores({
       patients: '++localId, id, name, lastModified, isDeleted, isSynced',
       appointments: '++localId, id, patientId, date, lastModified, isDeleted, isSynced',
       prescriptions: '++localId, id, patientId, lastModified, isDeleted, isSynced',
@@ -391,12 +511,24 @@ export class AppDatabase extends Dexie {
       vitals: '++localId, id, patientId, appointmentId, lastModified, isDeleted, isSynced',
       physical_exams: '++localId, id, patientId, status, lastModified, isDeleted, isSynced',
       pharmacy_inventory: '++localId, id, medicationName, lastModified, isDeleted, isSynced',
+      pharmacy_batches: '++localId, id, inventoryItemId, batchNumber, expiryDate, isDeleted',
       notifications: '++localId, id, type, category, isRead, createdAt, lastModified, isDeleted, isSynced',
       audit_logs: '++localId, id, userId, timestamp',
       backups: '++id, timestamp',
-      templates: '++localId, id, category, lastModified',
+      templates: '++localId, id, category, userId, lastModified',
       chat_messages: 'id, patientId, timestamp',
       tasks: '++localId, id, patientId, status, type, dueDate, lastModified, isDeleted, isSynced',
+      mental_health_assessments: '++localId, id, patientId, type, date, isDeleted',
+      obstetric_records: '++localId, id, patientId, date, isDeleted',
+      internal_messages: '++localId, id, senderId, receiverId, receiverRole, type, patientId, createdAt',
+      
+      // Knowledge Base
+      knowledge_encyclopedia: '++id, term, category',
+      knowledge_protocols: '++id, condition, category',
+      knowledge_labs: '++id, name, category',
+
+      patient_notes: '++localId, id, patientId, category, date, lastModified, isDeleted, isSynced',
+
       drugs: '++id, generic_name, atc_code',
       drug_brands: '++id, drug_id, brand_name',
       dosage_forms: '++id, form_name',

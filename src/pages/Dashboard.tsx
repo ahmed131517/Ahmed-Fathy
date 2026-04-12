@@ -10,6 +10,7 @@ import { db } from "@/lib/db";
 import { useLiveQuery } from "dexie-react-hooks";
 import { usePatient } from "@/lib/PatientContext";
 import { CDSSAlertsWidget } from "@/components/dashboard/CDSSAlertsWidget";
+import { VitalsTrendingWidget } from "@/components/dashboard/VitalsTrendingWidget";
 
 const activities: any[] = [];
 
@@ -233,6 +234,11 @@ export function Dashboard() {
               </PieChart>
             </ResponsiveContainer>
           </div>
+        </div>
+
+        {/* Vitals Trending */}
+        <div className="md:col-span-2 lg:col-span-2">
+          <VitalsTrendingWidget />
         </div>
       </div>
     </div>

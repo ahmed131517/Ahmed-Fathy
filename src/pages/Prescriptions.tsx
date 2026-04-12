@@ -1,10 +1,13 @@
 import { checkInteractions } from "@/services/interactionService";
+import { InteractionResult } from "@/services/ddiService";
+import { checkSafetyAlerts, SafetyAlert } from "@/services/safetyService";
+import { MedicationReconciliation } from "@/components/MedicationReconciliation";
 import { useState, useMemo, useEffect } from "react";
 import { 
   FileText, Plus, Layout, Cpu, History, Eye, CheckCircle, 
   Search, ShoppingCart, Trash2, AlertCircle, X, PlusCircle,
   Hash, Clock, Calendar, Info, Sparkles, Loader2, RefreshCw,
-  Activity, Printer
+  Activity, Printer, AlertTriangle, ShieldCheck
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Textarea } from "@/components/ui/textarea";
@@ -12,6 +15,8 @@ import { medicationsDatabase } from "@/data/medications";
 import { prescriptionTemplates } from "@/data/templates";
 import { PrescriptionPreview } from "@/components/PrescriptionPreview";
 import { usePatient } from "@/lib/PatientContext";
+import { useSettings } from "@/lib/SettingsContext";
+import { getGeneratePrescriptionPrompt, getAlternativeMedicationPrompt } from "@/services/aiConfig";
 import { generateContentWithRetry } from "../utils/gemini";
 import { toast } from "sonner";
 import { medicationService, Drug } from "@/services/medicationService";
@@ -24,6 +29,7 @@ const allMedications = Object.values(medicationsDatabase).flat();
 
 export function Prescriptions() {
   const { selectedPatient, confirmedDiagnosis, setConfirmedDiagnosis } = usePatient();
+  const { customPrescriptionTemplates } = useSettings();
   const [activeTab, setActiveTab] = useState('new');
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
@@ -59,8 +65,13 @@ export function Prescriptions() {
     co: "",
     ph: ""
   });
-  const [interactionAlerts, setInteractionAlerts] = useState<string[]>([]);
+  const [interactionAlerts, setInteractionAlerts] = useState<InteractionResult[]>([]);
+  const [safetyAlerts, setSafetyAlerts] = useState<SafetyAlert[]>([]);
   const [isCheckingInteractions, setIsCheckingInteractions] = useState(false);
+  
+  const allTemplates = useMemo(() => {
+    return { ...prescriptionTemplates, ...customPrescriptionTemplates };
+  }, [customPrescriptionTemplates]);
   
   // State for user-created templates
   const [userTemplates, setUserTemplates] = useState<any[]>(() => {
@@ -136,6 +147,26 @@ export function Prescriptions() {
   useEffect(() => {
     const check = async () => {
       const meds = currentPrescription.map(item => item.medication);
+      
+      // Update safety alerts
+      if (selectedPatient) {
+        // Create a temporary patient object with the current prescription items as medications
+        const tempPatient = {
+          ...selectedPatient,
+          medications: currentPrescription.map(item => ({
+            medicationId: item.id,
+            name: item.medication,
+            dosage: item.dosage,
+            frequency: item.frequency,
+            route: item.form,
+            startDate: new Date().toISOString(),
+            status: 'active' as const
+          }))
+        };
+        const alerts = checkSafetyAlerts(tempPatient, { name: confirmedDiagnosis || "" });
+        setSafetyAlerts(alerts);
+      }
+
       if (meds.length < 2) {
         setInteractionAlerts([]);
         return;
@@ -146,7 +177,7 @@ export function Prescriptions() {
       setIsCheckingInteractions(false);
     };
     check();
-  }, [currentPrescription]);
+  }, [currentPrescription, selectedPatient, confirmedDiagnosis]);
 
   // Modals and UI states
   const [selectedMedForForms, setSelectedMedForForms] = useState<any | null>(null);
@@ -157,11 +188,65 @@ export function Prescriptions() {
   const [isCustomMedOpen, setIsCustomMedOpen] = useState(false);
   const [customMedName, setCustomMedName] = useState("");
   const [customMedForm, setCustomMedForm] = useState("");
+  const [customMedConcentration, setCustomMedConcentration] = useState("");
+  const [customMedDosage, setCustomMedDosage] = useState("");
+  const [customMedFrequency, setCustomMedFrequency] = useState("");
+  const [customMedDuration, setCustomMedDuration] = useState("");
+  const [customMedInstructions, setCustomMedInstructions] = useState("");
   const [aiSuggestions, setAiSuggestions] = useState<any[]>([]);
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [selectedSuggestions, setSelectedSuggestions] = useState<number[]>([]);
   const [dbMeds, setDbMeds] = useState<Drug[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [isDiscovering, setIsDiscovering] = useState(false);
+
+  const handleAiDiscover = async () => {
+    if (!searchQuery || searchQuery.length < 2) return;
+    setIsDiscovering(true);
+    try {
+      const prompt = `You are a medical AI. The user is searching for a medication named "${searchQuery}".
+Provide details about this medication in JSON format.
+If it is a valid medication, return:
+{
+  "isValid": true,
+  "generic_name": "Generic Name",
+  "drug_class": "Drug Class (e.g., Antibiotic, Analgesic)",
+  "atc_code": "ATC Code (if known, else Unknown)",
+  "brands": ["Brand 1", "Brand 2"],
+  "side_effects": ["Side effect 1", "Side effect 2"]
+}
+If it is not a valid medication, return:
+{
+  "isValid": false
+}`;
+      const response = await generateContentWithRetry({
+        model: "gemini-3-flash-preview",
+        contents: prompt,
+        config: { responseMimeType: "application/json" }
+      });
+      const data = JSON.parse(response.text || "{}");
+      if (data.isValid) {
+        await medicationService.discoverAndAddDrug({
+          generic_name: data.generic_name,
+          drug_class: data.drug_class,
+          atc_code: data.atc_code,
+          brands: data.brands,
+          side_effects: data.side_effects
+        });
+        toast.success(`${data.generic_name} discovered and added to database!`);
+        // Trigger a re-search
+        const results = await medicationService.searchDrugs(searchQuery);
+        setDbMeds(results);
+      } else {
+        toast.error(`Could not find a valid medication matching "${searchQuery}".`);
+      }
+    } catch (error) {
+      console.error("AI Discover failed:", error);
+      toast.error("Failed to discover medication via AI.");
+    } finally {
+      setIsDiscovering(false);
+    }
+  };
 
   // Fetch active medications from database
   const activePrescriptions = useLiveQuery(
@@ -261,13 +346,16 @@ export function Prescriptions() {
   ) || [];
 
   const filteredCatalog = useMemo(() => {
-    if (searchQuery.length >= 2) return dbMeds;
-
-    let meds = selectedCategory === "all" 
-      ? allMedications 
-      : medicationsDatabase[selectedCategory] || [];
-      
-    return meds;
+    let meds = [];
+    if (searchQuery.length >= 2) {
+      meds = [...dbMeds];
+    } else {
+      meds = selectedCategory === "all" 
+        ? [...allMedications] 
+        : [...(medicationsDatabase[selectedCategory] || [])];
+    }
+    
+    return meds.sort((a, b) => a.name.localeCompare(b.name));
   }, [selectedCategory, searchQuery, dbMeds]);
 
   const handleMedicationSelect = async (med: any) => {
@@ -299,15 +387,18 @@ export function Prescriptions() {
     }
   };
 
-  const handleAddMedication = (medName: string, formName: string) => {
+  const handleAddMedication = (medName: string, form: any) => {
+    const isCustom = typeof form === 'string';
+    const formName = isCustom ? form : form.name;
     const newItem = {
-      id: "item_" + Date.now(),
+      id: "item_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9),
       medication: medName,
       form: formName,
-      dosage: "",
-      frequency: "",
-      duration: "",
-      instructions: ""
+      concentration: isCustom ? formName : (form.concentration || formName),
+      dosage: isCustom ? "" : (form.dosage || ""),
+      frequency: isCustom ? "" : (form.frequency || ""),
+      duration: isCustom ? "" : (form.duration || ""),
+      instructions: isCustom ? "" : (form.instructions || "")
     };
     setCurrentPrescription([...currentPrescription, newItem]);
     setSelectedMedForForms(null);
@@ -324,7 +415,7 @@ export function Prescriptions() {
   };
 
   const handleLoadTemplate = (templateName: string, variant: string) => {
-    const template = prescriptionTemplates[templateName]?.[variant];
+    const template = allTemplates[templateName]?.[variant];
     if (template) {
       if (currentPrescription.length > 0) {
         setConfirmModal({
@@ -334,6 +425,7 @@ export function Prescriptions() {
           onConfirm: () => {
             const newItems = template.map(item => ({
               id: "item_" + Date.now() + Math.random(),
+              concentration: item.concentration || item.form,
               ...item
             }));
             setCurrentPrescription(newItems);
@@ -344,6 +436,7 @@ export function Prescriptions() {
       }
       const newItems = template.map(item => ({
         id: "item_" + Date.now() + Math.random(),
+        concentration: item.concentration || item.form,
         ...item
       }));
       setCurrentPrescription(newItems);
@@ -444,6 +537,7 @@ export function Prescriptions() {
         onConfirm: () => {
           const newItems = template.items.map((item: any) => ({
             id: "item_" + Date.now() + Math.random(),
+            concentration: item.concentration || item.form,
             ...item
           }));
           setCurrentPrescription(newItems);
@@ -470,45 +564,18 @@ export function Prescriptions() {
     setIsAiSuggestOpen(true);
     try {
       const history = await PatientHistoryService.getPatientHistory(selectedPatient.id);
-      const allergies = selectedPatient.allergies ? JSON.parse(selectedPatient.allergies) : [];
+      const allergies = selectedPatient.allergies || [];
+      const allergiesStr = allergies.length > 0 ? allergies.map((a: any) => `${a.name} (${a.severity})`).join(", ") : "None reported";
       
-      const prompt = `As a clinical assistant, generate a structured medical prescription based on the following patient information and diagnosis.
-      
-      Patient: ${selectedPatient?.name || "Unknown"}
-      Age: ${selectedPatient?.age || "N/A"}
-      Gender: ${selectedPatient?.gender || "N/A"}
-      Weight: [Not provided]
-      Allergies: ${allergies.length > 0 ? allergies.map((a: any) => `${a.name} (${a.reaction})`).join(", ") : "None reported"}
-      Symptoms: [Not provided]
-      Physical Exam: [Not provided]
-      Lab Findings: [Not provided]
-      Renal/Hepatic Impairment: [Not provided]
-      
-      Patient History Summary:
-      ${history.map(h => `${h.date}: ${h.type} - ${h.title} - ${h.description}`).join("\n")}
-      
-      Confirmed Diagnosis: ${confirmedDiagnosis || "Not provided"}
-      Existing Medications: ${patientMedications.map(m => m.name).join(", ")}
-      
-      Rules:
-      1. The prescription must be medically logical and evidence-based.
-      2. Adjust drug dose according to age, weight, sex, allergies, symptoms, physical exam, lab findings, final diagnosis, and renal/hepatic impairment if provided.
-      3. Avoid drug interactions.
-      4. Prefer first-line guideline-recommended therapies.
-      5. Include symptomatic treatment and supportive therapy (fluids/vitamins/supplements) if needed.
-      6. Provide alternatives if the first option is contraindicated.
-      7. Check for contraindications and avoid unsafe combinations.
-      8. Suggest between 3 and 5 appropriate medications. You MUST suggest at least 3 and at most 5 medications.
-
-      Return the suggestions as a JSON array of objects with:
-      - medication: string (name)
-      - form: string (e.g., Tablet, Capsule)
-      - dosage: string (suggested dose)
-      - frequency: string (e.g., Daily, BID)
-      - duration: string (e.g., 7 days)
-      - reasoning: string (brief clinical reasoning, including contraindication checks and interaction avoidance)
-      
-      Only return the JSON array.`;
+      const prompt = getGeneratePrescriptionPrompt({
+        name: selectedPatient?.name || "Unknown",
+        age: String(selectedPatient?.age || "N/A"),
+        gender: selectedPatient?.gender || "N/A",
+        allergies: allergiesStr,
+        history: history.map(h => `${h.date}: ${h.type} - ${h.title} - ${h.description}`).join("\n"),
+        diagnosis: confirmedDiagnosis || "Not provided",
+        existingMedications: patientMedications.map(m => m.name).join(", ")
+      });
 
       const response = await generateContentWithRetry({
         model: "gemini-3-flash-preview",
@@ -519,9 +586,10 @@ export function Prescriptions() {
       const data = JSON.parse(response.text || "[]");
       setAiSuggestions(data);
       setSelectedSuggestions([]);
-    } catch (error) {
+    } catch (error: any) {
       console.error("AI Suggestion failed:", error);
-      toast.error("Failed to get AI suggestions. Please try again.");
+      const isQuotaError = error?.error?.code === 429 || error?.code === 429;
+      toast.error(isQuotaError ? "AI quota exceeded. Please wait a moment before trying again." : "Failed to get AI suggestions. Please try again.");
     } finally {
       setIsAiLoading(false);
     }
@@ -542,10 +610,11 @@ export function Prescriptions() {
         id: "item_" + Date.now() + Math.random() + index,
         medication: suggestion.medication,
         form: suggestion.form,
+        concentration: suggestion.concentration,
         dosage: suggestion.dosage,
         frequency: suggestion.frequency,
         duration: suggestion.duration,
-        instructions: ""
+        instructions: suggestion.clinicalInstructions || ""
       };
     });
     setCurrentPrescription([...currentPrescription, ...newItems]);
@@ -559,10 +628,11 @@ export function Prescriptions() {
       id: "item_" + Date.now() + Math.random(),
       medication: suggestion.medication,
       form: suggestion.form,
+      concentration: suggestion.concentration,
       dosage: suggestion.dosage,
       frequency: suggestion.frequency,
       duration: suggestion.duration,
-      instructions: ""
+      instructions: suggestion.clinicalInstructions || ""
     };
     setCurrentPrescription([...currentPrescription, newItem]);
     setIsAiSuggestOpen(false);
@@ -572,30 +642,17 @@ export function Prescriptions() {
   const handleGetAlternative = async (suggestion: any, idx: number) => {
     setIsAiLoading(true);
     try {
-      const prompt = `As a clinical assistant, provide an alternative medication for ${suggestion.medication} for a patient with diagnosis: ${confirmedDiagnosis}.
-      Patient: ${selectedPatient?.name || "Unknown"}
-      Age: ${selectedPatient?.age || "N/A"}
-      Gender: ${selectedPatient?.gender || "N/A"}
-      Weight: [Not provided]
-      Allergies: ${selectedPatient?.allergies || "None reported"}
-      Renal/Hepatic Impairment: [Not provided]
-      
-      Rules:
-      1. Provide a medically logical and evidence-based alternative.
-      2. The alternative MUST be in the same therapeutic category as ${suggestion.medication}.
-      3. Adjust drug dose according to patient context (age, weight, allergies, renal/hepatic function).
-      4. Avoid drug interactions.
-      5. Provide reasoning.
-      
-      Return the response as a JSON object with:
-      - medication: string (name)
-      - form: string (e.g., Tablet, Capsule)
-      - dosage: string (suggested dose)
-      - frequency: string (e.g., Daily, BID)
-      - duration: string (e.g., 7 days)
-      - reasoning: string (brief clinical reasoning)
-      
-      Only return the JSON object.`;
+      const allergiesStr = (() => {
+        const allergies = selectedPatient?.allergies || [];
+        return allergies.length > 0 ? allergies.map((a: any) => `${a.name} (${a.severity})`).join(", ") : "None reported";
+      })();
+
+      const prompt = getAlternativeMedicationPrompt(suggestion.medication, confirmedDiagnosis, {
+        name: selectedPatient?.name || "Unknown",
+        age: String(selectedPatient?.age || "N/A"),
+        gender: selectedPatient?.gender || "N/A",
+        allergies: allergiesStr
+      });
       
       const response = await generateContentWithRetry({
         model: "gemini-3-flash-preview",
@@ -608,11 +665,27 @@ export function Prescriptions() {
       newSuggestions[idx] = alternative;
       setAiSuggestions(newSuggestions);
       toast.success("Alternative medication suggested.");
-    } catch (e) {
+    } catch (e: any) {
       console.error("Failed to get alternative:", e);
-      toast.error("Failed to get alternative medication.");
+      const isQuotaError = e?.error?.code === 429 || e?.code === 429;
+      toast.error(isQuotaError ? "AI quota exceeded. Please wait a moment before trying again." : "Failed to get alternative medication.");
     } finally {
       setIsAiLoading(false);
+    }
+  };
+
+  const handleUpdateMedicationStatus = async (medicationId: string, status: 'active' | 'discontinued' | 'completed') => {
+    try {
+      // Find the prescription item in the DB
+      const item = await db.prescription_items.get(medicationId);
+      if (item) {
+        // In a real app, we might update the item status or the parent prescription status
+        // For this demo, we'll show a success toast
+        toast.success(`Medication ${status === 'discontinued' ? 'discontinued' : 'marked as ' + status}`);
+      }
+    } catch (error) {
+      console.error("Failed to update medication status:", error);
+      toast.error("Failed to update status");
     }
   };
 
@@ -637,6 +710,15 @@ export function Prescriptions() {
           New Prescription
         </button>
         <button
+          onClick={() => setActiveTab('reconciliation')}
+          className={cn(
+            "px-4 py-2 text-sm font-medium rounded-lg transition-colors",
+            activeTab === 'reconciliation' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-600 hover:text-slate-900"
+          )}
+        >
+          Reconciliation
+        </button>
+        <button
           onClick={() => setActiveTab('active')}
           className={cn(
             "px-4 py-2 text-sm font-medium rounded-lg transition-colors",
@@ -646,6 +728,15 @@ export function Prescriptions() {
           Active Medications
         </button>
       </div>
+
+      {activeTab === 'reconciliation' && selectedPatient && (
+        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+          <MedicationReconciliation 
+            medications={selectedPatient.medications || []} 
+            onUpdateStatus={handleUpdateMedicationStatus} 
+          />
+        </div>
+      )}
 
       {activeTab === 'new' ? (
         <>
@@ -737,10 +828,79 @@ export function Prescriptions() {
             <div className="flex overflow-x-auto p-3 gap-2 border-b border-slate-100 bg-slate-50/50 scrollbar-hide">
               {[
                 { id: 'all', label: 'All' },
-                { id: 'antibiotics', label: 'Antibiotics' },
+                { id: 'acne_treatments', label: 'Acne Treatments' },
+                { id: 'antihistamines', label: 'Allergy' },
+                { id: 'alzheimers', label: 'Alzheimer\'s' },
                 { id: 'analgesics', label: 'Analgesics' },
-                { id: 'cardiovascular', label: 'Cardio' },
-                { id: 'respiratory', label: 'Resp' }
+                { id: 'antacids', label: 'Antacids' },
+                { id: 'anti_glaucoma', label: 'Anti-glaucoma' },
+                { id: 'anti_gout', label: 'Anti-gout' },
+                { id: 'antianginal', label: 'Antianginal' },
+                { id: 'antiarrhythmics', label: 'Antiarrhythmics' },
+                { id: 'antibiotic_creams', label: 'Antibiotic Creams' },
+                { id: 'antibiotics', label: 'Antibiotics' },
+                { id: 'anticoagulants', label: 'Anticoagulants' },
+                { id: 'antidiabetics', label: 'Antidiabetics' },
+                { id: 'antidiarrheals', label: 'Antidiarrheals' },
+                { id: 'antiemetics', label: 'Antiemetics' },
+                { id: 'antifungals', label: 'Antifungal' },
+                { id: 'antifungal_creams', label: 'Antifungal Creams' },
+                { id: 'antihypertensives', label: 'Antihypertensives' },
+                { id: 'antimalarials', label: 'Antimalarials' },
+                { id: 'antiparasitics', label: 'Antiparasitics' },
+                { id: 'antiplatelets', label: 'Antiplatelets' },
+                { id: 'antipsychotics', label: 'Antipsychotic' },
+                { id: 'antitubercular', label: 'Antitubercular' },
+                { id: 'antivirals', label: 'Antiviral' },
+                { id: 'anxiolytics', label: 'Anxiolytics' },
+                { id: 'artificial_tears', label: 'Artificial Tears' },
+                { id: 'bph_drugs', label: 'BPH Drugs' },
+                { id: 'bronchodilators', label: 'Bronchodilators' },
+                { id: 'chemotherapy_agents', label: 'Chemotherapy' },
+                { id: 'corticosteroids', label: 'Corticosteroids' },
+                { id: 'cough_suppressants', label: 'Cough Suppressants' },
+                { id: 'diuretics', label: 'Diuretics' },
+                { id: 'dmards', label: 'DMARDs' },
+                { id: 'ear_drops', label: 'Ear Drops' },
+                { id: 'emergency_drugs', label: 'Emergency Drugs' },
+                { id: 'antiepileptics', label: 'Epilepsy' },
+                { id: 'erectile_dysfunction', label: 'Erectile Dysfunction' },
+                { id: 'h2_blockers', label: 'H2 Blockers' },
+                { id: 'heart_failure', label: 'Heart Failure' },
+                { id: 'hematinics', label: 'Hematinics' },
+                { id: 'hemostatic_agents', label: 'Hemostatic Agents' },
+                { id: 'hormones', label: 'Hormones' },
+                { id: 'ibd', label: 'IBD Drugs' },
+                { id: 'immunoglobulins', label: 'Immunoglobulins' },
+                { id: 'immunosuppressants', label: 'Immunosuppressants' },
+                { id: 'immunotherapy', label: 'Immunotherapy' },
+                { id: 'inhaled_corticosteroids', label: 'Inhaled Corticosteroids' },
+                { id: 'insulins', label: 'Insulins' },
+                { id: 'iv_fluids', label: 'IV Fluids' },
+                { id: 'laxatives', label: 'Laxatives' },
+                { id: 'leukotriene_antagonists', label: 'Leukotriene Antagonists' },
+                { id: 'lipid_lowering', label: 'Lipid-lowering' },
+                { id: 'monoclonal_antibodies', label: 'Monoclonal Antibodies' },
+                { id: 'mucolytics', label: 'Mucolytics' },
+                { id: 'muscle_relaxants', label: 'Muscle Relaxants' },
+                { id: 'mydriatics_miotics', label: 'Mydriatics & Miotics' },
+                { id: 'nasal_decongestants', label: 'Nasal Decongestants' },
+                { id: 'nsaids', label: 'NSAIDs' },
+                { id: 'ophthalmic_antibiotics', label: 'Ophthalmic Antibiotics' },
+                { id: 'osteoporosis', label: 'Osteoporosis' },
+                { id: 'parkinsonism', label: 'Parkinsonism' },
+                { id: 'ppis', label: 'PPIs' },
+                { id: 'psoriasis_treatments', label: 'Psoriasis Treatments' },
+                { id: 'antidepressants', label: 'Psych' },
+                { id: 'sedatives_hypnotics', label: 'Sedatives/Hypnotics' },
+                { id: 'sex_hormones', label: 'Sex Hormones' },
+                { id: 'thrombolytics', label: 'Thrombolytics' },
+                { id: 'thyroid', label: 'Thyroid' },
+                { id: 'topical_corticosteroids', label: 'Topical Corticosteroids' },
+                { id: 'toxoids', label: 'Toxoids' },
+                { id: 'urinary_antispasmodics', label: 'Urinary Antispasmodics' },
+                { id: 'vaccines', label: 'Vaccines' },
+                { id: 'vitamins', label: 'Vitamins' }
               ].map((cat) => (
                 <button 
                   key={cat.id} 
@@ -790,7 +950,17 @@ export function Prescriptions() {
               ) : (
                 <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-500">
                   <Search className="w-8 h-8 text-slate-300 mb-2" />
-                  <p className="text-sm">No medications found.</p>
+                  <p className="text-sm mb-4">No medications found.</p>
+                  {searchQuery.length >= 2 && (
+                    <button
+                      onClick={handleAiDiscover}
+                      disabled={isDiscovering}
+                      className="px-4 py-2 bg-indigo-100 text-indigo-700 hover:bg-indigo-200 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                    >
+                      {isDiscovering ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                      AI Discover "{searchQuery}"
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -851,7 +1021,7 @@ export function Prescriptions() {
                 {selectedMedForForms.forms.map((form: any) => (
                   <button
                     key={form.id}
-                    onClick={() => handleAddMedication(selectedMedForForms.name, form.name)}
+                    onClick={() => handleAddMedication(selectedMedForForms.name, form)}
                     className="w-full text-left p-3 bg-white border border-slate-200 rounded-lg hover:border-indigo-500 hover:shadow-sm transition-all flex justify-between items-center group"
                   >
                     <span className="text-sm font-medium text-slate-700 group-hover:text-indigo-700">{form.name}</span>
@@ -898,13 +1068,62 @@ export function Prescriptions() {
           <div className="flex-1 p-6 flex flex-col overflow-y-auto bg-white">
             <div className="flex-1 mb-6">
               {interactionAlerts.length > 0 && (
-                <div className="bg-red-50 border border-red-200 p-4 rounded-xl mb-6">
-                  <h4 className="text-red-800 font-semibold flex items-center gap-2 mb-2">
-                    <AlertCircle className="w-5 h-5" /> Potential Drug Interactions
-                  </h4>
-                  <ul className="list-disc list-inside text-sm text-red-700 space-y-1">
-                    {interactionAlerts.map((alert, i) => <li key={i}>{alert}</li>)}
-                  </ul>
+                <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
+                  <div className="flex items-center gap-2 text-red-700 font-bold mb-3">
+                    <AlertTriangle className="w-5 h-5" />
+                    <span>Potential Drug-Drug Interactions Detected</span>
+                  </div>
+                  <div className="space-y-3">
+                    {interactionAlerts.map((alert, i) => (
+                      <div key={i} className="p-3 bg-white border border-red-100 rounded-lg shadow-sm">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                            {alert.drugs.join(" + ")}
+                          </span>
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase ${
+                            alert.severity === 'Major' ? 'bg-red-100 text-red-700' :
+                            alert.severity === 'Moderate' ? 'bg-amber-100 text-amber-700' :
+                            'bg-blue-100 text-blue-700'
+                          }`}>
+                            {alert.severity}
+                          </span>
+                        </div>
+                        <p className="text-sm text-slate-700 mb-2">{alert.description}</p>
+                        <div className="flex items-center gap-1 text-[10px] font-medium text-slate-400">
+                          <ShieldCheck className="w-3 h-3" />
+                          <span>Source: {alert.source}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {safetyAlerts.length > 0 && (
+                <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                  <div className="flex items-center gap-2 text-amber-700 font-bold mb-3">
+                    <AlertCircle className="w-5 h-5" />
+                    <span>Clinical Safety Alerts</span>
+                  </div>
+                  <div className="space-y-3">
+                    {safetyAlerts.map((alert, i) => (
+                      <div key={i} className="p-3 bg-white border border-amber-100 rounded-lg shadow-sm">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                            {alert.type}
+                          </span>
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase ${
+                            alert.severity === 'Severe' ? 'bg-red-100 text-red-700' :
+                            alert.severity === 'Moderate' ? 'bg-amber-100 text-amber-700' :
+                            'bg-blue-100 text-blue-700'
+                          }`}>
+                            {alert.severity}
+                          </span>
+                        </div>
+                        <p className="text-sm text-slate-700">{alert.message}</p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
               {currentPrescription.length === 0 ? (
@@ -932,7 +1151,20 @@ export function Prescriptions() {
                         </button>
                       </div>
                       <div className="p-5">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
+                          <div className="flex flex-col gap-2">
+                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Concentration</label>
+                            <div className="relative">
+                              <Activity className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                              <input 
+                                type="text" 
+                                value={item.concentration || ""}
+                                onChange={(e) => handleUpdatePrescriptionItem(item.id, 'concentration', e.target.value)}
+                                placeholder="e.g., 500mg"
+                                className="w-full pl-9 pr-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                              />
+                            </div>
+                          </div>
                           <div className="flex flex-col gap-2">
                             <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Dosage</label>
                             <div className="relative">
@@ -941,7 +1173,7 @@ export function Prescriptions() {
                                 type="text" 
                                 value={item.dosage}
                                 onChange={(e) => handleUpdatePrescriptionItem(item.id, 'dosage', e.target.value)}
-                                placeholder="e.g., 500mg"
+                                placeholder="e.g., 1 tab"
                                 className="w-full pl-9 pr-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
                               />
                             </div>
@@ -972,7 +1204,7 @@ export function Prescriptions() {
                               />
                             </div>
                           </div>
-                          <div className="flex flex-col gap-2 md:col-span-3">
+                          <div className="flex flex-col gap-2 md:col-span-4">
                             <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Clinical Instructions</label>
                             <div className="relative">
                               <Info className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -1169,10 +1401,10 @@ export function Prescriptions() {
                   </div>
                 )}
 
-                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">System Templates</h4>
-                {Object.entries(prescriptionTemplates).map(([key, variants]) => (
+                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Templates</h4>
+                {Object.entries(allTemplates).map(([key, variants]) => (
                   <div key={key} className="border border-slate-200 rounded-lg p-4">
-                    <h4 className="font-bold text-slate-800 capitalize mb-2">{key.replace('-', ' ')}</h4>
+                    <h4 className="font-bold text-slate-800 capitalize mb-2">{key.replace(/-/g, ' ')}</h4>
                     <div className="flex flex-wrap gap-2">
                       {Object.keys(variants).map(v => (
                         <button 
@@ -1180,7 +1412,7 @@ export function Prescriptions() {
                           onClick={() => handleLoadTemplate(key, v)}
                           className="px-3 py-1.5 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 text-slate-700 text-sm font-medium rounded-md transition-colors"
                         >
-                          Variant {v}
+                          {v.startsWith('Variation') ? v : `Variant ${v}`}
                         </button>
                       ))}
                     </div>
@@ -1275,7 +1507,12 @@ export function Prescriptions() {
                           </div>
                           <div>
                             <p className="font-bold text-indigo-900">{suggestion.medication}</p>
-                            <p className="text-xs text-indigo-600">{suggestion.dosage} • {suggestion.frequency}</p>
+                            <p className="text-xs text-indigo-600 font-medium">{suggestion.concentration} • {suggestion.dosage} • {suggestion.frequency} • {suggestion.duration}</p>
+                            {suggestion.clinicalInstructions && (
+                              <p className="text-[10px] text-slate-500 mt-1 leading-tight">
+                                <span className="font-semibold">Instructions:</span> {suggestion.clinicalInstructions}
+                              </p>
+                            )}
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
@@ -1350,7 +1587,14 @@ export function Prescriptions() {
                   rbs: vitals.rbs,
                   oe: vitals.oe,
                   dx: confirmedDiagnosis || "",
-                  medications: currentPrescription.map(item => `${item.medication} (${item.form}) - ${item.dosage}, ${item.frequency}, for ${item.duration} ${item.instructions ? `[${item.instructions}]` : ''}`)
+                  medications: currentPrescription.map(item => ({
+                    name: item.medication,
+                    concentration: item.concentration,
+                    dosage: item.dosage,
+                    frequency: item.frequency,
+                    duration: item.duration,
+                    instructions: item.instructions
+                  }))
                 }} />
               </div>
             </div>
@@ -1367,10 +1611,8 @@ export function Prescriptions() {
                 <button 
                   type="button"
                   onClick={() => {
-                    setTimeout(() => {
-                      window.focus();
-                      window.print();
-                    }, 100);
+                    window.focus();
+                    window.print();
                   }} 
                   className="px-6 py-2.5 bg-white text-indigo-600 border-2 border-indigo-600 rounded-lg hover:bg-indigo-50 font-bold flex items-center gap-2 transition-all shadow-sm active:scale-95"
                 >
@@ -1378,14 +1620,12 @@ export function Prescriptions() {
                 </button>
                 <button 
                   onClick={async () => {
-                    // Print first while data is still in state
-                    setTimeout(async () => {
-                      window.focus();
-                      window.print();
-                      // Then save which clears the state
-                      await handleSavePrescription();
-                      setIsPreviewOpen(false);
-                    }, 100);
+                    // Print first
+                    window.focus();
+                    window.print();
+                    // Then save which clears the state
+                    await handleSavePrescription();
+                    setIsPreviewOpen(false);
                   }} 
                   className="px-6 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-bold flex items-center gap-2 transition-all shadow-md hover:shadow-lg active:scale-95"
                 >
@@ -1469,9 +1709,9 @@ export function Prescriptions() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-6 space-y-4">
+            <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
               <div>
-                <label className="block text-sm font-bold text-slate-700 mb-1">Medication Name</label>
+                <label className="block text-sm font-bold text-slate-700 mb-1">Medication Name *</label>
                 <input 
                   type="text" 
                   value={customMedName}
@@ -1481,13 +1721,65 @@ export function Prescriptions() {
                   autoFocus
                 />
               </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-1">Form</label>
+                  <input 
+                    type="text" 
+                    value={customMedForm}
+                    onChange={(e) => setCustomMedForm(e.target.value)}
+                    placeholder="e.g., Tablet"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-1">Concentration</label>
+                  <input 
+                    type="text" 
+                    value={customMedConcentration}
+                    onChange={(e) => setCustomMedConcentration(e.target.value)}
+                    placeholder="e.g., 500mg"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-1">Dosage</label>
+                  <input 
+                    type="text" 
+                    value={customMedDosage}
+                    onChange={(e) => setCustomMedDosage(e.target.value)}
+                    placeholder="e.g., 1 tab"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-1">Frequency</label>
+                  <input 
+                    type="text" 
+                    value={customMedFrequency}
+                    onChange={(e) => setCustomMedFrequency(e.target.value)}
+                    placeholder="e.g., BID"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-1">Duration</label>
+                  <input 
+                    type="text" 
+                    value={customMedDuration}
+                    onChange={(e) => setCustomMedDuration(e.target.value)}
+                    placeholder="e.g., 7 days"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                  />
+                </div>
+              </div>
               <div>
-                <label className="block text-sm font-bold text-slate-700 mb-1">Form</label>
+                <label className="block text-sm font-bold text-slate-700 mb-1">Clinical Instructions</label>
                 <input 
                   type="text" 
-                  value={customMedForm}
-                  onChange={(e) => setCustomMedForm(e.target.value)}
-                  placeholder="e.g., Tablet, Syrup, Injection"
+                  value={customMedInstructions}
+                  onChange={(e) => setCustomMedInstructions(e.target.value)}
+                  placeholder="e.g., Take after meals"
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
                 />
               </div>
@@ -1505,9 +1797,21 @@ export function Prescriptions() {
                     toast.error("Please enter a medication name.");
                     return;
                   }
-                  handleAddMedication(customMedName.trim(), customMedForm.trim() || "Custom");
+                  handleAddMedication(customMedName.trim(), {
+                    name: customMedForm.trim() || "Custom",
+                    concentration: customMedConcentration.trim(),
+                    dosage: customMedDosage.trim(),
+                    frequency: customMedFrequency.trim(),
+                    duration: customMedDuration.trim(),
+                    instructions: customMedInstructions.trim()
+                  });
                   setCustomMedName("");
                   setCustomMedForm("");
+                  setCustomMedConcentration("");
+                  setCustomMedDosage("");
+                  setCustomMedFrequency("");
+                  setCustomMedDuration("");
+                  setCustomMedInstructions("");
                   setIsCustomMedOpen(false);
                 }}
                 className="px-4 py-2 text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 font-medium"

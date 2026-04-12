@@ -7,6 +7,7 @@ import { auth, googleProvider } from '@/lib/firebase';
 import { signInWithPopup, onAuthStateChanged } from 'firebase/auth';
 import { SavedKnowledgeService } from '@/lib/SavedKnowledgeService';
 import { Bookmark, Check } from 'lucide-react';
+import { db } from '@/lib/db';
 
 interface Protocol {
   condition: string;
@@ -110,6 +111,7 @@ export function TreatmentProtocols() {
   const [selectedCondition, setSelectedCondition] = useState<string | null>(null);
   const [protocol, setProtocol] = useState<Protocol | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [isSaved, setIsSaved] = useState(false);
   const [user, setUser] = useState(auth.currentUser);
 
@@ -160,6 +162,26 @@ export function TreatmentProtocols() {
     setSelectedCondition(condition);
     setLoading(true);
     setProtocol(null);
+    setError(null);
+
+    // Check Dexie cache
+    try {
+      const cached = await db.knowledge_protocols.where('condition').equalsIgnoreCase(condition).first();
+      if (cached) {
+        setProtocol({
+          condition: cached.condition,
+          firstLine: cached.firstLine,
+          secondLine: cached.secondLine,
+          monitoring: cached.monitoring,
+          lifestyle: cached.lifestyle,
+          clinicalPearls: cached.clinicalPearls
+        });
+        setLoading(false);
+        return;
+      }
+    } catch (e) {
+      console.error("Dexie cache check failed", e);
+    }
 
     try {
       const response = await generateContentWithRetry({
@@ -184,7 +206,15 @@ export function TreatmentProtocols() {
       });
 
       if (response.text) {
-        setProtocol(JSON.parse(response.text));
+        const parsed = JSON.parse(response.text);
+        setProtocol(parsed);
+        
+        // Save to Dexie cache
+        await db.knowledge_protocols.add({
+          ...parsed,
+          category: protocolCategories.find(cat => cat.conditions.includes(condition))?.name || 'General',
+          lastUpdated: Date.now()
+        });
       }
     } catch (error) {
       console.error("Error fetching protocol:", error);

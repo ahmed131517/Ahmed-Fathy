@@ -1,10 +1,10 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useMemo, useCallback } from 'react';
 
 export interface UserProfile {
   firstName: string;
   lastName: string;
   email: string;
-  role: 'doctor' | 'pharmacist' | 'admin';
+  role: 'doctor' | 'nurse' | 'pharmacist' | 'receptionist' | 'admin';
   specialty: string;
   avatarInitials: string;
   dob: string;
@@ -24,7 +24,7 @@ export interface UserProfile {
 interface UserContextType {
   profile: UserProfile;
   updateProfile: (updates: Partial<UserProfile>) => void;
-  hasRole: (role: 'doctor' | 'pharmacist' | 'admin') => boolean;
+  hasRole: (role: 'doctor' | 'nurse' | 'pharmacist' | 'receptionist' | 'admin') => boolean;
 }
 
 const defaultProfile: UserProfile = {
@@ -54,7 +54,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     return saved ? JSON.parse(saved) : defaultProfile;
   });
 
-  const updateProfile = (updates: Partial<UserProfile>) => {
+  const updateProfile = useCallback((updates: Partial<UserProfile>) => {
     setProfile(prev => {
       const newProfile = { ...prev, ...updates };
       // Update initials if name changes
@@ -66,15 +66,17 @@ export function UserProvider({ children }: { children: ReactNode }) {
       localStorage.setItem('user_profile', JSON.stringify(newProfile));
       return newProfile;
     });
-  };
+  }, []);
 
-  const hasRole = (role: 'doctor' | 'pharmacist' | 'admin') => {
+  const hasRole = useCallback((role: 'doctor' | 'nurse' | 'pharmacist' | 'receptionist' | 'admin') => {
     if (profile.role === 'admin') return true;
     return profile.role === role;
-  };
+  }, [profile.role]);
+
+  const contextValue = useMemo(() => ({ profile, updateProfile, hasRole }), [profile, updateProfile, hasRole]);
 
   return (
-    <UserContext.Provider value={{ profile, updateProfile, hasRole }}>
+    <UserContext.Provider value={contextValue}>
       {children}
     </UserContext.Provider>
   );

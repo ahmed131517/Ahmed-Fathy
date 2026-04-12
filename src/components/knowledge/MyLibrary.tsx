@@ -25,6 +25,7 @@ export function MyLibrary() {
   };
 
   const handlePrint = () => {
+    window.focus();
     window.print();
   };
 
@@ -76,8 +77,8 @@ export function MyLibrary() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap gap-2">
+    <div className="space-y-6 print-modal">
+      <div className="flex flex-wrap gap-2 no-print">
         {categories.map((cat) => (
           <button
             key={cat.id}
@@ -96,7 +97,7 @@ export function MyLibrary() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Sidebar: Saved Items List */}
-        <div className="lg:col-span-1 space-y-4">
+        <div className="lg:col-span-1 space-y-4 no-print">
           <div className="bg-slate-50 rounded-xl border border-slate-200 overflow-hidden">
             <div className="p-3 bg-white border-b border-slate-200">
               <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Saved Clinical Knowledge</h3>
@@ -162,7 +163,7 @@ export function MyLibrary() {
                     <h3 className="text-xl font-bold text-slate-900">{selectedItem.title}</h3>
                     <p className="text-sm text-slate-500">Saved {selectedItem.type} reference</p>
                   </div>
-                  <button onClick={handlePrint} className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200">
+                  <button onClick={handlePrint} className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 no-print">
                     Print
                   </button>
                 </div>

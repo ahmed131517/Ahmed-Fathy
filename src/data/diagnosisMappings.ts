@@ -6,6 +6,10 @@ export interface Diagnosis {
   commonSymptoms: string[];
   redFlags: string[];
   icd10?: string;
+  diagnosticTests?: string[];
+  firstLineTreatments?: string[];
+  prognosis?: string;
+  severity?: 'Mild' | 'Moderate' | 'Severe';
 }
 
 export const COMMON_DIAGNOSES: Diagnosis[] = [
@@ -17,7 +21,11 @@ export const COMMON_DIAGNOSES: Diagnosis[] = [
     description: "A chronic condition in which the heart doesn't pump blood as well as it should.",
     commonSymptoms: ["heart_shortness_of_breath_exertion", "leg_swelling_heart", "orthopnea", "gen_fatigue"],
     redFlags: ["Severe shortness of breath at rest", "Pink, frothy sputum", "Sudden weight gain"],
-    icd10: "I50.9"
+    icd10: "I50.9",
+    diagnosticTests: ["Echocardiogram", "BNP blood test", "Chest X-ray"],
+    firstLineTreatments: ["ACE inhibitors", "Beta-blockers", "Diuretics"],
+    prognosis: "Chronic, requires lifelong management.",
+    severity: "Severe"
   },
   {
     id: "angina_pectoris",
@@ -26,7 +34,11 @@ export const COMMON_DIAGNOSES: Diagnosis[] = [
     description: "Chest pain or discomfort due to coronary heart disease.",
     commonSymptoms: ["heart_chest_pain", "chest_tightness", "heart_shortness_of_breath_exertion"],
     redFlags: ["Pain radiating to jaw or left arm", "Pain not relieved by rest", "Diaphoresis"],
-    icd10: "I20.9"
+    icd10: "I20.9",
+    diagnosticTests: ["ECG", "Stress test", "Coronary angiography"],
+    firstLineTreatments: ["Nitroglycerin", "Beta-blockers", "Calcium channel blockers"],
+    prognosis: "Manageable with lifestyle changes and medication.",
+    severity: "Moderate"
   },
   {
     id: "atrial_fibrillation",

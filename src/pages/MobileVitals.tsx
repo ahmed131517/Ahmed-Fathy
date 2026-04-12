@@ -12,7 +12,8 @@ export function MobileVitals() {
     hr: "",
     temp: "",
     spo2: "",
-    weight: ""
+    weight: "",
+    glucose: ""
   });
 
   const handleSubmit = async () => {
@@ -28,12 +29,13 @@ export function MobileVitals() {
         temp: vitals.temp ? Number(vitals.temp) : undefined,
         spo2: vitals.spo2 ? Number(vitals.spo2) : undefined,
         weight: vitals.weight ? Number(vitals.weight) : undefined,
+        glucose: vitals.glucose ? Number(vitals.glucose) : undefined,
         lastModified: Date.now(),
         isDeleted: 0,
         isSynced: 0
       });
       toast.success("Vitals saved successfully");
-      setVitals({ bp_systolic: "", bp_diastolic: "", hr: "", temp: "", spo2: "", weight: "" });
+      setVitals({ bp_systolic: "", bp_diastolic: "", hr: "", temp: "", spo2: "", weight: "", glucose: "" });
     } catch (error) {
       toast.error("Failed to save vitals");
     }
@@ -66,6 +68,10 @@ export function MobileVitals() {
         <div className="space-y-1">
           <label className="text-xs font-bold text-slate-500">Weight</label>
           <input type="number" value={vitals.weight} onChange={e => setVitals({...vitals, weight: e.target.value})} className="w-full p-2 border rounded-lg" />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-bold text-slate-500">Glucose (RBS)</label>
+          <input type="number" value={vitals.glucose} onChange={e => setVitals({...vitals, glucose: e.target.value})} className="w-full p-2 border rounded-lg" />
         </div>
       </div>
       <button onClick={handleSubmit} className="w-full py-3 bg-indigo-600 text-white rounded-lg font-bold flex items-center justify-center gap-2">

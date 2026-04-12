@@ -7,6 +7,7 @@ import { auth, googleProvider } from '@/lib/firebase';
 import { signInWithPopup, onAuthStateChanged } from 'firebase/auth';
 import { SavedKnowledgeService } from '@/lib/SavedKnowledgeService';
 import { Bookmark, Check } from 'lucide-react';
+import { db } from '@/lib/db';
 
 interface LabTest {
   name: string;
@@ -42,6 +43,7 @@ export function LabReference() {
   const [selectedTest, setSelectedTest] = useState<LabTest | null>(null);
   const [analysis, setAnalysis] = useState<LabAnalysis | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [isSaved, setIsSaved] = useState(false);
   const [user, setUser] = useState(auth.currentUser);
 
@@ -88,6 +90,25 @@ export function LabReference() {
     setSelectedTest(test);
     setLoading(true);
     setAnalysis(null);
+    setError(null);
+
+    // Check Dexie cache
+    try {
+      const cached = await db.knowledge_labs.where('name').equalsIgnoreCase(test.name).first();
+      if (cached && cached.clinicalSignificance) {
+        setAnalysis({
+          testName: cached.name,
+          clinicalSignificance: cached.clinicalSignificance,
+          highCauses: cached.highCauses || [],
+          lowCauses: cached.lowCauses || [],
+          recommendations: cached.recommendations || ''
+        });
+        setLoading(false);
+        return;
+      }
+    } catch (e) {
+      console.error("Dexie cache check failed", e);
+    }
 
     try {
       const response = await generateContentWithRetry({
@@ -111,7 +132,33 @@ export function LabReference() {
       });
 
       if (response.text) {
-        setAnalysis(JSON.parse(response.text));
+        const parsed = JSON.parse(response.text);
+        setAnalysis(parsed);
+        
+        // Save to Dexie cache (or update existing basic info)
+        const existing = await db.knowledge_labs.where('name').equalsIgnoreCase(test.name).first();
+        if (existing) {
+          await db.knowledge_labs.update(existing.id!, {
+            clinicalSignificance: parsed.clinicalSignificance,
+            highCauses: parsed.highCauses,
+            lowCauses: parsed.lowCauses,
+            recommendations: parsed.recommendations,
+            lastUpdated: Date.now()
+          });
+        } else {
+          await db.knowledge_labs.add({
+            name: test.name,
+            category: test.category,
+            normalRange: test.normalRange,
+            unit: test.unit,
+            description: test.description,
+            clinicalSignificance: parsed.clinicalSignificance,
+            highCauses: parsed.highCauses,
+            lowCauses: parsed.lowCauses,
+            recommendations: parsed.recommendations,
+            lastUpdated: Date.now()
+          });
+        }
       }
     } catch (error) {
       console.error("Error analyzing lab test:", error);

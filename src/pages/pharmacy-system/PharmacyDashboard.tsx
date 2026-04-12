@@ -10,11 +10,20 @@ export function PharmacyDashboard() {
   const inventory = useLiveQuery(() => db.pharmacy_inventory.toArray()) || [];
   const patients = useLiveQuery(() => db.patients.toArray()) || [];
   const prescriptionItems = useLiveQuery(() => db.prescription_items.toArray()) || [];
+  const batches = useLiveQuery(() => db.pharmacy_batches.where('isDeleted').equals(0).toArray()) || [];
 
   const stats = useMemo(() => {
     const pending = prescriptions.filter(p => p.status === 'Pending').length;
     const ready = prescriptions.filter(p => p.status === 'Ready').length;
     const lowStock = inventory.filter(i => i.stock <= i.minStock).length;
+    
+    const today = new Date();
+    const thirtyDaysFromNow = new Date();
+    thirtyDaysFromNow.setDate(today.getDate() + 30);
+    const expiringSoon = batches.filter(batch => {
+      const expiry = new Date(batch.expiryDate);
+      return expiry <= thirtyDaysFromNow && expiry >= today;
+    }).length;
     
     // Calculate today's revenue (simplified)
     const completedToday = prescriptions.filter(p => p.status === 'Completed');
@@ -27,8 +36,8 @@ export function PharmacyDashboard() {
       });
     });
 
-    return { pending, ready, lowStock, revenue };
-  }, [prescriptions, inventory, prescriptionItems]);
+    return { pending, ready, lowStock, revenue, expiringSoon };
+  }, [prescriptions, inventory, prescriptionItems, batches]);
 
   const recentPrescriptions = useMemo(() => {
     return prescriptions
@@ -93,6 +102,15 @@ export function PharmacyDashboard() {
           <div>
             <h3 className="text-sm font-medium text-slate-500">Low Stock Items</h3>
             <p className="text-2xl font-bold text-slate-900">{stats.lowStock}</p>
+          </div>
+        </div>
+        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
+          <div className="w-12 h-12 bg-orange-100 text-orange-600 rounded-lg flex items-center justify-center">
+            <Clock className="w-6 h-6" />
+          </div>
+          <div>
+            <h3 className="text-sm font-medium text-slate-500">Expiring Soon</h3>
+            <p className="text-2xl font-bold text-slate-900">{stats.expiringSoon}</p>
           </div>
         </div>
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">

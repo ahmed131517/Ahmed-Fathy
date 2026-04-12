@@ -27,6 +27,42 @@ async function startServer() {
     res.json({ status: "success" });
   });
 
+  app.get("/api/pubmed/search", async (req, res) => {
+    const query = req.query.q as string;
+    if (!query) {
+      return res.status(400).json({ error: "Query parameter 'q' is required" });
+    }
+    
+    try {
+      const baseUrl = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils";
+      const searchUrl = `${baseUrl}/esearch.fcgi?db=pubmed&term=${encodeURIComponent(query)}&retmode=json&retmax=5`;
+      
+      const searchResponse = await fetch(searchUrl);
+      const searchData = await searchResponse.json();
+      
+      if (!searchData.esearchresult || !searchData.esearchresult.idlist) {
+        return res.json({ articles: [] });
+      }
+      
+      const ids = searchData.esearchresult.idlist.join(",");
+      const summaryUrl = `${baseUrl}/esummary.fcgi?db=pubmed&id=${ids}&retmode=json`;
+      
+      const summaryResponse = await fetch(summaryUrl);
+      const summaryData = await summaryResponse.json();
+      
+      const articles = ids.split(",").map((id: string) => ({
+        id,
+        title: summaryData.result[id]?.title,
+        url: `https://pubmed.ncbi.nlm.nih.gov/${id}/`
+      }));
+      
+      res.json({ articles });
+    } catch (error) {
+      console.error("PubMed API error:", error);
+      res.status(500).json({ error: "Failed to fetch from PubMed" });
+    }
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

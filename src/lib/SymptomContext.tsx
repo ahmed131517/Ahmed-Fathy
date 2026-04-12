@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useMemo, useCallback } from 'react';
 
 export type SymptomStatus = 'incomplete' | 'analyzed' | 'red_flag';
 
@@ -26,20 +26,28 @@ const SymptomContext = createContext<SymptomContextType | undefined>(undefined);
 export function SymptomProvider({ children }: { children: ReactNode }) {
   const [symptoms, setSymptoms] = useState<Symptom[]>([]);
 
-  const addSymptom = (symptom: Symptom) => {
+  const addSymptom = useCallback((symptom: Symptom) => {
     setSymptoms(prev => [...prev, symptom]);
-  };
+  }, []);
 
-  const removeSymptom = (id: string) => {
+  const removeSymptom = useCallback((id: string) => {
     setSymptoms(prev => prev.filter(s => s.id !== id));
-  };
+  }, []);
 
-  const updateSymptom = (id: string, updates: Partial<Symptom>) => {
+  const updateSymptom = useCallback((id: string, updates: Partial<Symptom>) => {
     setSymptoms(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
-  };
+  }, []);
+
+  const contextValue = useMemo(() => ({ 
+    symptoms, 
+    setSymptoms, 
+    addSymptom, 
+    removeSymptom, 
+    updateSymptom 
+  }), [symptoms, addSymptom, removeSymptom, updateSymptom]);
 
   return (
-    <SymptomContext.Provider value={{ symptoms, setSymptoms, addSymptom, removeSymptom, updateSymptom }}>
+    <SymptomContext.Provider value={contextValue}>
       {children}
     </SymptomContext.Provider>
   );

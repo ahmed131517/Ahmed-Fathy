@@ -8,6 +8,7 @@ import { Bookmark, Check } from 'lucide-react';
 import { auth, googleProvider } from '@/lib/firebase';
 import { signInWithPopup, onAuthStateChanged } from 'firebase/auth';
 import { LOCAL_ENCYCLOPEDIA } from '@/data/localEncyclopedia';
+import { db } from '@/lib/db';
 
 interface EncyclopediaEntry {
   term: string;
@@ -134,6 +135,25 @@ export function Encyclopedia() {
       return;
     }
 
+    // Check Dexie cache
+    try {
+      const cached = await db.knowledge_encyclopedia.where('term').equalsIgnoreCase(term).first();
+      if (cached) {
+        setEntry({
+          term: cached.term,
+          definition: cached.definition,
+          symptoms: cached.symptoms,
+          causes: cached.causes,
+          treatments: cached.treatments,
+          prevention: cached.prevention
+        });
+        setLoading(false);
+        return;
+      }
+    } catch (e) {
+      console.error("Dexie cache check failed", e);
+    }
+
     try {
       const response = await generateContentWithRetry({
         model: "gemini-3-flash-preview",
@@ -157,7 +177,14 @@ export function Encyclopedia() {
       });
 
       if (response.text) {
-        setEntry(JSON.parse(response.text));
+        const parsed = JSON.parse(response.text);
+        setEntry(parsed);
+        
+        // Save to Dexie cache
+        await db.knowledge_encyclopedia.add({
+          ...parsed,
+          lastUpdated: Date.now()
+        });
       } else {
         throw new Error("No content received from AI");
       }

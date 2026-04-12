@@ -18,7 +18,7 @@ export function UserManagementSettings() {
   const [isAddingUser, setIsAddingUser] = useState(false);
   const [newUser, setNewUser] = useState({ name: "", email: "", role: "Doctor", status: "Active" });
 
-  const roles = ["Admin", "Doctor", "Nurse", "Receptionist"];
+  const roles = ["Admin", "Doctor", "Nurse", "Pharmacist", "Receptionist"];
   const statuses = ["Active", "Inactive"];
 
   const handleAddUserSubmit = (e: React.FormEvent) => {

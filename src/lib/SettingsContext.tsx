@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useMemo, useCallback } from 'react';
 
 interface SettingsState {
   // General
@@ -79,6 +79,9 @@ interface SettingsState {
   modelType: string;
   aiTemperature: number;
   aiMaxTokens: number;
+  
+  // Prescription Templates
+  customPrescriptionTemplates: Record<string, Record<string, any[]>>;
   
   // Schedule
   workingHours: {
@@ -163,6 +166,8 @@ const defaultSettings: SettingsState = {
   aiTemperature: 0.7,
   aiMaxTokens: 2048,
   
+  customPrescriptionTemplates: {},
+  
   workingHours: [
     { day: "Monday", start: "09:00", end: "17:00", active: true },
     { day: "Tuesday", start: "09:00", end: "17:00", active: true },
@@ -209,7 +214,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       roboto: '"Roboto", ui-sans-serif, system-ui, sans-serif',
       system: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
       serif: '"Playfair Display", ui-serif, Georgia, Cambria, "Times New Roman", Times, serif',
-      mono: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
+      mono: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+      calligraphy: '"Lucida Calligraphy", "Apple Chancery", "URW Chancery L", cursive'
     };
     root.style.setProperty('--font-sans', fontMap[settings.fontFamily] || fontMap.inter);
 
@@ -297,12 +303,14 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     });
   }, [settings]);
 
-  const updateSettings = (newSettings: Partial<SettingsState>) => {
+  const updateSettings = useCallback((newSettings: Partial<SettingsState>) => {
     setSettings((prev) => ({ ...prev, ...newSettings }));
-  };
+  }, []);
+
+  const contextValue = useMemo(() => ({ ...settings, updateSettings }), [settings, updateSettings]);
 
   return (
-    <SettingsContext.Provider value={{ ...settings, updateSettings }}>
+    <SettingsContext.Provider value={contextValue}>
       {children}
     </SettingsContext.Provider>
   );

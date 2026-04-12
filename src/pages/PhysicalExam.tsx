@@ -3569,7 +3569,7 @@ export function PhysicalExam() {
 
   const handleDictation = (fieldId: string, currentValue: string, setter: (val: string) => void) => {
     if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-      alert('Speech recognition is not supported in this browser.');
+      toast.error('Speech recognition is not supported in this browser.');
       return;
     }
     

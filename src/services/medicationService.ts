@@ -1,4 +1,5 @@
-import { db } from '@/lib/db';
+import { db, DrugInteraction, DrugContraindication, DrugSideEffect } from '@/lib/db';
+import { toast } from 'sonner';
 
 export interface Drug {
   id?: number;
@@ -248,5 +249,80 @@ export const medicationService = {
   async getAllDosageForms(): Promise<DosageForm[]> {
     const results = await db.dosage_forms.toArray();
     return results as DosageForm[];
+  },
+
+  async bulkImport(data: {
+    drugs?: Drug[],
+    brands?: DrugBrand[],
+    interactions?: DrugInteraction[],
+    contraindications?: DrugContraindication[],
+    sideEffects?: DrugSideEffect[]
+  }) {
+    try {
+      if (data.drugs?.length) await db.drugs.bulkAdd(data.drugs);
+      if (data.brands?.length) await db.drug_brands.bulkAdd(data.brands);
+      if (data.interactions?.length) await db.drug_interactions.bulkAdd(data.interactions);
+      if (data.contraindications?.length) await db.drug_contraindications.bulkAdd(data.contraindications);
+      if (data.sideEffects?.length) await db.drug_side_effects.bulkAdd(data.sideEffects);
+      
+      toast.success("Bulk import completed successfully");
+      return true;
+    } catch (error) {
+      console.error("Bulk import failed:", error);
+      toast.error("Bulk import failed. Check console for details.");
+      return false;
+    }
+  },
+
+  async discoverAndAddDrug(drugInfo: {
+    generic_name: string,
+    drug_class?: string,
+    atc_code?: string,
+    brands?: string[],
+    side_effects?: string[]
+  }) {
+    // Check if drug already exists
+    const existing = await db.drugs.where('generic_name').equalsIgnoreCase(drugInfo.generic_name).first();
+    
+    let drugId: number;
+    if (!existing) {
+      drugId = await db.drugs.add({
+        generic_name: drugInfo.generic_name,
+        drug_class: drugInfo.drug_class || 'Unknown',
+        atc_code: drugInfo.atc_code || 'Unknown'
+      }) as number;
+    } else {
+      drugId = existing.id as number;
+    }
+
+    // Add brands if provided
+    if (drugInfo.brands?.length) {
+      for (const brandName of drugInfo.brands) {
+        const brandExists = await db.drug_brands.where('brand_name').equalsIgnoreCase(brandName).first();
+        if (!brandExists) {
+          await db.drug_brands.add({
+            drug_id: drugId,
+            brand_name: brandName,
+            manufacturer: 'Unknown'
+          });
+        }
+      }
+    }
+
+    // Add side effects if provided
+    if (drugInfo.side_effects?.length) {
+      for (const effect of drugInfo.side_effects) {
+        const effectExists = await db.drug_side_effects.where({ drug_id: drugId, side_effect: effect }).first();
+        if (!effectExists) {
+          await db.drug_side_effects.add({
+            drug_id: drugId,
+            side_effect: effect,
+            frequency: 'Unknown'
+          });
+        }
+      }
+    }
+
+    return drugId;
   }
 };

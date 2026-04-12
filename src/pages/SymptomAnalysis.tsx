@@ -2,11 +2,12 @@ import { SpeakButton } from "@/components/SpeakButton";
 import { useSymptom } from "@/lib/SymptomContext";
 import { useState, MouseEvent, useRef, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { User, Headphones, Eye, MessageCircle, Shield, Wind, Heart, Target, Droplets, Layers, X, Activity, HelpCircle, AlertTriangle, CheckCircle2, RefreshCw, ClipboardList, Sparkles, Edit2, ChevronDown, ChevronUp, Loader2, Bone, Brain, TrendingUp, BookOpen, ExternalLink, Info, FileText, FlaskConical, Stethoscope, ArrowRightLeft } from "lucide-react";
+import { User, Headphones, Eye, MessageCircle, Shield, Wind, Heart, Target, Droplets, Layers, X, Activity, HelpCircle, AlertTriangle, CheckCircle2, RefreshCw, ClipboardList, Sparkles, Edit2, ChevronDown, ChevronUp, Loader2, Bone, Brain, TrendingUp, BookOpen, ExternalLink, Info, FileText, FlaskConical, Stethoscope, ArrowRightLeft, Zap } from "lucide-react";
 import { ALL_MODELS, SymptomModel } from "@/data/symptomModels";
 import { cn } from "@/lib/utils";
 import { GoogleGenAI, Modality, Type } from "@google/genai";
 import { generateContentWithRetry } from "../utils/gemini";
+import { SOAPNoteModal } from "@/components/SOAPNoteModal";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { ClinicalScoresWidget } from "@/components/ClinicalScoresWidget";
@@ -14,6 +15,7 @@ import { DifferentialDiagnosisGrid } from "@/components/DifferentialDiagnosisGri
 import { CLINICAL_PATHWAYS, ClinicalPathwayRule } from "@/data/clinicalPathways";
 import { ClinicalGuardrails } from "@/components/ClinicalGuardrails";
 import { usePatient } from "@/lib/PatientContext";
+import { WhatsNextModal } from "@/components/WhatsNextModal";
 
 const categories = [
   { id: 'general', name: 'General / Systemic', icon: Activity },
@@ -88,9 +90,10 @@ export function SymptomAnalysis() {
   const [aiAnalyzingId, setAiAnalyzingId] = useState<string | null>(null);
   const [triageLevel, setTriageLevel] = useState<'low' | 'medium' | 'high'>('low');
   const [soapNote, setSoapNote] = useState<string | null>(null);
+  const [isSoapModalOpen, setIsSoapModalOpen] = useState(false);
   const [isGeneratingSOAP, setIsGeneratingSOAP] = useState(false);
   const [showComparison, setShowComparison] = useState(false);
-  const [showRequiredExams, setShowRequiredExams] = useState(false);
+  const [isWhatsNextOpen, setIsWhatsNextOpen] = useState(false);
   const [conversation, setConversation] = useState<{role: 'user' | 'ai', content: string}[]>([]);
   const [newMessage, setNewMessage] = useState('');
   
@@ -112,17 +115,6 @@ export function SymptomAnalysis() {
       allergies: ['Penicillin']
     };
   }, [selectedPatient]);
-
-  const requiredExamsList = useMemo(() => {
-    const exams = new Set<string>();
-    selectedSymptoms.forEach(symptom => {
-      const model = ALL_MODELS[symptom.category]?.find(m => m.id === symptom.id);
-      if (model?.requiredExams) {
-        model.requiredExams.forEach(exam => exams.add(exam));
-      }
-    });
-    return Array.from(exams);
-  }, [selectedSymptoms]);
 
   const activePathways = useMemo(() => {
     if (selectedSymptoms.length === 0) return [];
@@ -383,6 +375,7 @@ export function SymptomAnalysis() {
         contents: [{ parts: [{ text: prompt }] }]
       });
       setSoapNote(response.text || "Failed to generate note.");
+      setIsSoapModalOpen(true);
     } catch (err) {
       console.error("SOAP generation failed:", err);
       toast.error("Failed to generate SOAP note");
@@ -445,12 +438,12 @@ export function SymptomAnalysis() {
             New Case
           </button>
           <button 
-            onClick={() => setShowRequiredExams(true)}
+            onClick={() => setIsWhatsNextOpen(true)}
             disabled={selectedSymptoms.length === 0}
             className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-2 disabled:opacity-50"
           >
-            <Stethoscope className="w-4 h-4" />
-            Required Physical Exams
+            <Zap className="w-4 h-4 text-amber-500" />
+            What's Next
           </button>
           <button 
             onClick={handleShowCauses}
@@ -742,61 +735,13 @@ export function SymptomAnalysis() {
         />
       )}
 
-      {/* Required Exams Modal */}
-      {showRequiredExams && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl flex flex-col max-h-[80vh]">
-            <div className="p-4 border-b border-slate-100 flex justify-between items-center">
-              <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
-                <Stethoscope className="w-5 h-5 text-indigo-600" />
-                Required Physical Exams
-              </h3>
-              <button onClick={() => setShowRequiredExams(false)} className="p-1 text-slate-400 hover:text-slate-600 rounded-md">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-6 overflow-y-auto flex-1 bg-slate-50">
-              {requiredExamsList.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4">
-                    <Stethoscope className="w-8 h-8 text-slate-400" />
-                  </div>
-                  <h4 className="text-lg font-medium text-slate-800 mb-2">No Specific Exams Required</h4>
-                  <p className="text-slate-500 max-w-md">Based on the currently selected symptoms, there are no specific physical exam maneuvers automatically suggested.</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-lg flex gap-3">
-                    <Info className="w-5 h-5 text-indigo-600 flex-shrink-0" />
-                    <div>
-                      <h4 className="text-sm font-semibold text-indigo-800">Suggested Maneuvers</h4>
-                      <p className="text-xs text-indigo-600 mt-1">Based on the selected symptoms, consider performing the following physical exams.</p>
-                    </div>
-                  </div>
-                  <ul className="space-y-3">
-                    {requiredExamsList.map((exam, index) => (
-                      <li key={index} className="bg-white border border-slate-200 p-4 rounded-lg shadow-sm flex items-start gap-3">
-                        <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center flex-shrink-0 text-xs font-bold mt-0.5">
-                          {index + 1}
-                        </div>
-                        <span className="text-slate-700 text-sm leading-relaxed">{exam}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-            <div className="p-4 border-t border-slate-100 bg-white rounded-b-xl flex justify-end">
-              <button 
-                onClick={() => setShowRequiredExams(false)}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* What's Next Modal */}
+      <WhatsNextModal 
+        open={isWhatsNextOpen} 
+        onOpenChange={setIsWhatsNextOpen} 
+        symptoms={selectedSymptoms} 
+        patientData={patientData}
+      />
 
       {/* Causes Modal */}
       {showCauses && (
@@ -943,43 +888,12 @@ export function SymptomAnalysis() {
       )}
 
       {/* SOAP Note Modal */}
-      {soapNote && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl flex flex-col max-h-[80vh]">
-            <div className="p-4 border-b border-slate-100 flex justify-between items-center">
-              <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
-                <FileText className="w-5 h-5 text-indigo-600" />
-                AI-Generated SOAP Note
-              </h3>
-              <button onClick={() => setSoapNote(null)} className="p-1 text-slate-400 hover:text-slate-600 rounded-md">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-6 overflow-y-auto flex-1 bg-slate-50">
-              <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm font-mono text-sm whitespace-pre-wrap leading-relaxed">
-                {soapNote}
-              </div>
-            </div>
-            <div className="p-4 border-t border-slate-100 bg-slate-50 rounded-b-xl flex justify-end gap-3">
-              <button 
-                onClick={() => {
-                  navigator.clipboard.writeText(soapNote);
-                  toast.success("Copied to clipboard!");
-                }}
-                className="px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"
-              >
-                Copy to Clipboard
-              </button>
-              <button 
-                onClick={() => setSoapNote(null)}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <SOAPNoteModal 
+        isOpen={isSoapModalOpen}
+        onClose={() => setIsSoapModalOpen(false)}
+        initialContent={soapNote || ""}
+        patientName={selectedPatient?.name}
+      />
     </div>
   );
 }

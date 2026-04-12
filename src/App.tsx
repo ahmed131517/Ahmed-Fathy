@@ -31,9 +31,11 @@ import { BackupSettings } from "./pages/settings/BackupSettings";
 import { AuditLogSettings } from "./pages/settings/AuditLogSettings";
 import { IntegrationSettings } from "./pages/settings/IntegrationSettings";
 import { AISettings } from "./pages/settings/AISettings";
+import { DatabaseManagerSettings } from "./pages/settings/DatabaseManagerSettings";
 import { AdminSettings } from "./pages/AdminSettings";
 import { UserManagement } from "./pages/UserManagement";
 import { Notifications } from "./pages/Notifications";
+import { StaffCommunication } from "./pages/StaffCommunication";
 import { PatientProvider } from "./lib/PatientContext";
 import { SymptomProvider } from "./lib/SymptomContext";
 import { UserProvider } from "./lib/UserContext";
@@ -137,6 +139,7 @@ export default function App() {
                           <Route path="schedule" element={<Schedule />} />
                           <Route path="notifications" element={<Notifications />} />
                           <Route path="tasks" element={<Tasks />} />
+                          <Route path="staff-communication" element={<StaffCommunication />} />
                           <Route path="*" element={<div className="p-6 text-slate-500">Page under construction</div>} />
                         </Route>
 
@@ -155,6 +158,7 @@ export default function App() {
                           <Route path="audit" element={<AuditLogSettings />} />
                           <Route path="integration" element={<IntegrationSettings />} />
                           <Route path="ai" element={<AISettings />} />
+                          <Route path="database" element={<DatabaseManagerSettings />} />
                           <Route path="language" element={<LanguageSettings />} />
                         </Route>
 

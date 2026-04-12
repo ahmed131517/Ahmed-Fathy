@@ -3,9 +3,11 @@ import { GoogleGenAI, GenerateContentParameters, GenerateContentResponse, Chat }
 const MAX_RETRIES = 3;
 const INITIAL_DELAY = 1000;
 
-function isRateLimitError(error: any): boolean {
+function isTransientError(error: any): boolean {
   const errorCode = error?.error?.code || error?.code;
-  return errorCode === 429;
+  // 429: Rate limit
+  // 500: Server error
+  return errorCode === 429 || errorCode === 500;
 }
 
 export async function generateContentWithRetry(
@@ -19,10 +21,10 @@ export async function generateContentWithRetry(
     try {
       return await ai.models.generateContent(params);
     } catch (error: any) {
-      if (isRateLimitError(error) && attempt < MAX_RETRIES - 1) {
+      if (isTransientError(error) && attempt < MAX_RETRIES - 1) {
         attempt++;
         const delay = Math.pow(2, attempt) * INITIAL_DELAY;
-        console.warn(`Gemini API rate limited (429). Retrying in ${delay}ms... (Attempt ${attempt + 1}/${MAX_RETRIES})`);
+        console.warn(`Gemini API transient error (${error?.error?.code || error?.code}). Retrying in ${delay}ms... (Attempt ${attempt + 1}/${MAX_RETRIES})`);
         await new Promise((resolve) => setTimeout(resolve, delay));
       } else {
         console.error("Gemini API error:", error);
@@ -43,10 +45,10 @@ export async function sendMessageStreamWithRetry(
     try {
       return await chat.sendMessageStream({ message });
     } catch (error: any) {
-      if (isRateLimitError(error) && attempt < MAX_RETRIES - 1) {
+      if (isTransientError(error) && attempt < MAX_RETRIES - 1) {
         attempt++;
         const delay = Math.pow(2, attempt) * INITIAL_DELAY;
-        console.warn(`Gemini API rate limited (429). Retrying in ${delay}ms... (Attempt ${attempt + 1}/${MAX_RETRIES})`);
+        console.warn(`Gemini API transient error (${error?.error?.code || error?.code}). Retrying in ${delay}ms... (Attempt ${attempt + 1}/${MAX_RETRIES})`);
         await new Promise((resolve) => setTimeout(resolve, delay));
       } else {
         console.error("Gemini API error:", error);

@@ -93,7 +93,7 @@ const PharmacyMap = ({ pharmacies }: { pharmacies: Pharmacy[] }) => {
             position={{ lat: pharmacy.lat, lng: pharmacy.lng }}
             title={pharmacy.name}
             onClick={() => {
-              alert(`Selected: ${pharmacy.name}`);
+              toast.success(`Selected: ${pharmacy.name}`);
             }}
           />
         )
@@ -165,7 +165,7 @@ export function Pharmacies() {
 
   const handleSendPrescription = (pharmacy: Pharmacy) => {
     if (!selectedPatient) {
-      alert("Please select a patient first.");
+      toast.error("Please select a patient first.");
       return;
     }
     

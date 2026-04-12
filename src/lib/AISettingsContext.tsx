@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 
 export interface AISettings {
   voiceURI: string;
@@ -57,12 +57,14 @@ export function AISettingsProvider({ children }: { children: React.ReactNode }) 
     localStorage.setItem('ai_settings', JSON.stringify(settings));
   }, [settings]);
 
-  const updateSettings = (newSettings: Partial<AISettings>) => {
+  const updateSettings = useCallback((newSettings: Partial<AISettings>) => {
     setSettings(prev => ({ ...prev, ...newSettings }));
-  };
+  }, []);
+
+  const contextValue = useMemo(() => ({ settings, updateSettings }), [settings, updateSettings]);
 
   return (
-    <AISettingsContext.Provider value={{ settings, updateSettings }}>
+    <AISettingsContext.Provider value={contextValue}>
       {children}
     </AISettingsContext.Provider>
   );

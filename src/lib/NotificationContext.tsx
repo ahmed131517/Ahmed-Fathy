@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useState, ReactNode, useMemo, useCallback } from 'react';
 import { db, Notification } from './db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { toast } from 'sonner';
@@ -22,7 +22,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   const unreadCount = notifications.filter(n => n.isRead === 0).length;
 
-  const addNotification = async (notification: Omit<Notification, 'localId' | 'createdAt' | 'lastModified' | 'isDeleted' | 'isSynced' | 'isRead'>) => {
+  const addNotification = useCallback(async (notification: Omit<Notification, 'localId' | 'createdAt' | 'lastModified' | 'isDeleted' | 'isSynced' | 'isRead'>) => {
     const now = Date.now();
     await db.notifications.add({
       ...notification,
@@ -39,37 +39,47 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         description: notification.message
       });
     }
-  };
+  }, []);
 
-  const markAsRead = async (localId: number) => {
+  const markAsRead = useCallback(async (localId: number) => {
     await db.notifications.update(localId, {
       isRead: 1,
       lastModified: Date.now()
     });
-  };
+  }, []);
 
-  const markAllAsRead = async () => {
+  const markAllAsRead = useCallback(async () => {
     const unreadIds = notifications.filter(n => n.isRead === 0).map(n => n.localId).filter((id): id is number => id !== undefined);
     if (unreadIds.length === 0) return;
     
     const now = Date.now();
     await Promise.all(unreadIds.map(id => db.notifications.update(id, { isRead: 1, lastModified: now })));
-  };
+  }, [notifications]);
 
-  const deleteNotification = async (localId: number) => {
+  const deleteNotification = useCallback(async (localId: number) => {
     await db.notifications.update(localId, {
       isDeleted: 1,
       lastModified: Date.now()
     });
-  };
+  }, []);
 
-  const clearAll = async () => {
+  const clearAll = useCallback(async () => {
     const ids = notifications.map(n => n.localId).filter((id): id is number => id !== undefined);
     if (ids.length === 0) return;
     
     const now = Date.now();
     await Promise.all(ids.map(id => db.notifications.update(id, { isDeleted: 1, lastModified: now })));
-  };
+  }, [notifications]);
+
+  const contextValue = useMemo(() => ({
+    notifications,
+    unreadCount,
+    addNotification,
+    markAsRead,
+    markAllAsRead,
+    deleteNotification,
+    clearAll
+  }), [notifications, unreadCount, addNotification, markAsRead, markAllAsRead, deleteNotification, clearAll]);
 
   // Seed some initial notifications if empty
   useEffect(() => {
@@ -107,15 +117,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <NotificationContext.Provider value={{
-      notifications,
-      unreadCount,
-      addNotification,
-      markAsRead,
-      markAllAsRead,
-      deleteNotification,
-      clearAll
-    }}>
+    <NotificationContext.Provider value={contextValue}>
       {children}
     </NotificationContext.Provider>
   );

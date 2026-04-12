@@ -9,6 +9,7 @@ import { auth, googleProvider } from '@/lib/firebase';
 import { signInWithPopup, onAuthStateChanged } from 'firebase/auth';
 import { SavedKnowledgeService } from '@/lib/SavedKnowledgeService';
 import { Bookmark, Check } from 'lucide-react';
+import { db } from '@/lib/db';
 
 interface DrugDetail {
   classes: any[];
@@ -97,6 +98,25 @@ export function DrugDatabase() {
     setLoading(true);
     
     try {
+      // Check Dexie cache first
+      const cachedDrug = await db.drugs.where('generic_name').equalsIgnoreCase(name).first();
+      if (cachedDrug) {
+        // Fetch related data from other tables if needed, but for now we check if we have the summary
+        // In this app, we store the AI summary in the drug record for simplicity in caching
+        const drugDetails: DrugDetail = { 
+          classes: [], 
+          properties: [],
+          // @ts-ignore - adding summary to the drug record for caching
+          summary: cachedDrug.summary 
+        };
+
+        if (drugDetails.summary) {
+          setDetails(drugDetails);
+          setLoading(false);
+          return;
+        }
+      }
+
       const rxcui = await RxNavService.getRxCUI(name);
       let drugDetails: DrugDetail = { classes: [], properties: [] };
       
@@ -139,6 +159,23 @@ export function DrugDatabase() {
 
       if (aiResponse.text) {
         drugDetails.summary = JSON.parse(aiResponse.text);
+        
+        // Save to Dexie cache
+        const existing = await db.drugs.where('generic_name').equalsIgnoreCase(name).first();
+        if (existing) {
+          await db.drugs.update(existing.id!, {
+            // @ts-ignore
+            summary: drugDetails.summary
+          });
+        } else {
+          await db.drugs.add({
+            generic_name: name,
+            drug_class: drugDetails.classes[0]?.className || 'Unknown',
+            atc_code: '',
+            // @ts-ignore
+            summary: drugDetails.summary
+          });
+        }
       }
 
       setDetails(drugDetails);

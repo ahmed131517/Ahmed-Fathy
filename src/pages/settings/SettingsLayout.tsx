@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation } from "react-router-dom";
-import { ArrowLeft, Settings as SettingsIcon, Bell, Lock, Globe, Monitor, Palette, Users, Stethoscope, CreditCard, HardDrive, FileText, Link as LinkIcon, Sparkles, LogOut, Grid, Shield } from "lucide-react";
+import { ArrowLeft, Settings as SettingsIcon, Bell, Lock, Globe, Monitor, Palette, Users, Stethoscope, CreditCard, HardDrive, FileText, Link as LinkIcon, Sparkles, LogOut, Grid, Shield, Database } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { toast } from "sonner";
 import { useUser } from "../../lib/UserContext";
@@ -44,6 +44,7 @@ export function SettingsLayout() {
     { id: 'audit', name: 'Audit Logs', key: 'auditLogs', icon: FileText, path: '/settings/audit' },
     { id: 'integration', name: 'Supplier & Integration', key: 'supplierIntegration', icon: LinkIcon, path: '/settings/integration' },
     { id: 'ai', name: 'AI Settings', key: 'aiAssistant', icon: Sparkles, path: '/settings/ai' },
+    { id: 'database', name: 'Database Manager', key: 'databaseManager', icon: Database, path: '/settings/database' },
     { id: 'language', name: 'Language & Region', key: 'language', icon: Globe, path: '/settings/language' },
   ];
 

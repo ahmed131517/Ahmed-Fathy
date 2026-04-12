@@ -1,4 +1,4 @@
-import { Folder, Clock, RefreshCw, FileText, Zap, Printer, MousePointer, FlaskConical, AlertTriangle, CheckCircle2, ChevronRight, TrendingUp, Calendar, Sparkles, Stethoscope, Pill, List } from "lucide-react";
+import { Folder, Clock, RefreshCw, FileText, Zap, Printer, MousePointer, FlaskConical, AlertTriangle, CheckCircle2, ChevronRight, TrendingUp, Calendar, Sparkles, Stethoscope, Pill, List, X } from "lucide-react";
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -11,15 +11,20 @@ import { db } from "@/lib/db";
 import { useLiveQuery } from "dexie-react-hooks";
 import { PatientHistoryService } from "@/services/PatientHistoryService";
 import { CDSSAlertsWidget } from "@/components/dashboard/CDSSAlertsWidget";
+import { MentalHealthAssessments } from "@/components/specialized/MentalHealthAssessments";
+import { ObstetricCalculator } from "@/components/specialized/ObstetricCalculator";
+import { PediatricGrowthChart } from "@/components/specialized/PediatricGrowthChart";
 
 
 export function MedicalRecords() {
   const navigate = useNavigate();
   const { selectedPatient } = usePatient();
   const [selectedRecord, setSelectedRecord] = useState<any | null>(null);
-  const [viewMode, setViewMode] = useState<'list' | 'trends' | 'critical' | 'timeline'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'trends' | 'critical' | 'timeline' | 'specialized'>('list');
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [recordSummary, setRecordSummary] = useState("");
+  const [isInterpreting, setIsInterpreting] = useState(false);
+  const [labInterpretation, setLabInterpretation] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<string>('All');
   const [selectedToCompare, setSelectedToCompare] = useState<string[]>([]);
@@ -124,6 +129,13 @@ export function MedicalRecords() {
         unit: 'kg'
       }));
     }
+    if (metric === 'Glucose') {
+      return vitalsData.map(v => ({
+        date: v.date,
+        value: v.glucose,
+        unit: 'mg/dL'
+      }));
+    }
     
     // Extract lab data
     const data: any[] = [];
@@ -157,6 +169,33 @@ export function MedicalRecords() {
       console.error("Summary generation failed:", error);
     } finally {
       setIsSummarizing(false);
+    }
+  };
+
+  const interpretLabResults = async (record: any) => {
+    if (record.type !== 'Lab Result') return;
+    setIsInterpreting(true);
+    try {
+      const prompt = `Analyze these lab results: ${JSON.stringify(record.results)}. 
+      Clinical Context: ${record.summary || "None provided"}.
+      
+      Provide:
+      1. Clinical Interpretation of abnormal values.
+      2. Potential Differential Diagnoses based on these specific results.
+      3. Recommended next steps or confirmatory tests.
+      
+      Format as a professional clinical note.`;
+      
+      const response = await generateContentWithRetry({
+        model: "gemini-3-flash-preview",
+        contents: prompt,
+      });
+      setLabInterpretation(response.text || "Interpretation failed.");
+    } catch (error) {
+      console.error("Interpretation failed:", error);
+      toast.error("AI Interpretation failed.");
+    } finally {
+      setIsInterpreting(false);
     }
   };
 
@@ -210,6 +249,15 @@ export function MedicalRecords() {
             )}
           >
             <AlertTriangle className="w-4 h-4" /> Critical
+          </button>
+          <button 
+            onClick={() => setViewMode('specialized')}
+            className={cn(
+              "px-3 py-1.5 text-sm font-medium rounded-md transition-all flex items-center gap-2",
+              viewMode === 'specialized' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+            )}
+          >
+            <Zap className="w-4 h-4" /> Specialized
           </button>
         </div>
         </div>
@@ -344,11 +392,37 @@ export function MedicalRecords() {
                       <div className="space-y-4">
                         <div className="flex justify-between items-center">
                           <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider">Laboratory Results</h4>
-                          <div className="flex gap-3 text-xs font-medium">
-                            <span className="flex items-center gap-1 text-emerald-600"><CheckCircle2 className="w-3.5 h-3.5" /> Normal</span>
-                            <span className="flex items-center gap-1 text-red-600"><AlertTriangle className="w-3.5 h-3.5" /> Abnormal</span>
+                          <div className="flex gap-2">
+                            <button 
+                              onClick={() => interpretLabResults(selectedRecord)}
+                              disabled={isInterpreting}
+                              className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-bold hover:bg-indigo-100 flex items-center gap-1.5 transition-all disabled:opacity-50"
+                            >
+                              {isInterpreting ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                              {isInterpreting ? 'Interpreting...' : 'AI Interpret'}
+                            </button>
+                            <div className="flex gap-3 text-xs font-medium items-center ml-2">
+                              <span className="flex items-center gap-1 text-emerald-600"><CheckCircle2 className="w-3.5 h-3.5" /> Normal</span>
+                              <span className="flex items-center gap-1 text-red-600"><AlertTriangle className="w-3.5 h-3.5" /> Abnormal</span>
+                            </div>
                           </div>
                         </div>
+
+                        {labInterpretation && (
+                          <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 shadow-sm text-indigo-900 leading-relaxed mb-4">
+                            <div className="flex justify-between items-start mb-2">
+                              <h4 className="text-xs font-bold text-indigo-700 uppercase tracking-wider flex items-center gap-1">
+                                <Sparkles className="w-3 h-3" /> AI Clinical Interpretation
+                              </h4>
+                              <button onClick={() => setLabInterpretation("")} className="text-indigo-400 hover:text-indigo-600">
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                            <div className="prose prose-sm prose-indigo max-w-none">
+                              {labInterpretation}
+                            </div>
+                          </div>
+                        )}
                         
                         <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
                           <table className="w-full text-sm text-left">
@@ -437,6 +511,7 @@ export function MedicalRecords() {
                 >
                   <optgroup label="Vitals">
                     <option value="Blood Pressure">Blood Pressure</option>
+                    <option value="Glucose">Glucose (RBS)</option>
                     <option value="Weight">Weight</option>
                   </optgroup>
                   <optgroup label="Lab Results">
@@ -511,6 +586,14 @@ export function MedicalRecords() {
               </p>
             </div>
           </div>
+        </div>
+      ) : viewMode === 'specialized' ? (
+        <div className="space-y-6 animate-in fade-in duration-300">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            <MentalHealthAssessments />
+            <ObstetricCalculator />
+          </div>
+          <PediatricGrowthChart />
         </div>
       ) : (
         <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 min-h-[500px]">

@@ -1,4 +1,5 @@
 import { useSettings } from "./SettingsContext";
+import { useMemo, useCallback } from "react";
 
 export const translations = {
   en: {
@@ -29,6 +30,7 @@ export const translations = {
     profile: "Profile",
     notifications: "Notifications",
     aiAssistant: "AI Assistant",
+    databaseManager: "Database Manager",
     auditLogs: "Audit Logs",
     integrations: "Integrations",
     searchPlaceholder: "Search patients or clinical knowledge...",
@@ -202,6 +204,7 @@ export const translations = {
     knowledge: "Knowledge",
     askAI: "Ask AI",
     tasks: "Tasks",
+    staff: "Staff Communication",
     preview: "Preview",
     previewDesc: "This is how your current appearance settings will look.",
     actionButton: "Action Button",
@@ -254,6 +257,7 @@ export const translations = {
     profile: "الملف الشخصي",
     notifications: "التنبيهات",
     aiAssistant: "مساعد الذكاء الاصطناعي",
+    databaseManager: "مدير قاعدة البيانات",
     auditLogs: "سجلات المراجعة",
     integrations: "التكاملات",
     searchPlaceholder: "ابحث عن المرضى أو المعرفة السريرية...",
@@ -427,6 +431,7 @@ export const translations = {
     knowledge: "المعرفة",
     askAI: "اسأل الذكاء الاصطناعي",
     tasks: "المهام",
+    staff: "اتصالات الموظفين",
     preview: "معاينة",
     previewDesc: "هكذا ستبدو إعدادات المظهر الحالية الخاصة بك.",
     actionButton: "زر الإجراء",
@@ -552,12 +557,12 @@ export function useTranslation() {
   const { language } = useSettings();
   const lang = (language in translations ? language : 'en') as keyof typeof translations;
   
-  const t = (key: TranslationKey) => {
+  const t = useCallback((key: TranslationKey) => {
     const translationSet = translations[lang] || translations.en;
     return translationSet[key] || translations.en[key] || key;
-  };
+  }, [lang]);
 
-  const isRTL = lang === 'ar';
+  const isRTL = useMemo(() => lang === 'ar', [lang]);
 
-  return { t, isRTL, language: lang };
+  return useMemo(() => ({ t, isRTL, language: lang }), [t, isRTL, lang]);
 }

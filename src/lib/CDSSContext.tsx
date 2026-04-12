@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useMemo, useCallback } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, PatientRecord, Prescription, PrescriptionItem, LabResult, Diagnosis } from './db';
 
@@ -273,20 +273,22 @@ export function CDSSProvider({ children }: { children: React.ReactNode }) {
     setAlerts(newAlerts.sort((a, b) => b.timestamp - a.timestamp));
   }, [patients, prescriptions, prescriptionItems, labResults, diagnoses, dismissedAlertIds]);
 
-  const dismissAlert = (id: string) => {
+  const dismissAlert = useCallback((id: string) => {
     setDismissedAlertIds(prev => {
       const newSet = new Set(prev);
       newSet.add(id);
       return newSet;
     });
-  };
+  }, []);
 
-  const getAlertsForPatient = (patientId: string) => {
+  const getAlertsForPatient = useCallback((patientId: string) => {
     return alerts.filter(a => a.patientId === patientId);
-  };
+  }, [alerts]);
+
+  const contextValue = useMemo(() => ({ alerts, dismissAlert, getAlertsForPatient }), [alerts, dismissAlert, getAlertsForPatient]);
 
   return (
-    <CDSSContext.Provider value={{ alerts, dismissAlert, getAlertsForPatient }}>
+    <CDSSContext.Provider value={contextValue}>
       {children}
     </CDSSContext.Provider>
   );

@@ -1,5 +1,6 @@
 export interface ClinicalPathwayRule {
   id: string;
+  diagnosisId?: string;
   title: string;
   description: string;
   conditions: {
@@ -21,6 +22,25 @@ export interface ClinicalPathwayRule {
 
 export const CLINICAL_PATHWAYS: ClinicalPathwayRule[] = [
   {
+    id: "heart_failure_pathway",
+    diagnosisId: "heart_failure",
+    title: "Heart Failure Management",
+    description: "Guideline-recommended management for Heart Failure.",
+    conditions: {
+      requiredChronicConditions: ["Heart Failure", "CHF", "Congestive Heart Failure"]
+    },
+    actions: {
+      triageLevel: "medium",
+      recommendations: [
+        "Assess for peripheral edema",
+        "Check for JVD (Jugular Venous Distension)",
+        "Auscultate for lung crackles",
+        "BNP level and Chest X-ray"
+      ],
+      alertMessage: "Management: Ensure ACE inhibitors/Beta-blockers are optimized."
+    }
+  },
+  {
     id: "diabetic_ketoacidosis_risk",
     title: "DKA Risk Assessment",
     description: "Nausea and vomiting in a patient with Type 1 Diabetes.",
@@ -39,6 +59,7 @@ export const CLINICAL_PATHWAYS: ClinicalPathwayRule[] = [
       alertMessage: "CRITICAL: High risk for Diabetic Ketoacidosis (DKA)."
     }
   },
+// ... (rest of the pathways)
   {
     id: "anticoagulant_head_injury",
     title: "Anticoagulant Head Injury Protocol",

@@ -26,6 +26,7 @@ export function AppearanceSettings() {
     { id: 'inter', name: 'Inter' },
     { id: 'roboto', name: 'Roboto' },
     { id: 'system', name: t('system') },
+    { id: 'calligraphy', name: 'Lucida Calligraphy' },
   ] as const;
 
   const fontColors = [
@@ -55,7 +56,7 @@ export function AppearanceSettings() {
   function PreviewCard() {
     const styles = {
       fontSize: fontSize === 'small' ? '14px' : fontSize === 'medium' ? '16px' : '18px',
-      fontFamily: fontFamily === 'serif' ? 'Playfair Display' : fontFamily === 'mono' ? 'JetBrains Mono' : 'Inter',
+      fontFamily: fontFamily === 'serif' ? 'Playfair Display' : fontFamily === 'mono' ? 'JetBrains Mono' : fontFamily === 'calligraphy' ? 'Lucida Calligraphy' : 'Inter',
       borderRadius: borderRadius === 'none' ? '0px' : borderRadius === 'rounded' ? '0.5rem' : '1rem',
       padding: density === 'compact' ? '0.5rem' : density === 'comfortable' ? '0.75rem' : '1rem',
     };

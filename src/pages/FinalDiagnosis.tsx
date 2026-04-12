@@ -20,7 +20,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import { useLiveQuery } from "dexie-react-hooks";
+import { getDifferentialDiagnosisPrompt, getSoapNotePrompt, getPatientEducationPrompt } from "@/services/aiConfig";
 import { generateContentWithRetry } from "../utils/gemini";
+import { SOAPNoteModal } from "@/components/SOAPNoteModal";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -85,6 +87,7 @@ export function FinalDiagnosis() {
   const [aiConfidence, setAiConfidence] = useState(0);
   const [isGeneratingNote, setIsGeneratingNote] = useState(false);
   const [soapNote, setSoapNote] = useState<string | null>(null);
+  const [isSoapModalOpen, setIsSoapModalOpen] = useState(false);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const [isPeerReview, setIsPeerReview] = useState(false);
   
@@ -271,38 +274,8 @@ export function FinalDiagnosis() {
     setSuggestions(null);
 
     try {
-      const prompt = `
-        Act as an expert clinical diagnostician. Analyze the following patient data and provide a differential diagnosis.
-        
-        Patient: ${selectedPatient.name}, ${selectedPatient.age} years old, ${selectedPatient.gender}
-        
-        Symptoms: ${clinicalData.symptoms.join(", ")}
-        Physical Exam: ${clinicalData.examFindings.join(", ")}
-        Vitals: BP ${clinicalData.vitals.bp}, HR ${clinicalData.vitals.hr}, Temp ${clinicalData.vitals.temp}°C, RR ${clinicalData.vitals.rr}, SpO2 ${clinicalData.vitals.spo2}% (${clinicalData.vitals.oxygenType === 'oxygen_supply' ? `Oxygen Supply: ${clinicalData.vitals.oxygenDose} ${clinicalData.vitals.oxygenInvasive} - Type: ${clinicalData.vitals.oxygenDeviceType}, Settings: ${clinicalData.vitals.oxygenInvasive === 'invasive' ? `FiO2: ${clinicalData.vitals.fio2}, PEEP: ${clinicalData.vitals.peep}, PS: ${clinicalData.vitals.pressureSupport}` : `Flow: ${clinicalData.vitals.flowRate}`}, Notes: ${clinicalData.vitals.notes}` : 'Room Air'})
-        Labs/Imaging: ${clinicalData.labResults.join(", ")}
-
-        Return a JSON object with the following structure:
-        {
-          "top_diagnosis": {
-            "condition": "Name of condition",
-            "probability": number (0-100),
-            "icd10": "ICD-10 code",
-            "reasoning": "Detailed clinical reasoning...",
-            "recommendations": ["Next step 1", "Next step 2"],
-            "red_flags": ["Critical warning 1"]
-          },
-          "differentials": [
-            {
-              "condition": "Name",
-              "probability": number,
-              "icd10": "Code",
-              "reasoning": "Why this is possible but less likely..."
-            }
-          ],
-          "missing_info": ["Key missing data point 1"]
-        }
-      `;
-
+      const prompt = getDifferentialDiagnosisPrompt(selectedPatient, clinicalData);
+      
       const response = await generateContentWithRetry({
         model: "gemini-3-flash-preview",
         contents: prompt,
@@ -321,7 +294,7 @@ export function FinalDiagnosis() {
       }
     } catch (error) {
       console.error("AI Analysis failed:", error);
-      alert("Failed to generate analysis. Please check your connection and try again.");
+      toast.error("Failed to generate analysis. Please check your connection and try again.");
     } finally {
       setIsAnalyzing(false);
     }
@@ -462,25 +435,13 @@ export function FinalDiagnosis() {
     }
     setIsGeneratingNote(true);
     try {
-      const prompt = `
-        Generate a structured clinical SOAP note for patient ${selectedPatient.name}.
-        Symptoms: ${clinicalData.symptoms.join(", ")}
-        Exam Findings: ${clinicalData.examFindings.join(", ")}
-        Lab Results: ${clinicalData.labResults.join(", ")}
-        Final Diagnosis: ${selectedDiagnosis ? selectedDiagnosis.description : "Not finalized"}
-        Clinical Reasoning: ${reasoning}
-        
-        Format as:
-        S: Subjective (Symptoms)
-        O: Objective (Exam, Vitals, Labs)
-        A: Assessment (Diagnosis, Reasoning)
-        P: Plan (Recommendations)
-      `;
+      const prompt = getSoapNotePrompt(selectedPatient.name, clinicalData, selectedDiagnosis, reasoning);
       const response = await generateContentWithRetry({
         model: "gemini-3-flash-preview",
         contents: prompt,
       });
       setSoapNote(response.text || "No note generated.");
+      setIsSoapModalOpen(true);
       toast.success("SOAP note generated successfully");
     } catch (error) {
       console.error("SOAP note generation failed:", error);
@@ -497,13 +458,7 @@ export function FinalDiagnosis() {
     }
     setIsGeneratingSummary(true);
     try {
-      const prompt = `
-        Generate a plain-language patient education sheet for the condition: ${selectedDiagnosis.description}.
-        Include:
-        1. Simple explanation of the condition.
-        2. Expected recovery timeline.
-        3. Red flags (when to seek emergency care).
-      `;
+      const prompt = getPatientEducationPrompt(selectedDiagnosis.description);
       const response = await generateContentWithRetry({
         model: "gemini-3-flash-preview",
         contents: prompt,
@@ -519,8 +474,8 @@ export function FinalDiagnosis() {
   };
 
   return (
-    <div className="space-y-6 h-full flex flex-col">
-      <div className="flex justify-between items-center">
+    <div className="space-y-6 h-full flex flex-col print-modal">
+      <div className="flex justify-between items-center no-print">
         <div>
           <h2 className="text-2xl font-bold text-slate-900">Final Diagnosis</h2>
           <p className="text-slate-500">Clinical Decision Support & Record Finalization</p>
@@ -552,6 +507,7 @@ export function FinalDiagnosis() {
           <button 
             onClick={() => {
               toast.info("Printing summary...");
+              window.focus();
               window.print();
             }}
             className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors"
@@ -975,33 +931,12 @@ export function FinalDiagnosis() {
       )}
 
       {/* SOAP Note Modal */}
-      {soapNote && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl flex flex-col max-h-[80vh]">
-            <div className="p-4 border-b border-slate-100 flex justify-between items-center">
-              <h3 className="text-lg font-semibold text-slate-900">Generated SOAP Note</h3>
-              <button onClick={() => setSoapNote(null)} className="p-1 text-slate-400 hover:text-slate-600 rounded-md">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-6 overflow-y-auto flex-1 whitespace-pre-wrap text-sm text-slate-700">
-              {soapNote}
-            </div>
-            <div className="p-4 border-t border-slate-100 bg-slate-50 rounded-b-xl flex justify-end gap-3">
-              <button onClick={() => setSoapNote(null)} className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-lg">Close</button>
-              <button 
-                onClick={() => {
-                  navigator.clipboard.writeText(soapNote);
-                  toast.success("Copied to clipboard");
-                }}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700"
-              >
-                Copy to Clipboard
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <SOAPNoteModal 
+        isOpen={isSoapModalOpen}
+        onClose={() => setIsSoapModalOpen(false)}
+        initialContent={soapNote || ""}
+        patientName={selectedPatient?.name}
+      />
 
       {/* Edit Modal */}
       {editingField && (

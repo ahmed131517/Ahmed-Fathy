@@ -34,6 +34,7 @@ const navItems: { name: string; key: TranslationKey; path: string; icon: any }[]
   { name: "Medical Records", key: "medicalRecords", path: "/medical-records", icon: Folder },
   { name: "Knowledge", key: "knowledge", path: "/knowledge", icon: BookOpen },
   { name: "Ask AI", key: "askAI", path: "/ask-ai", icon: Bot },
+  { name: "Staff Communication", key: "staff", path: "/staff-communication", icon: Users },
   { name: "Settings", key: "settings", path: "/settings", icon: Settings },
 ];
 

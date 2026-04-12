@@ -207,7 +207,7 @@ export function LabRequests() {
   const saveSignature = () => {
     if (sigCanvas.current) {
       if (sigCanvas.current.isEmpty()) {
-        alert("Please provide a signature before confirming.");
+        toast.error("Please provide a signature before confirming.");
         return;
       }
       const data = sigCanvas.current.toDataURL('image/png');

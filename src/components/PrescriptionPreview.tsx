@@ -2,6 +2,15 @@ import React from 'react';
 import { useSettings } from '../lib/SettingsContext';
 import QRCode from "react-qr-code";
 
+interface Medication {
+  name: string;
+  concentration?: string;
+  dosage: string;
+  frequency: string;
+  duration: string;
+  instructions: string;
+}
+
 interface PrescriptionData {
   id?: string;
   name: string;
@@ -18,7 +27,7 @@ interface PrescriptionData {
   rbs: string;
   oe: string;
   dx: string;
-  medications: string[];
+  medications: Medication[];
 }
 
 export const PrescriptionPreview: React.FC<{ data: PrescriptionData }> = ({ data }) => {
@@ -51,7 +60,8 @@ export const PrescriptionPreview: React.FC<{ data: PrescriptionData }> = ({ data
     roboto: '"Roboto", ui-sans-serif, system-ui, sans-serif',
     system: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
     serif: '"Playfair Display", ui-serif, Georgia, Cambria, "Times New Roman", Times, serif',
-    mono: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
+    mono: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+    calligraphy: '"Lucida Calligraphy", "Apple Chancery", "URW Chancery L", cursive'
   };
 
   const headerStyle = { fontFamily: fontMap[prescriptionHeaderFont] || fontMap.inter };
@@ -151,9 +161,18 @@ export const PrescriptionPreview: React.FC<{ data: PrescriptionData }> = ({ data
         {/* Right Column: Prescription Area */}
         <div className="w-2/3">
           <div className="text-4xl font-serif text-blue-600 mb-4">℞</div>
-          <div className="min-h-[400px] space-y-2" style={bodyStyle}>
+          <div className="min-h-[400px] space-y-6" style={bodyStyle}>
             {data.medications.map((med, index) => (
-              <p key={index} className="text-lg">{index + 1}. {med}</p>
+              <div key={index} className="medication-entry">
+                <div className="text-lg font-bold text-slate-900">
+                  ℞ / {med.name} {med.concentration ? `(${med.concentration})` : ''} {med.dosage} {med.frequency} for {med.duration}
+                </div>
+                {med.instructions && (
+                  <div className="text-sm text-slate-600 mt-1 italic">
+                    Instructions: {med.instructions}
+                  </div>
+                )}
+              </div>
             ))}
           </div>
           <div className="mt-12 border-t border-slate-400 pt-2 text-right flex flex-col items-end">

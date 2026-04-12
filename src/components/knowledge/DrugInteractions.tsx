@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
-import { Plus, X, Search, AlertTriangle, CheckCircle, Loader2, Database, BrainCircuit } from 'lucide-react';
+import { Plus, X, Search, AlertTriangle, CheckCircle, Loader2, Database, BrainCircuit, ShieldCheck } from 'lucide-react';
 import { cn } from "@/lib/utils";
 import { generateContentWithRetry } from "@/utils/gemini";
 import { Type } from "@google/genai";
 import { medicationService } from "@/services/medicationService";
 import { db } from "@/lib/db";
+import { ddiService, InteractionResult as VerifiedInteraction } from "@/services/ddiService";
+import { toast } from "sonner";
 
 interface InteractionResult {
   meds: string[];
@@ -17,6 +19,7 @@ interface DbInteraction {
   severity: string;
   description: string;
   source: string;
+  drugs?: string[];
 }
 
 export function DrugInteractions() {
@@ -50,7 +53,7 @@ export function DrugInteractions() {
     setDbResults(null);
     setError(null);
 
-    // 1. Local Database Check
+    // 1. Database Check (Local + Verified RxNav)
     const dbPromise = (async () => {
       try {
         await medicationService.seedDrugsIfEmpty();
@@ -59,6 +62,7 @@ export function DrugInteractions() {
         
         const interactions: DbInteraction[] = [];
         
+        // Local DB
         for (let i = 0; i < drugs.length; i++) {
           for (let j = i + 1; j < drugs.length; j++) {
             const d1 = drugs[i];
@@ -74,12 +78,29 @@ export function DrugInteractions() {
             for (const interaction of foundInteractions) {
               interactions.push({
                 severity: interaction.severity,
-                description: `Interaction between ${d1.generic_name} and ${d2.generic_name}: ${interaction.description}`,
-                source: 'Local Medical DB'
+                description: interaction.description,
+                source: 'Local Medical DB',
+                drugs: [d1.generic_name, d2.generic_name]
               });
             }
           }
         }
+
+        // Verified RxNav API
+        try {
+          const verified = await ddiService.getVerifiedInteractions(medications);
+          verified.forEach(v => {
+            interactions.push({
+              severity: v.severity,
+              description: v.description,
+              source: 'RxNav (Verified Database)',
+              drugs: v.drugs
+            });
+          });
+        } catch (vErr) {
+          console.error("RxNav error:", vErr);
+        }
+
         setDbResults(interactions);
       } catch (err) {
         console.error("Local DB error:", err);
@@ -209,7 +230,7 @@ export function DrugInteractions() {
           <button 
             onClick={async () => {
               await medicationService.reseed();
-              alert("Database reset successfully!");
+              toast.success("Database reset successfully!");
             }}
             className="w-full py-2 mt-2 bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold hover:bg-slate-300 transition-all"
           >
@@ -307,9 +328,9 @@ export function DrugInteractions() {
                           onClick={async () => {
                             try {
                               await medicationService.addInteraction(res.meds[0], res.meds[1], res.severity, res.description);
-                              alert("Interaction saved or updated in Medical DB!");
+                              toast.success("Interaction saved or updated in Medical DB!");
                             } catch (error) {
-                              alert(error instanceof Error ? error.message : "Failed to save interaction");
+                              toast.error(error instanceof Error ? error.message : "Failed to save interaction");
                             }
                           }}
                           className="text-[10px] font-bold uppercase px-2 py-1 rounded-lg bg-white/50 hover:bg-white border border-slate-200 text-slate-600 transition-all flex items-center gap-1"
@@ -353,23 +374,36 @@ export function DrugInteractions() {
                   <div className="bg-emerald-50 p-6 rounded-xl border border-emerald-200 text-center">
                     <CheckCircle className="w-12 h-12 text-emerald-500 mx-auto mb-3" />
                     <h5 className="font-bold text-emerald-800">No Interactions Found in Database</h5>
-                    <p className="text-emerald-700 text-sm mt-1">The local medical database did not return any known interactions for these medications.</p>
+                    <p className="text-emerald-700 text-sm mt-1">The medical databases did not return any known interactions for these medications.</p>
                   </div>
                 ) : (
                   dbResults.map((res, i) => (
                     <div key={i} className="p-4 rounded-xl border border-slate-200 bg-white shadow-sm">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="p-1.5 bg-slate-100 rounded-lg text-slate-600">
-                          <Database className="w-4 h-4" />
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <div className={cn(
+                            "p-1.5 rounded-lg",
+                            res.source.includes('RxNav') ? "bg-indigo-100 text-indigo-600" : "bg-slate-100 text-slate-600"
+                          )}>
+                            {res.source.includes('RxNav') ? <ShieldCheck className="w-4 h-4" /> : <Database className="w-4 h-4" />}
+                          </div>
+                          <span className="text-[10px] font-bold uppercase text-slate-500">{res.source}</span>
                         </div>
-                        <span className="text-[10px] font-bold uppercase text-slate-400">Source: {res.source}</span>
+                        <span className={cn(
+                          "text-[10px] font-bold uppercase px-2 py-0.5 rounded-full",
+                          res.severity === 'Major' ? "bg-red-100 text-red-700" :
+                          res.severity === 'Moderate' ? "bg-amber-100 text-amber-700" :
+                          "bg-blue-100 text-blue-700"
+                        )}>
+                          {res.severity}
+                        </span>
                       </div>
-                      <p className="text-sm text-slate-700 leading-relaxed">{res.description}</p>
-                      {res.severity !== 'N/A' && (
-                        <div className="mt-2 text-[10px] font-bold uppercase px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full w-fit">
-                          Severity: {res.severity}
-                        </div>
+                      {res.drugs && (
+                        <p className="text-xs font-bold text-slate-400 uppercase mb-2">
+                          {res.drugs.join(' + ')}
+                        </p>
                       )}
+                      <p className="text-sm text-slate-700 leading-relaxed">{res.description}</p>
                     </div>
                   ))
                 )}
