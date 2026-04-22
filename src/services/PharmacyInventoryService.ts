@@ -72,13 +72,14 @@ export class PharmacyInventoryService {
     }
   }
 
-  static async addBatch(batch: Omit<PharmacyBatch, 'id' | 'lastModified' | 'isDeleted' | 'localId'>) {
+  static async addBatch(batch: Omit<PharmacyBatch, 'id' | 'lastModified' | 'isDeleted' | 'localId' | 'isSynced'>) {
     const id = crypto.randomUUID();
     await db.pharmacy_batches.add({
       ...batch,
       id,
       lastModified: Date.now(),
-      isDeleted: 0
+      isDeleted: 0,
+      isSynced: 0
     });
 
     // Update total stock in inventory
@@ -86,7 +87,8 @@ export class PharmacyInventoryService {
     if (item) {
       await db.pharmacy_inventory.update(item.id!, {
         stock: item.stock + batch.quantity,
-        lastModified: Date.now()
+        lastModified: Date.now(),
+        isSynced: 0
       });
     }
     

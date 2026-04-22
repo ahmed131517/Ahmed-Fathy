@@ -63,7 +63,13 @@ export function NewPatient() {
   const [formData, setFormData] = useState(() => {
     const saved = localStorage.getItem('newPatientDraft');
     const initialData = getInitialData();
-    return saved ? { ...initialData, ...JSON.parse(saved) } : initialData;
+    if (!saved) return initialData;
+    try {
+      return { ...initialData, ...JSON.parse(saved) };
+    } catch (e) {
+      console.warn("Failed to parse patient draft:", e);
+      return initialData;
+    }
   });
 
   const [isCapturing, setIsCapturing] = useState<{ active: boolean, target: 'photo' | 'insuranceFront' | 'insuranceBack' | null }>({ active: false, target: null });
@@ -1306,22 +1312,22 @@ export function NewPatient() {
                         emergencyPhone: formData.emergencyPhone,
                         emergencyRelationship: formData.emergencyRelation,
                         hasAllergies: formData.hasAllergies || undefined,
-                        allergies: JSON.stringify(formData.allergies),
+                        allergies: formData.allergies,
                         hasConditions: formData.hasConditions || undefined,
-                        conditions: JSON.stringify(formData.conditions),
+                        conditions: formData.conditions,
                         otherConditions: formData.otherConditions,
                         hasMedications: formData.hasMedications || undefined,
-                        medications: JSON.stringify(formData.medications),
+                        medications: formData.medications,
                         hasSurgeries: formData.surgeries ? 'yes' : 'no',
                         surgeries: formData.surgeries,
-                        familyHistory: JSON.stringify(formData.familyHistory),
+                        familyHistory: formData.familyHistory,
                         familyHistoryNotes: formData.familyHistoryText,
                         photo: formData.photo || undefined,
                         signature: formData.signature || undefined,
                         consentTreatment: formData.consentTreatment,
                         consentPrivacy: formData.consentPrivacy,
                         consentFinancial: formData.consentFinancial,
-                        communication: JSON.stringify(formData.communication),
+                        communication: formData.communication,
                         lastVisit: new Date().toISOString().split('T')[0],
                         status: 'Stable',
                         lastModified: now,

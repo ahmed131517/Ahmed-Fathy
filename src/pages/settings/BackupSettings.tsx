@@ -90,6 +90,16 @@ export function BackupSettings() {
           </button>
         </div>
 
+        <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800 rounded-xl p-4 mb-8">
+          <div className="flex items-center gap-2 mb-2">
+            <FileText className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            <h3 className="text-sm font-bold text-emerald-900 dark:text-emerald-100">Weekly Security Ritual</h3>
+          </div>
+          <p className="text-xs text-emerald-700 dark:text-emerald-300">
+            For critical clinical data, browser-based storage is not enough. We recommend that a designated staff member <strong>manually exports a database backup to a secure external drive every Friday</strong>. This ensures that even in the event of hardware failure or browser cache clearing, your patient records remain safe.
+          </p>
+        </div>
+
         <div className="space-y-4">
           <div className="flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
             <History className="w-4 h-4" />

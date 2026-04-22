@@ -57,7 +57,7 @@ export function usePrescriptionData(selectedPatientId: string | undefined, confi
     fetchLatestVitals();
     
     const fetchLatestDiagnosis = async () => {
-      if (!selectedPatientId || confirmedDiagnosis) return;
+      if (!selectedPatientId || confirmedDiagnosis !== undefined && confirmedDiagnosis !== null && confirmedDiagnosis !== "") return;
       
       try {
         const latestDiagnosis = await db.diagnoses
@@ -67,7 +67,10 @@ export function usePrescriptionData(selectedPatientId: string | undefined, confi
           .first();
           
         if (latestDiagnosis) {
-          setConfirmedDiagnosis(latestDiagnosis.description || latestDiagnosis.condition);
+          const diagText = latestDiagnosis.description || latestDiagnosis.condition;
+          if (diagText && diagText !== confirmedDiagnosis) {
+            setConfirmedDiagnosis(diagText);
+          }
         }
       } catch (error) {
         console.error("Failed to fetch latest diagnosis:", error);
@@ -254,14 +257,25 @@ export function usePrescriptionAI(selectedPatient: any, confirmedDiagnosis: stri
     setIsAiLoading(true);
     try {
       const history = await PatientHistoryService.getPatientHistory(selectedPatient.id);
-      let allergies = [];
-      try {
-        allergies = selectedPatient.allergies && selectedPatient.allergies !== "[object Object]" ? JSON.parse(selectedPatient.allergies) : [];
-      } catch (e) {
-        allergies = [];
-      }
       
-      const allergiesStr = allergies.length > 0 ? allergies.map((a: any) => `${a.name} (${a.reaction})`).join(", ") : "None reported";
+      const safeParseDetailed = (data: any) => {
+        if (!data) return [];
+        if (typeof data !== 'string') return Array.isArray(data) ? data : [];
+        if (data === "[object Object]") return [];
+        try {
+          const parsed = JSON.parse(data);
+          return Array.isArray(parsed) ? parsed : [parsed];
+        } catch (e) {
+          // If it's a plain string like "mastectomy", return it as one item
+          if (typeof data === 'string' && data.trim()) return [{ name: data.trim(), reaction: 'unknown' }];
+          return [];
+        }
+      };
+
+      const allergies = safeParseDetailed(selectedPatient.allergies);
+      const allergiesStr = allergies.length > 0 
+        ? allergies.map((a: any) => typeof a === 'string' ? a : `${a.name || 'Unknown'} (${a.reaction || 'unknown'})`).join(", ") 
+        : "None reported";
       
       const prompt = getGeneratePrescriptionPrompt({
         name: selectedPatient?.name || "Unknown",
@@ -293,10 +307,18 @@ export function usePrescriptionAI(selectedPatient: any, confirmedDiagnosis: stri
     setIsAiLoading(true);
     try {
       const allergiesStr = (() => {
+        const data = selectedPatient?.allergies;
+        if (!data) return "None reported";
+        if (typeof data !== 'string' && Array.isArray(data)) {
+          return data.map((a: any) => typeof a === 'string' ? a : `${a.name || 'Unknown'} (${a.reaction || 'unknown'})`).join(", ");
+        }
+        if (data === "[object Object]") return "None reported";
         try {
-          const parsed = selectedPatient?.allergies && selectedPatient.allergies !== "[object Object]" ? JSON.parse(selectedPatient.allergies) : [];
-          return Array.isArray(parsed) && parsed.length > 0 ? parsed.map((a: any) => `${a.name} (${a.reaction})`).join(", ") : "None reported";
+          const parsed = JSON.parse(data);
+          const list = Array.isArray(parsed) ? parsed : [parsed];
+          return list.map((a: any) => typeof a === 'string' ? a : `${a.name || 'Unknown'} (${a.reaction || 'unknown'})`).join(", ");
         } catch (e) {
+          if (typeof data === 'string' && data.trim()) return data.trim();
           return "None reported";
         }
       })();

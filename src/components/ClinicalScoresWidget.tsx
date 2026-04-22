@@ -7,12 +7,14 @@ import { ClipboardList, ChevronDown, ChevronUp, AlertCircle, CheckCircle2, Info 
 interface ClinicalScoresWidgetProps {
   symptoms: Symptom[];
   patientHistory: any;
+  vitals?: any;
 }
 
-export const ClinicalScoresWidget: React.FC<ClinicalScoresWidgetProps> = ({ symptoms, patientHistory }) => {
+export const ClinicalScoresWidget: React.FC<ClinicalScoresWidgetProps> = ({ symptoms, patientHistory, vitals }) => {
   const [expandedScore, setExpandedScore] = React.useState<string | null>(null);
 
   const scores: ScoringResult[] = [];
+  const currentVitals = vitals || { temp: 37, hr: 80, rr: 16, sbp: 120, dbp: 80 };
 
   // Dynamically calculate all scores
   Object.keys(clinicalScoringService).forEach(key => {
@@ -20,9 +22,16 @@ export const ClinicalScoresWidget: React.FC<ClinicalScoresWidgetProps> = ({ symp
       const fn = (clinicalScoringService as any)[key];
       try {
         // Pass all possible arguments: symptoms, patientHistory, vitals
-        const result = fn(symptoms, patientHistory, { temp: 37, hr: 80, rr: 16, sbp: 120, dbp: 80 });
+        const result = fn(symptoms, patientHistory, currentVitals);
         if (result) {
-          scores.push(result);
+          // Filter: only show if risk is Moderate/High OR if score is significant
+          // (For most scales significant means > 0, for GCS it means < 15)
+          const isSignificant = result.riskLevel !== 'Low' || 
+            (result.name.includes('GCS') || result.name.includes('Glasgow') ? result.score < 15 : result.score > 0);
+          
+          if (isSignificant) {
+            scores.push(result);
+          }
         }
       } catch (e) {
         // Ignore errors for scores that expect different arguments

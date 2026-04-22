@@ -5,6 +5,7 @@ import { Layout } from "./components/layout/Layout";
 import { Dashboard } from "./pages/Dashboard";
 import { Appointments } from "./pages/Appointments";
 import { NewPatient } from "./pages/NewPatient";
+import { ActiveEncounter } from "./pages/ActiveEncounter";
 import { SymptomAnalysis } from "./pages/SymptomAnalysis";
 import { PhysicalExam } from "./pages/PhysicalExam";
 import { LabRequests } from "./pages/LabRequests";
@@ -36,6 +37,9 @@ import { AdminSettings } from "./pages/AdminSettings";
 import { UserManagement } from "./pages/UserManagement";
 import { Notifications } from "./pages/Notifications";
 import { StaffCommunication } from "./pages/StaffCommunication";
+import { EncounterNote } from "./pages/EncounterNote";
+import { ClinicalOverview } from "./pages/ClinicalOverview";
+import { SOAPNotePage } from "./pages/SOAPNotePage";
 import { PatientProvider } from "./lib/PatientContext";
 import { SymptomProvider } from "./lib/SymptomContext";
 import { UserProvider } from "./lib/UserContext";
@@ -57,8 +61,31 @@ import { useEffect, useState } from "react";
 import { startSyncEngine, syncAll } from "./lib/sync";
 import { checkAndPerformAutoBackup } from "./services/backupService";
 import { checkAndSendAppointmentReminders } from "./services/notificationService";
+import { startCleanupEngine } from "./services/cleanupService";
 import { useSettings } from "./lib/SettingsContext";
 import { Cloud, CloudOff, RefreshCw } from "lucide-react";
+
+function StorageGuard() {
+  useEffect(() => {
+    async function enforcePersistence() {
+      if (navigator.storage && navigator.storage.persist) {
+        const isPersisted = await navigator.storage.persisted();
+        if (!isPersisted) {
+          const granted = await navigator.storage.persist();
+          if (granted) {
+            console.log("Storage persistence granted.");
+          } else {
+            console.warn("Storage persistence denied. Browser may evict data under storage pressure.");
+          }
+        } else {
+          console.log("Storage already persisted.");
+        }
+      }
+    }
+    enforcePersistence();
+  }, []);
+  return null;
+}
 
 function BackupInitializer() {
   const { autoBackup, appointmentReminders } = useSettings();
@@ -104,12 +131,17 @@ function SyncStatus() {
 export default function App() {
   useEffect(() => {
     const stopSync = startSyncEngine();
-    return () => stopSync();
+    const stopCleanup = startCleanupEngine();
+    return () => {
+      stopSync();
+      stopCleanup();
+    };
   }, []);
 
   return (
     <ThemeProvider defaultTheme="light" storageKey="app-theme">
       <SettingsProvider>
+        <StorageGuard />
         <BackupInitializer />
         <UserProvider>
           <NotificationProvider>
@@ -126,6 +158,7 @@ export default function App() {
                           <Route path="appointments" element={<Appointments />} />
                           <Route path="new-patient" element={<NewPatient />} />
                           <Route path="symptom-analysis" element={<SymptomAnalysis />} />
+                          <Route path="active-encounter" element={<ActiveEncounter />} />
                           <Route path="physical-exam" element={<PhysicalExam />} />
                           <Route path="lab-requests" element={<LabRequests />} />
                           <Route path="final-diagnosis" element={<FinalDiagnosis />} />
@@ -140,6 +173,9 @@ export default function App() {
                           <Route path="notifications" element={<Notifications />} />
                           <Route path="tasks" element={<Tasks />} />
                           <Route path="staff-communication" element={<StaffCommunication />} />
+                          <Route path="encounter-note" element={<EncounterNote />} />
+                          <Route path="clinical-overview" element={<ClinicalOverview />} />
+                          <Route path="soap-editor" element={<SOAPNotePage />} />
                           <Route path="*" element={<div className="p-6 text-slate-500">Page under construction</div>} />
                         </Route>
 

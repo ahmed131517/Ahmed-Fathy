@@ -2,11 +2,13 @@ import { SpeakButton } from "@/components/SpeakButton";
 import { useSymptom } from "@/lib/SymptomContext";
 import { useState, MouseEvent, useRef, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { User, Headphones, Eye, MessageCircle, Shield, Wind, Heart, Target, Droplets, Layers, X, Activity, HelpCircle, AlertTriangle, CheckCircle2, RefreshCw, ClipboardList, Sparkles, Edit2, ChevronDown, ChevronUp, Loader2, Bone, Brain, TrendingUp, BookOpen, ExternalLink, Info, FileText, FlaskConical, Stethoscope, ArrowRightLeft, Zap } from "lucide-react";
+import { useLiveQuery } from "dexie-react-hooks";
+import { db } from "@/lib/db";
+import { User, Headphones, Eye, MessageCircle, Shield, Wind, Heart, Target, Droplets, Layers, X, Activity, HelpCircle, AlertTriangle, CheckCircle2, RefreshCw, ClipboardList, Sparkles, Edit2, ChevronDown, ChevronUp, Loader2, Bone, Brain, TrendingUp, BookOpen, ExternalLink, Info, FileText, FlaskConical, Stethoscope, ArrowRightLeft, Zap, Search, Mars, Venus, Thermometer, Droplet, Smile, ShieldAlert, Baby, Hourglass } from "lucide-react";
 import { ALL_MODELS, SymptomModel } from "@/data/symptomModels";
 import { cn } from "@/lib/utils";
 import { GoogleGenAI, Modality, Type } from "@google/genai";
-import { generateContentWithRetry } from "../utils/gemini";
+import { generateContentWithRetry, parseJsonResponse } from "../utils/gemini";
 import { SOAPNoteModal } from "@/components/SOAPNoteModal";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
@@ -17,20 +19,27 @@ import { ClinicalGuardrails } from "@/components/ClinicalGuardrails";
 import { usePatient } from "@/lib/PatientContext";
 import { WhatsNextModal } from "@/components/WhatsNextModal";
 
-const categories = [
+const ALL_CATEGORIES = [
   { id: 'general', name: 'General / Systemic', icon: Activity },
+  { id: 'pediatric', name: 'Pediatric / Development', icon: Baby, maxAge: 17 },
   { id: 'head', name: 'Head, Face, Neck', icon: User },
   { id: 'ear', name: 'Ear, Hearing', icon: Headphones },
   { id: 'eye', name: 'Eye, Vision', icon: Eye },
-  { id: 'throat', name: 'Nose/Throat, Mouth', icon: MessageCircle },
-  { id: 'back', name: 'Trunk, Back, Pelvis', icon: Shield },
+  { id: 'throat', name: 'Nose / Throat, Mouth', icon: MessageCircle },
   { id: 'lungs', name: 'Lungs, Breathing', icon: Wind },
   { id: 'heart', name: 'Heart, Chest, Circulation', icon: Heart },
   { id: 'digestive', name: 'Intestinal, Digestive', icon: Target },
   { id: 'kidney', name: 'Kidney, Urine', icon: Droplets },
+  { id: 'male', name: 'Male Reproductive', icon: Mars, gender: 'male', minAge: 12 },
+  { id: 'female', name: 'Female Reproductive', icon: Venus, gender: 'female', minAge: 10 },
   { id: 'skin', name: 'Skin, Hair, Nails', icon: Layers },
   { id: 'musculoskeletal', name: 'Musculoskeletal', icon: Bone },
   { id: 'neurological', name: 'Neurological', icon: Brain },
+  { id: 'geriatric', name: 'Aging / Geriatrics', icon: Hourglass, minAge: 65 },
+  { id: 'endocrine', name: 'Endocrine', icon: Thermometer },
+  { id: 'hematologic', name: 'Hematologic / Lymphatic', icon: Droplet },
+  { id: 'psychiatric', name: 'Psychiatric', icon: Smile, minAge: 5 },
+  { id: 'immunologic', name: 'Bridge System (Allergic / Immunologic)', icon: ArrowRightLeft },
 ];
 
 type SymptomStatus = 'incomplete' | 'analyzed' | 'red_flag';
@@ -50,13 +59,79 @@ export function SymptomAnalysis() {
   const navigate = useNavigate();
   const { symptoms: contextSymptoms, setSymptoms: setContextSymptoms } = useSymptom();
   const { selectedPatient } = usePatient();
+  const latestVitals = useLiveQuery(
+    () => selectedPatient ? db.vitals.where('patientId').equals(selectedPatient.id).reverse().first() : null,
+    [selectedPatient?.id]
+  );
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedSymptoms, setSelectedSymptoms] = useState<SelectedSymptom[]>([]);
+  const [symptomSearchQuery, setSymptomSearchQuery] = useState("");
+
+  const patientData = useMemo(() => {
+    if (selectedPatient) {
+      return {
+        age: selectedPatient.age,
+        gender: selectedPatient.gender?.toLowerCase() || 'female',
+        conditions: selectedPatient.chronicConditions || [],
+        medications: selectedPatient.medications?.map(m => m.name) || [],
+        allergies: selectedPatient.allergies?.map(a => a.name) || []
+      };
+    }
+    return {
+      age: 32,
+      gender: 'female',
+      conditions: ['Asthma', 'Hypertension'],
+      medications: ['Albuterol', 'Lisinopril'],
+      allergies: ['Penicillin']
+    };
+  }, [selectedPatient]);
+
+  const categories = useMemo(() => {
+    return ALL_CATEGORIES.filter(cat => {
+      // Gender filtering
+      if (cat.gender && cat.gender !== patientData.gender) return false;
+      
+      // Age filtering
+      // @ts-ignore - custom properties
+      if (cat.minAge !== undefined && patientData.age < cat.minAge) return false;
+      // @ts-ignore - custom properties
+      if (cat.maxAge !== undefined && patientData.age > cat.maxAge) return false;
+      
+      return true;
+    });
+  }, [patientData.gender, patientData.age]);
+
+  const allSymptomsFlattened = useMemo(() => {
+    return Object.entries(ALL_MODELS).flatMap(([categoryId, symptoms]) => 
+      symptoms.map(s => ({ ...s, categoryId }))
+    );
+  }, []);
+
+  const searchResults = useMemo(() => {
+    if (!symptomSearchQuery.trim()) return [];
+    const query = symptomSearchQuery.toLowerCase();
+    const visibleCategoryIds = categories.map(c => c.id);
+    
+    return allSymptomsFlattened.filter(s => 
+      visibleCategoryIds.includes(s.categoryId) && (
+        s.label.toLowerCase().includes(query) || 
+        s.categoryId.toLowerCase().includes(query)
+      )
+    );
+  }, [symptomSearchQuery, allSymptomsFlattened, categories]);
+
+  const categoriesWithSelection = useMemo(() => {
+    const counts: Record<string, number> = {};
+    selectedSymptoms.forEach(s => {
+      counts[s.category] = (counts[s.category] || 0) + 1;
+    });
+    return counts;
+  }, [selectedSymptoms]);
 
   // Sync with context on mount
   useEffect(() => {
-    if (contextSymptoms.length > 0 && selectedSymptoms.length === 0) {
-      setSelectedSymptoms(contextSymptoms.map(cs => ({
+    if ((contextSymptoms || []).length > 0 && (selectedSymptoms || []).length === 0) {
+      setSelectedSymptoms((contextSymptoms || []).map(cs => ({
         id: cs.id,
         label: cs.label,
         category: cs.category,
@@ -66,20 +141,23 @@ export function SymptomAnalysis() {
         followUpQuestions: cs.followUpQuestions
       })));
     }
-  }, [contextSymptoms]);
+  }, []); // Only on mount
 
   // Sync back to context whenever selectedSymptoms changes
   useEffect(() => {
-    setContextSymptoms(selectedSymptoms.map(s => ({
-      id: s.id,
-      label: s.label,
-      category: s.category,
-      status: s.status,
-      analysisData: s.analysisData,
-      severityTimeline: s.severityTimeline,
-      followUpQuestions: s.followUpQuestions
-    })));
-  }, [selectedSymptoms, setContextSymptoms]);
+    // Only update context if there's a real change to avoid loops
+    if (JSON.stringify(contextSymptoms || []) !== JSON.stringify(selectedSymptoms || [])) {
+      setContextSymptoms((selectedSymptoms || []).map(s => ({
+        id: s.id,
+        label: s.label,
+        category: s.category,
+        status: s.status,
+        analysisData: s.analysisData,
+        severityTimeline: s.severityTimeline,
+        followUpQuestions: s.followUpQuestions
+      })));
+    }
+  }, [selectedSymptoms, setContextSymptoms, contextSymptoms]);
   const [analyzingSymptom, setAnalyzingSymptom] = useState<SelectedSymptom | null>(null);
   const [showCauses, setShowCauses] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -97,25 +175,6 @@ export function SymptomAnalysis() {
   const [conversation, setConversation] = useState<{role: 'user' | 'ai', content: string}[]>([]);
   const [newMessage, setNewMessage] = useState('');
   
-  const patientData = useMemo(() => {
-    if (selectedPatient) {
-      return {
-        age: selectedPatient.age,
-        gender: selectedPatient.gender.toLowerCase(),
-        conditions: selectedPatient.chronicConditions || [],
-        medications: selectedPatient.medications || [],
-        allergies: selectedPatient.allergies ? [selectedPatient.allergies] : []
-      };
-    }
-    return {
-      age: 32,
-      gender: 'female',
-      conditions: ['Asthma', 'Hypertension'],
-      medications: ['Albuterol', 'Lisinopril'],
-      allergies: ['Penicillin']
-    };
-  }, [selectedPatient]);
-
   const activePathways = useMemo(() => {
     if (selectedSymptoms.length === 0) return [];
     
@@ -270,7 +329,15 @@ export function SymptomAnalysis() {
           responseSchema: {
             type: Type.OBJECT,
             properties: {
-              analysisData: { type: Type.OBJECT },
+              analysisData: { 
+                type: Type.OBJECT,
+                description: "Dynamic findings keyed by dimension name",
+                properties: {
+                  // Using a dummy property to avoid empty object issues, 
+                  // but the model will still populate it with actual findings.
+                  findings: { type: Type.ARRAY, items: { type: Type.STRING } }
+                }
+              },
               redFlags: { type: Type.ARRAY, items: { type: Type.STRING } },
               reviewNotes: { type: Type.STRING }
             }
@@ -278,7 +345,7 @@ export function SymptomAnalysis() {
         }
       });
 
-      const result = JSON.parse(response.text || "{}");
+      const result = parseJsonResponse(response.text, {} as any);
       const hasRedFlag = result.redFlags && result.redFlags.length > 0;
       
       setSelectedSymptoms(prev => prev.map(s => 
@@ -351,7 +418,7 @@ export function SymptomAnalysis() {
         },
       });
       
-      const diagnoses = JSON.parse(response.text || '[]');
+      const diagnoses = parseJsonResponse(response.text, []);
       // Add IDs to diagnoses
       const diagnosesWithIds = diagnoses.map((d: any, index: number) => ({ ...d, id: `diag_${index}` }));
       setGeneratedDiagnoses(diagnosesWithIds);
@@ -368,14 +435,21 @@ export function SymptomAnalysis() {
     try {
       const prompt = `Generate a professional clinical SOAP note for a patient with the following symptoms: ${selectedSymptoms.map(s => s.label).join(', ')}. 
       Patient History: ${patientData.conditions.join(', ')}. 
-      Format as Subjective, Objective, Assessment, Plan.`;
+      
+      Format as:
+      Subjective: (Symptoms and History)
+      Objective: (Vital Signs, Physical Exam, Labs)
+      Assessment: (Diagnosis and Clinical Reasoning)
+      Plan: (Treatment, Medications, Recommendations)`;
       
       const response = await generateContentWithRetry({
         model: "gemini-3-flash-preview",
         contents: [{ parts: [{ text: prompt }] }]
       });
-      setSoapNote(response.text || "Failed to generate note.");
-      setIsSoapModalOpen(true);
+      const generatedNote = response.text || "Failed to generate note.";
+      sessionStorage.setItem('draft_soap_note', generatedNote);
+      toast.success("SOAP note generated successfully");
+      navigate('/soap-editor');
     } catch (err) {
       console.error("SOAP generation failed:", err);
       toast.error("Failed to generate SOAP note");
@@ -466,40 +540,148 @@ export function SymptomAnalysis() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1">
         <div className="lg:col-span-2 flex flex-col gap-6">
           <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col">
-            <h3 className="text-lg font-semibold text-slate-800 mb-4">Select Symptom Category</h3>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 overflow-y-auto pr-2">
-            {categories.map(cat => (
-              <div 
-                key={cat.id} 
-                onClick={() => handleCategoryClick(cat.id)}
-                className={cn(
-                  "flex flex-col items-center justify-center p-4 border rounded-xl cursor-pointer transition-all text-center group",
-                  selectedCategory === cat.id ? "border-indigo-500 bg-indigo-50" : "border-slate-200 hover:border-indigo-500 hover:bg-indigo-50"
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+              <h3 className="text-lg font-semibold text-slate-800">Select Symptom Category</h3>
+              <div className="relative flex-1 max-w-md">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input 
+                  type="text"
+                  value={symptomSearchQuery}
+                  onChange={(e) => setSymptomSearchQuery(e.target.value)}
+                  placeholder="Search symptoms (e.g., headache, pain, rash)..."
+                  className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                />
+                {symptomSearchQuery && (
+                  <button 
+                    onClick={() => setSymptomSearchQuery("")}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 hover:bg-slate-100 rounded-full text-slate-400"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
                 )}
-              >
-                <div className={cn(
-                  "w-12 h-12 rounded-full flex items-center justify-center mb-3 transition-colors",
-                  selectedCategory === cat.id ? "bg-indigo-100" : "bg-slate-100 group-hover:bg-indigo-100"
-                )}>
-                  <cat.icon className={cn(
-                    "w-6 h-6 transition-colors",
-                    selectedCategory === cat.id ? "text-indigo-600" : "text-slate-600 group-hover:text-indigo-600"
-                  )} />
-                </div>
-                <span className={cn(
-                  "text-sm font-medium transition-colors",
-                  selectedCategory === cat.id ? "text-indigo-700" : "text-slate-700 group-hover:text-indigo-700"
-                )}>{cat.name}</span>
               </div>
-            ))}
+            </div>
+
+            {symptomSearchQuery.trim() ? (
+              <div className="flex-1 overflow-y-auto max-h-[400px]">
+                <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
+                  Search Results ({searchResults.length})
+                </div>
+                {searchResults.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-2">
+                    {searchResults.map(symptom => {
+                      const isSelected = selectedSymptoms.some(s => s.id === symptom.id);
+                      const catName = categories.find(c => c.id === symptom.categoryId)?.name || symptom.categoryId;
+                      return (
+                        <div 
+                          key={symptom.id}
+                          onClick={() => toggleSymptom(symptom as any, symptom.categoryId)}
+                          className={cn(
+                            "p-3 border rounded-lg cursor-pointer transition-all flex flex-col gap-1 group",
+                            isSelected 
+                              ? "border-indigo-500 bg-indigo-50" 
+                              : "border-slate-200 hover:border-indigo-300 hover:bg-slate-50"
+                          )}
+                        >
+                          <div className="flex justify-between items-center">
+                            <span className={cn(
+                              "font-medium text-sm",
+                              isSelected ? "text-indigo-700" : "text-slate-700"
+                            )}>
+                              {symptom.label}
+                            </span>
+                            {isSelected && <CheckCircle2 className="w-4 h-4 text-indigo-600" />}
+                          </div>
+                          <span className="text-[10px] text-slate-500 group-hover:text-indigo-500 transition-colors">
+                            Category: {catName}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="py-12 text-center">
+                    <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                      <Search className="w-6 h-6 text-slate-400" />
+                    </div>
+                    <p className="text-slate-500 text-sm">No symptoms found matching "{symptomSearchQuery}"</p>
+                    <button 
+                      onClick={() => setSymptomSearchQuery("")}
+                      className="mt-2 text-sm text-indigo-600 font-medium hover:underline"
+                    >
+                      Browse all categories
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 overflow-y-auto pr-2">
+                {categories.map(cat => {
+                  const hasSelection = categoriesWithSelection[cat.id] > 0;
+                  return (
+                    <div 
+                      key={cat.id} 
+                      onClick={() => handleCategoryClick(cat.id)}
+                      className={cn(
+                        "flex flex-col items-center justify-center p-4 border rounded-xl cursor-pointer transition-all text-center group relative",
+                        selectedCategory === cat.id ? "border-indigo-500 bg-indigo-50" : "border-slate-200 hover:border-indigo-500 hover:bg-indigo-50"
+                      )}
+                    >
+                      {hasSelection && (
+                        <div className="absolute top-2 right-2 flex items-center gap-1 px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-[9px] font-bold shadow-sm ring-1 ring-emerald-200">
+                          <CheckCircle2 className="w-2.5 h-2.5" />
+                          SELECTED
+                        </div>
+                      )}
+                      <div className={cn(
+                        "w-12 h-12 rounded-full flex items-center justify-center mb-3 transition-colors",
+                        selectedCategory === cat.id ? "bg-indigo-100" : "bg-slate-100 group-hover:bg-indigo-100"
+                      )}>
+                        <cat.icon className={cn(
+                          "w-6 h-6 transition-colors",
+                          selectedCategory === cat.id ? "text-indigo-600" : "text-slate-600 group-hover:text-indigo-600"
+                        )} />
+                      </div>
+                      <span className={cn(
+                        "text-sm font-medium transition-colors",
+                        selectedCategory === cat.id ? "text-indigo-700" : "text-slate-700 group-hover:text-indigo-700"
+                      )}>{cat.name}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
-        </div>
-        <ClinicalGuardrails activePathways={activePathways} />
+        <ClinicalGuardrails activePathways={activePathways} state={{
+          selectedSymptoms,
+          patient: patientData,
+          vitals: {
+            heartRate: latestVitals?.hr || 72,
+            bpSys: latestVitals?.bp_systolic || 120,
+            bpDia: latestVitals?.bp_diastolic || 80,
+            temp: latestVitals?.temp || 36.8,
+            oxygenSat: latestVitals?.spo2 || 98,
+            respRate: latestVitals?.rr || 16,
+            oxygenType: latestVitals?.oxygenType || 'room_air'
+          }
+        }} />
         <DifferentialDiagnosisGrid symptoms={selectedSymptoms} />
       </div>
 
       <div className="space-y-6">
-        <ClinicalScoresWidget symptoms={selectedSymptoms} patientHistory={patientData} />
+        <ClinicalScoresWidget 
+          symptoms={selectedSymptoms} 
+          patientHistory={patientData} 
+          vitals={{
+            heartRate: latestVitals?.hr || 72,
+            bpSys: latestVitals?.bp_systolic || 120,
+            bpDia: latestVitals?.bp_diastolic || 80,
+            temp: latestVitals?.temp || 36.8,
+            oxygenSat: latestVitals?.spo2 || 98,
+            respRate: latestVitals?.rr || 16,
+            oxygenType: latestVitals?.oxygenType || 'room_air'
+          }}
+        />
 
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col">
             <div className="flex justify-between items-center mb-4">
@@ -596,24 +778,24 @@ export function SymptomAnalysis() {
                           <p className="text-slate-500 italic text-xs">No analysis data yet. Click the AI Analyze or Edit button.</p>
                         ) : (
                           <div className="space-y-2">
-                            {Object.entries(symptom.analysisData as Record<string, string[]>).map(([key, values]) => {
-                              if (key === 'redFlags' && values.length > 0) {
+                            {Object.entries((symptom.analysisData || {}) as Record<string, string[]>).map(([key, values]) => {
+                              if (key === 'redFlags' && (values || []).length > 0) {
                                 return (
                                   <div key={key} className="flex flex-col gap-1 mt-3">
                                     <span className="text-xs font-semibold text-red-700 uppercase flex items-center gap-1">
                                       <AlertTriangle className="w-3 h-3" /> Red Flags Identified
                                     </span>
                                     <ul className="list-disc list-inside pl-1 text-red-600 text-xs space-y-0.5">
-                                      {values.map(v => <li key={v}>{v}</li>)}
+                                      {(values || []).map(v => <li key={v}>{v}</li>)}
                                     </ul>
                                   </div>
                                 );
                               }
-                              if (values.length > 0 && key !== 'redFlags') {
+                              if ((values || []).length > 0 && key !== 'redFlags') {
                                 return (
                                   <div key={key} className="flex items-start gap-2">
                                     <span className="text-slate-500 capitalize text-xs font-medium w-20 flex-shrink-0">{key.replace(/_/g, ' ')}:</span>
-                                    <span className="text-slate-700 text-xs">{values.join(', ')}</span>
+                                    <span className="text-slate-700 text-xs">{(values || []).join(', ')}</span>
                                   </div>
                                 );
                               }
@@ -631,11 +813,11 @@ export function SymptomAnalysis() {
                                   <TrendingUp className="w-3 h-3" /> Severity Progression
                                 </span>
                                 <div className="flex items-end gap-1 h-12">
-                                  {symptom.severityTimeline.map((point, i) => (
+                                  {(symptom.severityTimeline || []).map((point, i) => (
                                     <div 
                                       key={i} 
                                       className="flex-1 bg-indigo-100 rounded-t-sm relative group"
-                                      style={{ height: `${point.value * 10}%` }}
+                                      style={{ height: `${(point.value || 0) * 10}%` }}
                                     >
                                       <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block bg-slate-800 text-white text-[8px] px-1 rounded whitespace-nowrap">
                                         {point.date}: {point.value}/10
@@ -887,19 +1069,26 @@ export function SymptomAnalysis() {
         </div>
       )}
 
-      {/* SOAP Note Modal */}
-      <SOAPNoteModal 
-        isOpen={isSoapModalOpen}
-        onClose={() => setIsSoapModalOpen(false)}
-        initialContent={soapNote || ""}
-        patientName={selectedPatient?.name}
-      />
     </div>
   );
 }
 
+const GLOBAL_DIMENSIONS = {
+  onset: ["Sudden", "Gradual", "Intermittent", "At night", "Upon waking"],
+  duration: ["< 24 hours", "1-3 days", "4-7 days", "1-2 weeks", "Chronic (> 1 month)"]
+};
+
 function AnalysisModal({ symptom, onClose, onSave }: { symptom: SelectedSymptom, onClose: () => void, onSave: (data: any, timeline?: any) => void }) {
   const model = ALL_MODELS[symptom.category]?.find(m => m.id === symptom.id);
+  
+  const combinedDimensions = useMemo(() => {
+    if (!model) return {};
+    const dims = { ...model.dimensions };
+    if (!dims.onset) dims.onset = GLOBAL_DIMENSIONS.onset;
+    if (!dims.duration) dims.duration = GLOBAL_DIMENSIONS.duration;
+    return dims;
+  }, [model]);
+
   const [formData, setFormData] = useState<Record<string, string[]>>(symptom.analysisData || {});
   const [severityTimeline, setSeverityTimeline] = useState<{ date: string, value: number }[]>(symptom.severityTimeline || [
     { date: '3 days ago', value: 2 },
@@ -930,7 +1119,7 @@ function AnalysisModal({ symptom, onClose, onSave }: { symptom: SelectedSymptom,
           }
         }
       });
-      setFollowUpQuestions(JSON.parse(response.text || "[]"));
+      setFollowUpQuestions(parseJsonResponse(response.text, []));
     } catch (err) {
       console.error("Failed to generate questions:", err);
       toast.error("Failed to generate follow-up questions");
@@ -1013,14 +1202,14 @@ function AnalysisModal({ symptom, onClose, onSave }: { symptom: SelectedSymptom,
             </div>
           </div>
 
-          {model.dimensions && Object.keys(model.dimensions).length > 0 && (
+          {Object.keys(combinedDimensions).length > 0 && (
             <div>
               <h4 className="text-sm font-semibold text-slate-800 uppercase tracking-wider mb-4 flex items-center gap-2">
                 <HelpCircle className="w-4 h-4 text-indigo-500" />
                 Key Questions
               </h4>
               <div className="space-y-5">
-                {Object.entries(model.dimensions).map(([dim, values]) => (
+                {Object.entries(combinedDimensions).map(([dim, values]) => (
                   <div key={dim} className="bg-slate-50 p-4 rounded-lg border border-slate-100">
                     <h5 className="text-sm font-medium text-slate-700 mb-3 capitalize">{dim.replace(/_/g, ' ')}</h5>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">

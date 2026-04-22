@@ -338,24 +338,24 @@ export function MusculoskeletalTab({ findings, onChange }: { findings: any, onCh
       id: Date.now(), joint: j, rom: "normal", stability: "stable",
       inspection: [], palpation: [], specialTestResults: [], notes: ""
     };
-    onChange('jointExams', [...jointExams, newJoint]);
+    onChange('jointExams', [...(jointExams || []), newJoint]);
     setSelectedJoint("");
   };
 
   const removeJoint = (id: number) => {
-    onChange('jointExams', jointExams.filter((j: JointExam) => j.id !== id));
+    onChange('jointExams', (jointExams || []).filter((j: JointExam) => j.id !== id));
   };
 
   const updateJoint = (id: number, field: keyof JointExam, value: any) => {
-    onChange('jointExams', jointExams.map((j: JointExam) => j.id === id ? { ...j, [field]: value } : j));
+    onChange('jointExams', (jointExams || []).map((j: JointExam) => j.id === id ? { ...j, [field]: value } : j));
   };
 
   const toggleSpecialTest = (examId: number, test: string) => {
-    onChange('jointExams', jointExams.map((j: JointExam) => {
+    onChange('jointExams', (jointExams || []).map((j: JointExam) => {
       if (j.id !== examId) return j;
-      const results = j.specialTestResults.includes(test)
-        ? j.specialTestResults.filter(t => t !== test)
-        : [...j.specialTestResults, test];
+      const results = (j.specialTestResults || []).includes(test)
+        ? (j.specialTestResults || []).filter(t => t !== test)
+        : [...(j.specialTestResults || []), test];
       return { ...j, specialTestResults: results };
     }));
   };
@@ -475,7 +475,7 @@ export function MusculoskeletalTab({ findings, onChange }: { findings: any, onCh
               <JointBodyMap
                 selectedJoint={selectedJoint}
                 onJointClick={handleJointMapClick}
-                examinedJoints={jointExams.map((j: JointExam) => j.joint)}
+                examinedJoints={(jointExams || []).map((j: JointExam) => j.joint)}
               />
               <div className="flex-1 space-y-3">
                 <div className="flex items-center gap-3">
@@ -499,7 +499,7 @@ export function MusculoskeletalTab({ findings, onChange }: { findings: any, onCh
           </div>
 
           {/* Joint Exam Cards */}
-          {jointExams.map(exam => (
+          {(jointExams || []).map(exam => (
             <div key={exam.id}>
               <JointExamCard
                 exam={exam}
@@ -625,7 +625,7 @@ export function NeurologicalTab({ findings, onChange }: { findings: any, onChang
                     <TableCell className="text-xs py-1">{cn.fn}</TableCell>
                     <TableCell className="py-1">
                       <Select 
-                        value={cranialNervesFindings[cn.id] || "normal"} 
+                        value={(cranialNervesFindings || {})[cn.id] || "normal"} 
                         onValueChange={(v) => handleNestedChange('cranialNervesFindings', cn.id, v)}
                       >
                         <SelectTrigger className="h-7 text-xs w-28"><SelectValue /></SelectTrigger>
@@ -701,7 +701,7 @@ export function NeurologicalTab({ findings, onChange }: { findings: any, onChang
                       <TableCell className="text-xs font-medium py-1">{m.label}</TableCell>
                       <TableCell className="py-1">
                         <Select 
-                          value={motorPower[m.id]?.right || "5/5"} 
+                          value={(motorPower || {})[m.id]?.right || "5/5"} 
                           onValueChange={(v) => handleNestedChange('motorPower', m.id, v, 'right')}
                         >
                           <SelectTrigger className="h-7 text-xs w-20"><SelectValue /></SelectTrigger>
@@ -712,7 +712,7 @@ export function NeurologicalTab({ findings, onChange }: { findings: any, onChang
                       </TableCell>
                       <TableCell className="py-1">
                         <Select 
-                          value={motorPower[m.id]?.left || "5/5"} 
+                          value={(motorPower || {})[m.id]?.left || "5/5"} 
                           onValueChange={(v) => handleNestedChange('motorPower', m.id, v, 'left')}
                         >
                           <SelectTrigger className="h-7 text-xs w-20"><SelectValue /></SelectTrigger>
@@ -837,7 +837,7 @@ export function NeurologicalTab({ findings, onChange }: { findings: any, onChang
                       <TableCell className="text-xs font-medium py-1">{m.label}</TableCell>
                       <TableCell className="py-1">
                         <Select 
-                          value={sensoryModalitiesFindings[m.id]?.right || "Normal"} 
+                          value={(sensoryModalitiesFindings || {})[m.id]?.right || "Normal"} 
                           onValueChange={(v) => handleNestedChange('sensoryModalitiesFindings', m.id, v, 'right')}
                         >
                           <SelectTrigger className="h-7 text-xs w-28"><SelectValue /></SelectTrigger>
@@ -848,7 +848,7 @@ export function NeurologicalTab({ findings, onChange }: { findings: any, onChang
                       </TableCell>
                       <TableCell className="py-1">
                         <Select 
-                          value={sensoryModalitiesFindings[m.id]?.left || "Normal"} 
+                          value={(sensoryModalitiesFindings || {})[m.id]?.left || "Normal"} 
                           onValueChange={(v) => handleNestedChange('sensoryModalitiesFindings', m.id, v, 'left')}
                         >
                           <SelectTrigger className="h-7 text-xs w-28"><SelectValue /></SelectTrigger>
@@ -916,12 +916,12 @@ export function NeurologicalTab({ findings, onChange }: { findings: any, onChang
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {reflexes.map(r => (
+                {(reflexes || []).map(r => (
                     <TableRow key={r.id}>
                       <TableCell className="text-xs font-medium py-1">{r.label}</TableCell>
                       <TableCell className="py-1">
                         <Select 
-                          value={reflexesFindings[r.id]?.right || "2+ (Normal)"} 
+                          value={(reflexesFindings || {})[r.id]?.right || "2+ (Normal)"} 
                           onValueChange={(v) => handleNestedChange('reflexesFindings', r.id, v, 'right')}
                         >
                           <SelectTrigger className="h-7 text-xs w-28"><SelectValue /></SelectTrigger>
@@ -932,7 +932,7 @@ export function NeurologicalTab({ findings, onChange }: { findings: any, onChang
                       </TableCell>
                       <TableCell className="py-1">
                         <Select 
-                          value={reflexesFindings[r.id]?.left || "2+ (Normal)"} 
+                          value={(reflexesFindings || {})[r.id]?.left || "2+ (Normal)"} 
                           onValueChange={(v) => handleNestedChange('reflexesFindings', r.id, v, 'left')}
                         >
                           <SelectTrigger className="h-7 text-xs w-28"><SelectValue /></SelectTrigger>
@@ -1158,7 +1158,7 @@ export function SkinTab({ findings, onChange }: { findings: any, onChange: (fiel
                 <Plus className="h-3 w-3" /> Add Lesion
               </Button>
             </div>
-            {lesions.map(lesion => (
+            {(lesions || []).map(lesion => (
               <div key={lesion.id} className="rounded-lg border bg-card p-4 space-y-3 animate-in fade-in">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold text-primary">Lesion Assessment</span>
@@ -1174,7 +1174,7 @@ export function SkinTab({ findings, onChange }: { findings: any, onChange: (fiel
                     <Select value={lesion.morphology} onValueChange={v => updateLesion(lesion.id, "morphology", v)}>
                       <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select type" /></SelectTrigger>
                       <SelectContent>
-                        {morphologyOptions.map(o => <SelectItem key={o.v} value={o.v}>{o.l}</SelectItem>)}
+                        {(morphologyOptions || []).map(o => <SelectItem key={o.v} value={o.v}>{o.l}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
@@ -1226,10 +1226,10 @@ export function SkinTab({ findings, onChange }: { findings: any, onChange: (fiel
                 <div className="space-y-1">
                   <Label className="text-xs">Secondary Features</Label>
                   <div className="flex flex-wrap gap-x-4 gap-y-1.5">
-                    {secondaryFeatureOptions.map(f => (
+                    {(secondaryFeatureOptions || []).map(f => (
                       <div key={f.id} className="flex items-center gap-1.5">
                         <Checkbox
-                          checked={lesion.secondaryFeatures.includes(f.id)}
+                          checked={(lesion.secondaryFeatures || []).includes(f.id)}
                           onCheckedChange={() => toggleLesionFeature(lesion.id, f.id)}
                           id={`${lesion.id}-${f.id}`}
                           className="h-3.5 w-3.5"
@@ -1250,11 +1250,11 @@ export function SkinTab({ findings, onChange }: { findings: any, onChange: (fiel
                     Pigmented Lesion Risk (ABCDE) — {lesion.abcde.length}/5
                   </Label>
                   <div className="flex gap-3">
-                    {abcdeLabels.map(a => (
+                    {(abcdeLabels || []).map(a => (
                       <label key={a.id} title={a.title}
                         className="flex items-center gap-1 text-xs cursor-pointer">
                         <Checkbox
-                          checked={lesion.abcde.includes(a.id)}
+                          checked={(lesion.abcde || []).includes(a.id)}
                           onCheckedChange={() => toggleAbcde(lesion.id, a.id)}
                           className="h-3.5 w-3.5"
                         />
@@ -1496,7 +1496,7 @@ export function HeentTab({ findings, onChange }: { findings: any, onChange: (fie
       </div>
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {heentSections.map(section => (
+        {(heentSections || []).map(section => (
           <div key={section.key} className="rounded-lg border bg-card p-4 space-y-3">
             <div className="flex items-center justify-between">
               <h5 className="text-sm font-semibold text-primary">{section.title}</h5>
@@ -1504,7 +1504,7 @@ export function HeentTab({ findings, onChange }: { findings: any, onChange: (fie
                 size="sm" variant="ghost" className="h-6 text-[10px] px-2"
                 onClick={() => {
                   const updates: HeentState = {};
-                  section.parts.forEach(p => { updates[p] = { status: 'normal', findings: {} }; });
+                  (section.parts || []).forEach(p => { updates[p] = { status: 'normal', findings: {} }; });
                   onChange('heentState', { ...heentState, ...updates });
                 }}
               >
@@ -1512,11 +1512,11 @@ export function HeentTab({ findings, onChange }: { findings: any, onChange: (fie
               </Button>
             </div>
             <div className="flex flex-wrap gap-1.5">
-              {section.parts.map(partId => {
+              {(section.parts || []).map(partId => {
                 const part = heentMapping[partId];
                 const status = getChipStatus(partId);
-                const hasAbnormalFindings = heentState[partId]?.status === 'abnormal' &&
-                  Object.values(heentState[partId]?.findings || {}).some((f: any) => f.active);
+                const hasAbnormalFindings = (heentState || {})[partId]?.status === 'abnormal' &&
+                  Object.values((heentState || {})[partId]?.findings || {}).some((f: any) => f.active);
                 return (
                   <button
                     key={partId}
@@ -1531,7 +1531,7 @@ export function HeentTab({ findings, onChange }: { findings: any, onChange: (fie
                   >
                     {status === "normal" && <CheckCircle className="h-3 w-3 inline mr-0.5" />}
                     {status === "abnormal" && <AlertCircle className="h-3 w-3 inline mr-0.5" />}
-                    {part.title}
+                    {part?.title}
                     {hasAbnormalFindings && " •"}
                   </button>
                 );
@@ -1554,12 +1554,12 @@ export function HeentTab({ findings, onChange }: { findings: any, onChange: (fie
             <DialogTitle>Abnormal: {currentPartInfo?.title}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 max-h-[60vh] overflow-y-auto">
-            {currentPartInfo?.options.map(opt => (
+            {(currentPartInfo?.options || []).map(opt => (
               <div key={opt.id} className="flex items-center gap-3 p-2 rounded-lg border bg-muted/30">
                 {opt.type === 'checkbox' ? (
                   <>
                     <Checkbox
-                      checked={!!modalFindings[opt.id]?.active}
+                      checked={!!(modalFindings || {})[opt.id]?.active}
                       onCheckedChange={(v) => toggleModalFinding(opt.id, !!v)}
                     />
                     <span className="text-sm flex-1">{opt.text}</span>
@@ -1568,12 +1568,12 @@ export function HeentTab({ findings, onChange }: { findings: any, onChange: (fie
                   <>
                     <span className="text-sm flex-1">{opt.text}</span>
                     <Select
-                      value={modalFindings[opt.id]?.value || ""}
+                      value={(modalFindings || {})[opt.id]?.value || ""}
                       onValueChange={v => setModalFindingValue(opt.id, v)}
                     >
                       <SelectTrigger className="h-7 text-xs w-28"><SelectValue placeholder="Select" /></SelectTrigger>
                       <SelectContent>
-                        {opt.values?.map(v => (
+                        {(opt.values || []).map(v => (
                           <SelectItem key={v} value={v?.toLowerCase() || ''}>{v}</SelectItem>
                         ))}
                       </SelectContent>
@@ -1589,7 +1589,7 @@ export function HeentTab({ findings, onChange }: { findings: any, onChange: (fie
                         onClick={() => setModalFindingSide(opt.id, side)}
                         className={cn(
                           "px-2 py-0.5 text-[10px] font-bold transition-colors",
-                          (modalFindings[opt.id]?.side || 'B') === side
+                          ((modalFindings || {})[opt.id]?.side || 'B') === side
                             ? "bg-primary text-primary-foreground"
                             : "hover:bg-muted"
                         )}
@@ -1612,7 +1612,7 @@ export function HeentTab({ findings, onChange }: { findings: any, onChange: (fie
       <div className="space-y-2">
         <Label className="text-sm font-medium">Smart Phrases</Label>
         <div className="flex flex-wrap gap-2">
-          {heentSmartPhrases.map(phrase => (
+          {(heentSmartPhrases || []).map(phrase => (
             <Button key={phrase.label} variant="outline" size="sm" className="h-7 text-xs"
               onClick={() => onChange('notes', notes ? `${notes}\n${phrase.text}` : phrase.text)}>
               {phrase.label}
@@ -1970,7 +1970,7 @@ export function CardiovascularTab({ findings, onChange }: { findings: any, onCha
         {/* Heart Map */}
         <div className="relative mx-auto w-fit">
           <img src={heartImage} alt="Heart Map" className="w-64 h-64 object-contain opacity-80" />
-          {cardioHeartRegions.map(region => {
+          {(cardioHeartRegions || []).map(region => {
             const count = getRegionFindingCount(region.id);
             return (
               <button
@@ -2053,7 +2053,7 @@ export function CardiovascularTab({ findings, onChange }: { findings: any, onCha
               <TabsContent value="auscultation">
                 <CheckboxFindings
                   label="Auscultation"
-                  options={cardioAuscultationFindings.map(f => ({ id: `${selectedRegion}-ausc-${f.id}`, label: f.label }))}
+                  options={(cardioAuscultationFindings || []).map(f => ({ id: `${selectedRegion}-ausc-${f.id}`, label: f.label }))}
                   selected={getRegionFindings(selectedRegion, "auscultation")}
                   onChange={(v) => setRegionTabFindings(selectedRegion, "auscultation", v)}
                 />
@@ -2061,7 +2061,7 @@ export function CardiovascularTab({ findings, onChange }: { findings: any, onCha
               <TabsContent value="inspection">
                 <CheckboxFindings
                   label="Inspection"
-                  options={cardioInspectionFindings.map(f => ({ id: `${selectedRegion}-insp-${f.id}`, label: f.label }))}
+                  options={(cardioInspectionFindings || []).map(f => ({ id: `${selectedRegion}-insp-${f.id}`, label: f.label }))}
                   selected={getRegionFindings(selectedRegion, "inspection")}
                   onChange={(v) => setRegionTabFindings(selectedRegion, "inspection", v)}
                 />
@@ -2069,7 +2069,7 @@ export function CardiovascularTab({ findings, onChange }: { findings: any, onCha
               <TabsContent value="palpation">
                 <CheckboxFindings
                   label="Palpation"
-                  options={cardioPalpationFindings.map(f => ({ id: `${selectedRegion}-palp-${f.id}`, label: f.label }))}
+                  options={(cardioPalpationFindings || []).map(f => ({ id: `${selectedRegion}-palp-${f.id}`, label: f.label }))}
                   selected={getRegionFindings(selectedRegion, "palpation")}
                   onChange={(v) => setRegionTabFindings(selectedRegion, "palpation", v)}
                 />
@@ -2096,7 +2096,7 @@ export function CardiovascularTab({ findings, onChange }: { findings: any, onCha
                     <Label className="text-xs">Grade</Label>
                     <Select value={getDetail(analysisTarget.regionId, analysisTarget.findingId, "grade")} onValueChange={(v) => setDetail(analysisTarget.regionId, analysisTarget.findingId, "grade", v)}>
                       <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select grade" /></SelectTrigger>
-                      <SelectContent>{analysis.grade.map(g => <SelectItem key={g} value={g} className="text-xs">{g}</SelectItem>)}</SelectContent>
+                      <SelectContent>{(analysis.grade || []).map(g => <SelectItem key={g} value={g} className="text-xs">{g}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
                 )}
@@ -2132,7 +2132,7 @@ export function CardiovascularTab({ findings, onChange }: { findings: any, onCha
                     <Label className="text-xs">Radiation</Label>
                     <Select value={getDetail(analysisTarget.regionId, analysisTarget.findingId, "radiation")} onValueChange={(v) => setDetail(analysisTarget.regionId, analysisTarget.findingId, "radiation", v)}>
                       <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select radiation" /></SelectTrigger>
-                      <SelectContent>{analysis.radiation.map(r => <SelectItem key={r} value={r} className="text-xs">{r}</SelectItem>)}</SelectContent>
+                      <SelectContent>{(analysis.radiation || []).map(r => <SelectItem key={r} value={r} className="text-xs">{r}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
                 )}
@@ -2369,7 +2369,7 @@ export function RespiratoryTab({ findings, onChange }: { findings: any, onChange
         {/* Lung Map */}
         <div className="relative mx-auto w-fit">
           <img src={chestImage} alt="Lung Map" className="w-64 h-64 object-contain opacity-80" />
-          {lungRegions.map(region => {
+          {(lungRegions || []).map(region => {
             const count = getRegionFindingCount(region.id);
             return (
               <button
@@ -2400,7 +2400,7 @@ export function RespiratoryTab({ findings, onChange }: { findings: any, onChange
                 <div key={region.id} className="space-y-1">
                   <span className="text-xs font-medium text-slate-500 block">{region.label}</span>
                   <div className="flex flex-wrap gap-1.5">
-                    {getRegionFindingItems(region.id).map((item, i) => (
+                    {(getRegionFindingItems(region.id) || []).map((item, i) => (
                       <Badge
                         key={i}
                         variant="secondary"
@@ -2456,7 +2456,7 @@ export function RespiratoryTab({ findings, onChange }: { findings: any, onChange
               <TabsContent value="auscultation">
                 <CheckboxFindings
                   label="Auscultation"
-                  options={auscultationFindings.map(f => ({ id: `${selectedRegion}-ausc-${f.id}`, label: f.label }))}
+                  options={(auscultationFindings || []).map(f => ({ id: `${selectedRegion}-ausc-${f.id}`, label: f.label }))}
                   selected={getRegionFindings(selectedRegion, "auscultation")}
                   onChange={(v) => setRegionTabFindings(selectedRegion, "auscultation", v)}
                 />
@@ -2464,7 +2464,7 @@ export function RespiratoryTab({ findings, onChange }: { findings: any, onChange
               <TabsContent value="percussion">
                 <CheckboxFindings
                   label="Percussion"
-                  options={percussionFindings.map(f => ({ id: `${selectedRegion}-perc-${f.id}`, label: f.label }))}
+                  options={(percussionFindings || []).map(f => ({ id: `${selectedRegion}-perc-${f.id}`, label: f.label }))}
                   selected={getRegionFindings(selectedRegion, "percussion")}
                   onChange={(v) => setRegionTabFindings(selectedRegion, "percussion", v)}
                 />
@@ -2472,7 +2472,7 @@ export function RespiratoryTab({ findings, onChange }: { findings: any, onChange
               <TabsContent value="palpation">
                 <CheckboxFindings
                   label="Palpation"
-                  options={palpationFindings.map(f => ({ id: `${selectedRegion}-palp-${f.id}`, label: f.label }))}
+                  options={(palpationFindings || []).map(f => ({ id: `${selectedRegion}-palp-${f.id}`, label: f.label }))}
                   selected={getRegionFindings(selectedRegion, "palpation")}
                   onChange={(v) => setRegionTabFindings(selectedRegion, "palpation", v)}
                 />
@@ -2504,7 +2504,7 @@ export function RespiratoryTab({ findings, onChange }: { findings: any, onChange
                     >
                       <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select severity" /></SelectTrigger>
                       <SelectContent>
-                        {analysis.severity.map(s => <SelectItem key={s} value={s} className="text-xs">{s}</SelectItem>)}
+                        {(analysis.severity || []).map(s => <SelectItem key={s} value={s} className="text-xs">{s}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
@@ -2519,7 +2519,7 @@ export function RespiratoryTab({ findings, onChange }: { findings: any, onChange
                     >
                       <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select timing" /></SelectTrigger>
                       <SelectContent>
-                        {analysis.timing.map(t => <SelectItem key={t} value={t} className="text-xs">{t}</SelectItem>)}
+                        {(analysis.timing || []).map(t => <SelectItem key={t} value={t} className="text-xs">{t}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
@@ -2534,7 +2534,7 @@ export function RespiratoryTab({ findings, onChange }: { findings: any, onChange
                     >
                       <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select character" /></SelectTrigger>
                       <SelectContent>
-                        {analysis.character.map(c => <SelectItem key={c} value={c} className="text-xs">{c}</SelectItem>)}
+                        {(analysis.character || []).map(c => <SelectItem key={c} value={c} className="text-xs">{c}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
@@ -2549,7 +2549,7 @@ export function RespiratoryTab({ findings, onChange }: { findings: any, onChange
                     >
                       <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select pattern" /></SelectTrigger>
                       <SelectContent>
-                        {analysis.pattern.map(p => <SelectItem key={p} value={p} className="text-xs">{p}</SelectItem>)}
+                        {(analysis.pattern || []).map(p => <SelectItem key={p} value={p} className="text-xs">{p}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
@@ -2779,7 +2779,7 @@ export function GastrointestinalTab({ findings, onChange }: { findings: any, onC
         {/* Abdomen Map */}
         <div className="relative mx-auto w-fit">
           <img src={abdomenImage} alt="Abdomen Map" className="w-64 h-64 object-contain opacity-80" />
-          {giAbdomenRegions.map(region => {
+          {(giAbdomenRegions || []).map(region => {
             const count = getRegionFindingCount(region.id);
             return (
               <button
@@ -3402,14 +3402,16 @@ export function PhysicalExam() {
   });
 
   useEffect(() => {
-    if (vitals.weight && vitals.height) {
-      const weight = parseFloat(vitals.weight);
-      const height = parseFloat(vitals.height) / 100; // cm to m
-      if (weight > 0 && height > 0) {
-        const bmi = (weight / (height * height)).toFixed(1);
-        setVitals(prev => ({ ...prev, bmi }));
-      }
-    }
+    const weight = parseFloat(vitals.weight);
+    const height = parseFloat(vitals.height);
+    const bmi = (weight > 0 && height > 0) 
+      ? (weight / ((height / 100) * (height / 100))).toFixed(1)
+      : '';
+      
+    setVitals(prev => {
+      if (prev.bmi === bmi) return prev;
+      return { ...prev, bmi };
+    });
   }, [vitals.weight, vitals.height]);
 
   const [generalFindings, setGeneralFindings] = useState({
@@ -3664,18 +3666,6 @@ Format the output as a professional medical note under the heading "Physical Exa
     }
   };
 
-  // Calculate BMI automatically
-  useEffect(() => {
-    const weight = parseFloat(vitals.weight);
-    const height = parseFloat(vitals.height);
-    if (weight > 0 && height > 0) {
-      const heightInMeters = height / 100;
-      const bmi = (weight / (heightInMeters * heightInMeters)).toFixed(1);
-      setVitals(prev => ({ ...prev, bmi }));
-    } else {
-      setVitals(prev => ({ ...prev, bmi: '' }));
-    }
-  }, [vitals.weight, vitals.height]);
 
   const handleVitalChange = (field: string, value: string) => {
     setVitals(prev => {
@@ -4098,9 +4088,9 @@ function GeneralTab({ findings, onChange, onDictation, listeningField }: General
 
   // Sync active categories with findings on mount
   useEffect(() => {
-    const active = Object.keys(findings.detailed).filter(key => findings.detailed[key] && findings.detailed[key].length > 0);
+    const active = Object.keys(findings?.detailed || {}).filter(key => (findings?.detailed || {})[key] && (findings?.detailed || {})[key].length > 0);
     setActiveCategories(prev => Array.from(new Set([...prev, ...active])));
-  }, []);
+  }, [findings.detailed]);
 
   const toggleCategory = (category: string, checked: boolean) => {
     if (checked) {

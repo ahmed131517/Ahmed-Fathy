@@ -100,38 +100,57 @@ export function getGeneratePrescriptionPrompt(patientData: {
 /**
  * Generates a prompt for differential diagnosis analysis.
  */
-export function getDifferentialDiagnosisPrompt(patient: { name: string, age: number | string, gender: string }, clinicalData: {
-  symptoms: string[];
-  examFindings: string[];
-  vitals: any;
-  labResults: string[];
-}) {
+export function getDifferentialDiagnosisPrompt(
+  patient: { name: string, age: number | string, gender: string, chronicConditions?: string[] }, 
+  clinicalData: {
+    symptoms: string[];
+    examFindings: string[];
+    vitals: any;
+    labResults: string[];
+    currentMedications?: string[];
+    labTrends?: string;
+  }
+) {
   return `
         Act as an expert clinical diagnostician. Analyze the following patient data and provide a differential diagnosis.
         
         Patient: ${patient.name}, ${patient.age} years old, ${patient.gender}
+        Known Chronic Conditions: ${patient.chronicConditions?.join(", ") || "None documented"}
         
         Symptoms: ${clinicalData.symptoms.join(", ")}
         Physical Exam: ${clinicalData.examFindings.join(", ")}
         Vitals: BP ${clinicalData.vitals.bp}, HR ${clinicalData.vitals.hr}, Temp ${clinicalData.vitals.temp}°C, RR ${clinicalData.vitals.rr}, SpO2 ${clinicalData.vitals.spo2}% (${clinicalData.vitals.oxygenType === 'oxygen_supply' ? `Oxygen Supply: ${clinicalData.vitals.oxygenDose} ${clinicalData.vitals.oxygenInvasive} - Type: ${clinicalData.vitals.oxygenDeviceType}, Settings: ${clinicalData.vitals.oxygenInvasive === 'invasive' ? `FiO2: ${clinicalData.vitals.fio2}, PEEP: ${clinicalData.vitals.peep}, PS: ${clinicalData.vitals.pressureSupport}` : `Flow: ${clinicalData.vitals.flowRate}`}, Notes: ${clinicalData.vitals.notes}` : 'Room Air'})
-        Labs/Imaging: ${clinicalData.labResults.join(", ")}
+        
+        Current Lab Results: ${clinicalData.labResults.join(", ")}
+        ${clinicalData.labTrends ? `Lab Trends/History: ${clinicalData.labTrends}` : ""}
+        
+        Current Medications: ${clinicalData.currentMedications?.join(", ") || "None documented"}
 
+        Analysis Instructions:
+        1. Consider potential side effects or drug-induced symptoms of the current medications.
+        2. Evaluate the current lab results in the context of recent trends provided (e.g., changes over time).
+        3. Correlate symptoms and exam findings with known chronic conditions.
+        
         Return a JSON object with the following structure:
         {
           "top_diagnosis": {
             "condition": "Name of condition",
             "probability": number (0-100),
             "icd10": "ICD-10 code",
-            "reasoning": "Detailed clinical reasoning...",
+            "reasoning": "Detailed clinical reasoning integrating symptoms, labs, trends, and medication potential impacts...",
             "recommendations": ["Next step 1", "Next step 2"],
-            "red_flags": ["Critical warning 1"]
+            "red_flags": ["Critical warning 1"],
+            "references": [
+              { "title": "Resource Name (e.g. PubMed: Pneumonia Guidelines)", "url": "Search URL or direct link" }
+            ]
           },
           "differentials": [
             {
               "condition": "Name",
               "probability": number,
               "icd10": "Code",
-              "reasoning": "Why this is possible but less likely..."
+              "reasoning": "Why this is possible but less likely...",
+              "references": [{ "title": "Resource Name", "url": "URL" }]
             }
           ],
           "missing_info": ["Key missing data point 1"]
@@ -156,23 +175,31 @@ export function getSoapNotePrompt(patientName: string, clinicalData: {
         Clinical Reasoning: ${reasoning}
         
         Format as:
-        S: Subjective (Symptoms)
-        O: Objective (Exam, Vitals, Labs)
-        A: Assessment (Diagnosis, Reasoning)
-        P: Plan (Recommendations)
+        Subjective: (Symptoms and History)
+        Objective: (Vital Signs, Physical Exam, Labs)
+        Assessment: (Diagnosis and Clinical Reasoning)
+        Plan: (Treatment, Medications, Recommendations)
       `;
 }
 
 /**
  * Generates a prompt for patient education summary.
  */
-export function getPatientEducationPrompt(diagnosisDescription: string) {
+export function getPatientEducationPrompt(diagnosisDescription: string, planText?: string) {
   return `
         Generate a plain-language patient education sheet for the condition: ${diagnosisDescription}.
-        Include:
-        1. Simple explanation of the condition.
+        
+        ${planText ? `Current Treatment Plan being discussed:
+        ${planText}
+        ` : ''}
+
+        Instructions:
+        1. Simple explanation of the condition (avoid medical jargon).
         2. Expected recovery timeline.
-        3. Red flags (when to seek emergency care).
+        3. Red flags (specific to this condition and plan).
+        4. Clear instructions on the next steps from the plan provided.
+        
+        Format the output clearly using Markdown headings. Keep it compassionate and clear for a patient.
       `;
 }
 
@@ -220,4 +247,18 @@ export function getInteractionCheckPrompt(medications: string[]) {
   return `Check for potential drug-drug interactions between the following medications: ${medications.join(", ")}.
   Return a JSON array of strings, where each string is a brief description of a potential interaction. If no interactions are found, return an empty array.
   Only return the JSON array.`;
+}
+
+/**
+ * Generates a prompt for medical content translation.
+ */
+export function getTranslationPrompt(content: string, targetLanguage: string) {
+  return `Translate the following medical content into ${targetLanguage}. 
+  Ensure the tone remains compassionate and the medical instructions remain accurate and easy for a patient to understand.
+  Keep all Markdown formatting.
+  
+  Content:
+  ${content}
+  
+  Only return the translated content.`;
 }

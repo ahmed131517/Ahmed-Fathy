@@ -5,6 +5,9 @@ export async function checkAndSendAppointmentReminders(enabled: boolean = true) 
   if (!enabled) return;
 
   try {
+    if (!db.isOpen()) {
+      await db.open();
+    }
     const now = new Date();
     const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
     const tomorrowStr = tomorrow.toISOString().split('T')[0];

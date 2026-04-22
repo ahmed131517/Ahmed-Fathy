@@ -26,10 +26,30 @@ export function PatientProvider({ children }: { children: ReactNode }) {
 
   const [isLoading, setIsLoading] = useState(false);
 
+  // Helper to safely parse JSON strings from DB
+  const safeParse = (data: any, defaultValue: any = []) => {
+    if (!data) return defaultValue;
+    if (typeof data !== 'string') return data;
+    try {
+      const parsed = JSON.parse(data);
+      return Array.isArray(parsed) ? parsed : [parsed];
+    } catch (e) {
+      console.warn('JSON Parse Error:', e, data);
+      // If it's a non-empty string but not JSON, wrap it in an array if it looks like a single item
+      if (typeof data === 'string' && data.trim()) {
+        return [data.trim()];
+      }
+      return defaultValue;
+    }
+  };
+
   // Convert Dexie PatientRecord to UI Patient type
   const uiPatients: Patient[] = useMemo(() => patients.map(p => ({
     id: p.id || String(p.localId),
+    mrn: p.nationalId || p.id || String(p.localId),
     name: p.name,
+    firstName: p.firstName || p.name.split(' ')[0],
+    lastName: p.lastName || p.name.split(' ').slice(1).join(' '),
     age: p.age,
     dob: p.dob,
     gender: p.gender,
@@ -37,11 +57,12 @@ export function PatientProvider({ children }: { children: ReactNode }) {
     bloodType: p.bloodType,
     lastVisit: p.lastVisit,
     status: p.status,
-    allergies: p.allergies ? JSON.parse(p.allergies) : [],
-    chronicConditions: p.conditions ? JSON.parse(p.conditions) : [],
-    medications: p.medications ? JSON.parse(p.medications) : [],
-    surgeries: p.surgeries ? JSON.parse(p.surgeries) : [],
-    familyHistory: p.familyHistory ? JSON.parse(p.familyHistory) : [],
+    photo: p.photo,
+    allergies: safeParse(p.allergies),
+    chronicConditions: safeParse(p.conditions),
+    medications: safeParse(p.medications),
+    surgeries: safeParse(p.surgeries),
+    familyHistory: safeParse(p.familyHistory),
     familyHistoryNotes: p.familyHistoryNotes,
     otherConditions: p.otherConditions
   })), [patients]);

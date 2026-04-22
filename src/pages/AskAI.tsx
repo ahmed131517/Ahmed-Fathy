@@ -138,7 +138,7 @@ export function AskAI() {
       ]);
 
       // Fetch prescription items for each prescription
-      const prescriptionsWithItems = await Promise.all(prescriptions.map(async (p) => {
+      const prescriptionsWithItems = await Promise.all((prescriptions || []).map(async (p) => {
         const items = await db.prescription_items.where('prescriptionId').equals(p.id || '').toArray();
         return { ...p, items };
       }));
@@ -175,8 +175,8 @@ export function AskAI() {
       patientContext = `Name: ${patientName}\nAge: ${selectedPatient.age || 'Unknown'}\nGender: ${selectedPatient.gender || 'Unknown'}\nBlood Type: ${selectedPatient.bloodType || 'Unknown'}\nStatus: ${selectedPatient.status || 'Unknown'}\n`;
       
       // Basic Allergies & Conditions from patient record
-      if (selectedPatient.allergies && selectedPatient.allergies.length > 0) {
-        const allergiesList = selectedPatient.allergies.map((a: any) => `${a.name} ${a.severity ? `(${a.severity})` : ''}`).join(', ');
+      if (selectedPatient.allergies && Array.isArray(selectedPatient.allergies) && selectedPatient.allergies.length > 0) {
+        const allergiesList = (selectedPatient.allergies || []).map((a: any) => `${a.name} ${a.severity ? `(${a.severity})` : ''}`).join(', ');
         patientContext += `Allergies: ${allergiesList}\n`;
       }
       
@@ -202,22 +202,22 @@ export function AskAI() {
 
       // Add detailed medical records if available
       if (patientData) {
-        if (patientData.diagnoses.length > 0) {
-          patientContext += `\nDIAGNOSES HISTORY:\n${patientData.diagnoses.map(d => `- ${d.date}: ${d.condition} (${d.code || 'No code'}). Notes: ${d.notes || 'N/A'}`).join('\n')}\n`;
+        if (patientData.diagnoses && patientData.diagnoses.length > 0) {
+          patientContext += `\nDIAGNOSES HISTORY:\n${(patientData.diagnoses || []).map(d => `- ${d.date}: ${d.condition} (${d.code || 'No code'}). Notes: ${d.notes || 'N/A'}`).join('\n')}\n`;
         }
 
-        if (patientData.vitals.length > 0) {
+        if (patientData.vitals && patientData.vitals.length > 0) {
           const latest = patientData.vitals[patientData.vitals.length - 1];
           patientContext += `\nLATEST VITALS (${latest.date}):\nBP: ${latest.bp_systolic}/${latest.bp_diastolic}, HR: ${latest.hr}, Temp: ${latest.temp}°C, RR: ${latest.rr}, SpO2: ${latest.spo2}%, Weight: ${latest.weight}kg\n`;
         }
 
-        if (patientData.labs.length > 0) {
-          patientContext += `\nRECENT LAB RESULTS:\n${patientData.labs.slice(-5).map(l => `- ${l.date}: ${l.testName} = ${l.value} ${l.unit} (${l.status})`).join('\n')}\n`;
+        if (patientData.labs && patientData.labs.length > 0) {
+          patientContext += `\nRECENT LAB RESULTS:\n${(patientData.labs || []).slice(-5).map(l => `- ${l.date}: ${l.testName} = ${l.value} ${l.unit} (${l.status})`).join('\n')}\n`;
         }
 
-        if (patientData.prescriptions.length > 0) {
-          patientContext += `\nMEDICATION HISTORY:\n${patientData.prescriptions.map(p => {
-            const items = p.items.map(i => `${i.medicationName} ${i.dosage} ${i.frequency}`).join(', ');
+        if (patientData.prescriptions && patientData.prescriptions.length > 0) {
+          patientContext += `\nMEDICATION HISTORY:\n${(patientData.prescriptions || []).map(p => {
+            const items = (p.items || []).map(i => `${i.medicationName} ${i.dosage} ${i.frequency}`).join(', ');
             return `- ${new Date(p.createdAt).toLocaleDateString()}: ${items} (Status: ${p.status})`;
           }).join('\n')}\n`;
         }
@@ -242,7 +242,7 @@ export function AskAI() {
 
   useEffect(() => {
     if (chatHistory && chatHistory.length > 0) {
-      setMessages(chatHistory.map(msg => ({
+      setMessages((chatHistory || []).map(msg => ({
         id: msg.id,
         role: msg.role,
         content: msg.content
@@ -540,13 +540,13 @@ export function AskAI() {
                     </span>
                   </div>
                   
-                  {selectedPatient.allergies && selectedPatient.allergies.length > 0 && (
+                  {selectedPatient.allergies && Array.isArray(selectedPatient.allergies) && selectedPatient.allergies.length > 0 && (
                     <div className="pt-3 border-t border-slate-200 dark:border-slate-700">
                       <div className="text-[10px] font-bold text-red-500 uppercase mb-2 flex items-center gap-1">
                         <ShieldAlert className="w-3 h-3" /> Allergies
                       </div>
                       <div className="flex flex-wrap gap-1">
-                        {selectedPatient.allergies.map((a: any, i: number) => (
+                        {(selectedPatient.allergies || []).map((a: any, i: number) => (
                           <span key={i} className="px-1.5 py-0.5 bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 rounded text-[10px] font-medium border border-red-100 dark:border-red-500/20">
                             {a.name}
                           </span>
@@ -570,7 +570,7 @@ export function AskAI() {
               <Sparkles className="w-3.5 h-3.5" /> Quick Analysis
             </h3>
             <div className="grid gap-2">
-              {quickActions.map((action) => (
+              {(quickActions || []).map((action) => (
                 <button
                   key={action.id}
                   onClick={() => handleQuickAction(action.prompt)}
@@ -593,9 +593,9 @@ export function AskAI() {
             </h3>
             <div className="space-y-2 overflow-y-auto max-h-48 pr-2 custom-scrollbar">
               {patientNotes && patientNotes.length > 0 ? (
-                patientNotes.map((note) => (
+                (patientNotes || []).map((note) => (
                   <div
-                    key={note.id}
+                    key={note.localId || note.id}
                     className="p-3 rounded-xl bg-emerald-50/50 dark:bg-emerald-500/5 border border-emerald-100 dark:border-emerald-500/10"
                   >
                     <div className="flex items-center justify-between mb-1">
@@ -771,6 +771,7 @@ export function AskAI() {
             
             {isLoading && messages[messages.length - 1]?.role === "user" && (
               <motion.div 
+                key="loading-indicator"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 className="flex gap-4 md:gap-6 flex-row"

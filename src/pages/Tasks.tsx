@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, Task } from '../lib/db';
-import { CheckCircle, Circle, Clock, Plus, Calendar, User, AlertCircle, AlertTriangle, ArrowUp, ArrowDown, Minus, Trash2 } from 'lucide-react';
+import { CheckCircle, Circle, Clock, Plus, Calendar, User, AlertCircle, AlertTriangle, ArrowUp, ArrowDown, Minus, Trash2, ShieldCheck, UserCog, ClipboardList } from 'lucide-react';
 import { format, isPast, isToday, isTomorrow } from 'date-fns';
 import { toast } from 'sonner';
 import { usePatient } from '../lib/PatientContext';
@@ -14,6 +14,7 @@ export function Tasks() {
   const [newTaskPriority, setNewTaskPriority] = useState<Task['priority']>('medium');
   const [newTaskDueDate, setNewTaskDueDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [newTaskPatientId, setNewTaskPatientId] = useState<string>('');
+  const [viewMode, setViewMode] = useState<'all' | 'nursing'>('all');
 
   const [filterPriority, setFilterPriority] = useState<string>('all');
 
@@ -21,8 +22,21 @@ export function Tasks() {
     () => db.tasks.where('isDeleted').equals(0).sortBy('dueDate')
   ) || [];
 
-  const pendingTasks = tasks.filter(t => t.status === 'pending' && (filterPriority === 'all' || t.priority === filterPriority));
-  const completedTasks = tasks.filter(t => t.status === 'completed');
+  const filteredTasks = tasks.filter(task => {
+    // Priority filter
+    if (filterPriority !== 'all' && task.priority !== filterPriority) return false;
+    
+    // Role visibility filter (Nursing View)
+    if (viewMode === 'nursing') {
+      const nursingTypes: Task['type'][] = ['lab-review', 'outreach'];
+      return nursingTypes.includes(task.type);
+    }
+    
+    return true;
+  });
+
+  const pendingTasks = filteredTasks.filter(t => t.status === 'pending');
+  const completedTasks = filteredTasks.filter(t => t.status === 'completed');
 
   const handleAddTask = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -116,9 +130,46 @@ export function Tasks() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Task Management</h1>
+        
+        <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
+           <button 
+             onClick={() => setViewMode('all')}
+             className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg transition-all ${
+               viewMode === 'all' 
+                 ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm" 
+                 : "text-slate-500 dark:text-slate-400 hover:text-slate-700 font-medium"
+             }`}
+           >
+              <UserCog className="w-3.5 h-3.5" />
+              All Access
+           </button>
+           <button 
+             onClick={() => setViewMode('nursing')}
+             className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg transition-all ${
+               viewMode === 'nursing' 
+                 ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm" 
+                 : "text-slate-500 dark:text-slate-400 hover:text-slate-700 font-medium"
+             }`}
+           >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              Nursing View
+           </button>
+        </div>
       </div>
+
+      {viewMode === 'nursing' && (
+        <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-900/30 p-4 rounded-xl flex items-center gap-3">
+          <div className="p-2 bg-emerald-100 dark:bg-emerald-900/40 rounded-lg">
+            <ClipboardList className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+          </div>
+          <div className="flex-1">
+            <h4 className="text-sm font-bold text-emerald-800 dark:text-emerald-300">Filtered for Care Coordination</h4>
+            <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-0.5">Showing only lab orders, patient outreach, and nurse-led tasks.</p>
+          </div>
+        </div>
+      )}
 
       <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6">
         <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Add New Task</h2>

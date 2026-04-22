@@ -17,7 +17,7 @@ import { PrescriptionPreview } from "@/components/PrescriptionPreview";
 import { usePatient } from "@/lib/PatientContext";
 import { useSettings } from "@/lib/SettingsContext";
 import { getGeneratePrescriptionPrompt, getAlternativeMedicationPrompt } from "@/services/aiConfig";
-import { generateContentWithRetry } from "../utils/gemini";
+import { generateContentWithRetry, parseJsonResponse } from "../utils/gemini";
 import { toast } from "sonner";
 import { medicationService, Drug } from "@/services/medicationService";
 import { PatientHistoryService } from "@/services/PatientHistoryService";
@@ -33,6 +33,7 @@ export function Prescriptions() {
   const [activeTab, setActiveTab] = useState('new');
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
+  const [nameType, setNameType] = useState<'generic' | 'trade'>('generic');
   
   const [promptModal, setPromptModal] = useState<{
     isOpen: boolean;
@@ -77,7 +78,9 @@ export function Prescriptions() {
   const [userTemplates, setUserTemplates] = useState<any[]>(() => {
     try {
       const saved = localStorage.getItem('userTemplates');
-      return saved ? JSON.parse(saved) : [];
+      if (!saved) return [];
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) ? parsed : [];
     } catch (e) {
       console.error("Failed to load templates", e);
       return [];
@@ -124,7 +127,7 @@ export function Prescriptions() {
     fetchLatestVitals();
     
     const fetchLatestDiagnosis = async () => {
-      if (!selectedPatient?.id || confirmedDiagnosis) return;
+      if (!selectedPatient?.id || confirmedDiagnosis !== undefined && confirmedDiagnosis !== null && confirmedDiagnosis !== "") return;
       
       try {
         const latestDiagnosis = await db.diagnoses
@@ -134,7 +137,10 @@ export function Prescriptions() {
           .first();
           
         if (latestDiagnosis) {
-          setConfirmedDiagnosis(latestDiagnosis.description || latestDiagnosis.condition);
+          const diagText = latestDiagnosis.description || latestDiagnosis.condition;
+          if (diagText && diagText !== confirmedDiagnosis) {
+            setConfirmedDiagnosis(diagText);
+          }
         }
       } catch (error) {
         console.error("Failed to fetch latest diagnosis:", error);
@@ -164,16 +170,24 @@ export function Prescriptions() {
           }))
         };
         const alerts = checkSafetyAlerts(tempPatient, { name: confirmedDiagnosis || "" });
-        setSafetyAlerts(alerts);
+        
+        // Only update if alerts have changed to avoid unnecessary re-renders
+        setSafetyAlerts(prev => {
+          if (JSON.stringify(prev) === JSON.stringify(alerts)) return prev;
+          return alerts;
+        });
       }
 
       if (meds.length < 2) {
-        setInteractionAlerts([]);
+        setInteractionAlerts(prev => prev.length === 0 ? prev : []);
         return;
       }
       setIsCheckingInteractions(true);
       const alerts = await checkInteractions(meds);
-      setInteractionAlerts(alerts);
+      setInteractionAlerts(prev => {
+        if (JSON.stringify(prev) === JSON.stringify(alerts)) return prev;
+        return alerts;
+      });
       setIsCheckingInteractions(false);
     };
     check();
@@ -224,7 +238,7 @@ If it is not a valid medication, return:
         contents: prompt,
         config: { responseMimeType: "application/json" }
       });
-      const data = JSON.parse(response.text || "{}");
+      const data = parseJsonResponse<any>(response.text, { isValid: false });
       if (data.isValid) {
         await medicationService.discoverAndAddDrug({
           generic_name: data.generic_name,
@@ -355,7 +369,11 @@ If it is not a valid medication, return:
         : [...(medicationsDatabase[selectedCategory] || [])];
     }
     
-    return meds.sort((a, b) => a.name.localeCompare(b.name));
+    return meds.sort((a, b) => {
+      const nameA = a.name || a.generic_name || "";
+      const nameB = b.name || b.generic_name || "";
+      return nameA.localeCompare(nameB);
+    });
   }, [selectedCategory, searchQuery, dbMeds]);
 
   const handleMedicationSelect = async (med: any) => {
@@ -499,7 +517,11 @@ If it is not a valid medication, return:
       setActiveTab('active');
     } catch (error) {
       console.error("Failed to save prescription", error);
-      toast.error("Failed to save prescription");
+      if (error instanceof Error && error.name === 'QuotaExceededError') {
+        toast.error("Storage full. Please clear some space or delete old backups in Settings.");
+      } else {
+        toast.error("Failed to save prescription");
+      }
     }
   };
 
@@ -583,7 +605,7 @@ If it is not a valid medication, return:
         config: { responseMimeType: "application/json" }
       });
 
-      const data = JSON.parse(response.text || "[]");
+      const data = parseJsonResponse(response.text, []);
       setAiSuggestions(data);
       setSelectedSuggestions([]);
     } catch (error: any) {
@@ -660,7 +682,7 @@ If it is not a valid medication, return:
         config: { responseMimeType: "application/json" }
       });
       
-      const alternative = JSON.parse(response.text || "{}");
+      const alternative = parseJsonResponse(response.text, {} as any);
       const newSuggestions = [...aiSuggestions];
       newSuggestions[idx] = alternative;
       setAiSuggestions(newSuggestions);
@@ -687,6 +709,32 @@ If it is not a valid medication, return:
       console.error("Failed to update medication status:", error);
       toast.error("Failed to update status");
     }
+  };
+
+  const getMedicationDisplay = (genericName: string) => {
+    if (nameType === 'generic') return genericName;
+    
+    const tradeNames: Record<string, string> = {
+      'Amoxicillin': 'Amoxil',
+      'Lisinopril': 'Prinivil / Zestril',
+      'Metformin': 'Glucophage',
+      'Atorvastatin': 'Lipitor',
+      'Ibuprofen': 'Advil / Motrin',
+      'Azithromycin': 'Zithromax',
+      'Sertraline': 'Zoloft',
+      'Levothyroxine': 'Synthroid',
+      'Amlodipine': 'Norvasc',
+      'Omeprazole': 'Prilosec',
+      'Losartan': 'Cozaar',
+      'Spironolactone': 'Aldactone',
+      'Metoprolol': 'Lopressor',
+      'Gabapentin': 'Neurontin',
+      'Furosemide': 'Lasix',
+      'Albuterol': 'Ventolin'
+    };
+
+    const trade = tradeNames[genericName];
+    return trade ? `${trade} (${genericName})` : genericName;
   };
 
   return (
@@ -936,7 +984,7 @@ If it is not a valid medication, return:
                             : "bg-white border-slate-100 hover:border-slate-300 hover:bg-slate-50"
                         )}
                       >
-                        <p className="font-medium text-sm">{med.name}</p>
+                        <p className="font-medium text-sm">{getMedicationDisplay(med.name || med.generic_name)}</p>
                         {(matchedSideEffect || matchedInteraction) && (
                           <div className="mt-1 text-[10px] text-slate-500">
                             {matchedSideEffect && <p>Matches side effect: <span className="font-medium text-indigo-600">{matchedSideEffect}</span></p>}
@@ -1141,7 +1189,7 @@ If it is not a valid medication, return:
                           <span className="bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
                             {item.form}
                           </span>
-                          <h4 className="font-bold text-lg text-slate-900 m-0">{item.medication}</h4>
+                          <h4 className="font-bold text-lg text-slate-900 m-0">{getMedicationDisplay(item.medication)}</h4>
                         </div>
                         <button 
                           onClick={() => handleRemoveFromPrescription(item.id)}
@@ -1271,9 +1319,31 @@ If it is not a valid medication, return:
       </>
       ) : (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-slate-200">
-            <h3 className="text-lg font-bold text-slate-900">Active Medications</h3>
-            <p className="text-sm text-slate-500">Manage current patient medications</p>
+          <div className="p-6 border-b border-slate-200 flex justify-between items-center">
+            <div>
+              <h3 className="text-lg font-bold text-slate-900">Active Medications</h3>
+              <p className="text-sm text-slate-500">Manage current patient medications</p>
+            </div>
+            <div className="flex items-center gap-3 bg-slate-100 p-1 rounded-lg border border-slate-200">
+               <button 
+                 onClick={() => setNameType('generic')}
+                 className={cn(
+                   "px-3 py-1.5 text-xs font-bold rounded-md transition-all",
+                   nameType === 'generic' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                 )}
+               >
+                 Generic
+               </button>
+               <button 
+                 onClick={() => setNameType('trade')}
+                 className={cn(
+                   "px-3 py-1.5 text-xs font-bold rounded-md transition-all",
+                   nameType === 'trade' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                 )}
+               >
+                 Trade
+               </button>
+            </div>
           </div>
           <div className="p-6">
             {patientMedications.length === 0 ? (
@@ -1287,7 +1357,7 @@ If it is not a valid medication, return:
                   <div key={med.id} className="border border-slate-200 rounded-xl p-4 flex items-center justify-between bg-slate-50">
                     <div>
                       <div className="flex items-center gap-3 mb-1">
-                        <h4 className="font-bold text-slate-900">{med.name}</h4>
+                        <h4 className="font-bold text-slate-900">{getMedicationDisplay(med.name)}</h4>
                         <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
                           {med.status}
                         </span>

@@ -8,575 +8,517 @@ export interface SymptomModel {
 
 export const HEAD_MODELS: SymptomModel[] = [
   {
-    id: "headache_tension",
-    label: "Tension Headache",
+    id: "headache_general",
+    label: "Headache",
     dimensions: {
-      onset: ["gradual", "sudden"],
-      location: ["forehead", "temples", "back of head", "all over"],
-      character: ["tight band", "dull ache", "heavy pressure"],
-      severity: ["mild", "moderate", "severe"]
+      onset: ["gradual", "sudden", "after injury"],
+      location: ["entire head", "one side", "behind eyes", "base of skull"],
+      character: ["throbbing", "dull ache", "stabbing", "shooting"],
+      severity: ["mild", "moderate", "severe", "incapacitating"]
     },
     redFlags: [
       "Sudden 'thunderclap' onset",
       "Fever and neck stiffness",
+      "Headache after trauma",
       "New headache after age 50",
-      "Worsening after head injury"
+      "Sudden change in pattern"
+    ]
+  },
+  {
+    id: "head_pressure",
+    label: "Head Pressure",
+    dimensions: {
+      location: ["forehead", "behind eyes", "sides of head", "top of head"],
+      triggers: ["bending over", "coughing/straining", "changes in weather"]
+    },
+    redFlags: [
+      "Worse when lying flat",
+      "Associated with vision changes",
+      "Nausea and vomiting"
+    ]
+  },
+  {
+    id: "head_trauma",
+    label: "Head Trauma / Injury",
+    dimensions: {
+      mechanism: ["fall", "blunt impact", "sports injury", "motor vehicle accident"],
+      onset: ["immediate", "delayed symptom onset"],
+      consciousness: ["loss of consciousness", "altered awareness", "no loss of consciousness"]
+    },
+    redFlags: [
+      "Repeated vomiting",
+      "Seizures",
+      "Unequal pupil size",
+      "Fluid/blood from ears or nose",
+      "Increasingly severe headache"
+    ],
+    requiredExams: [
+      "Assess GCS score",
+      "Check pupil reactivity",
+      "Perform neurological screening"
+    ]
+  },
+  {
+    id: "scalp_pain",
+    label: "Scalp Pain / Tenderness",
+    dimensions: {
+      location: ["temples", "back of head", "patchy", "generalized"],
+      character: ["tender to touch", "burning", "sharp", "aching"],
+      triggers: ["brushing hair", "wearing hat/glasses"]
+    },
+    redFlags: [
+      "Tenderness at the temples (Giant Cell Arteritis concern)",
+      "Vision blurring or temporary loss",
+      "Jaw claudication (pain when chewing)"
+    ]
+  },
+  {
+    id: "head_dizziness",
+    label: "Dizziness (Head-related)",
+    dimensions: {
+      type: ["spinning (vertigo)", "lightheadedness", "faintness", "unsteadiness"],
+      triggers: ["standing up", "turning head", "crowded environments", "stress"]
+    },
+    redFlags: [
+      "Associated with chest pain",
+      "Associated with slurred speech",
+      "Sudden hearing loss",
+      "Focal weakness"
     ]
   },
   {
     id: "headache_migraine",
-    label: "Migraine",
+    label: "Migraine Symptoms",
     dimensions: {
-      onset: ["gradual", "with aura (visual flashes/spots)", "without aura"],
-      location: ["one side of head", "behind one eye", "both sides"],
-      character: ["throbbing", "pulsating", "pounding"],
-      severity: ["moderate", "severe", "incapacitating"],
-      associated: ["nausea/vomiting", "light sensitivity", "sound sensitivity", "smell sensitivity"]
+      phases: ["aura (visual/sensory)", "prodrome", "attack", "postdrome"],
+      associated: ["nausea/vomiting", "light sensitivity", "sound sensitivity", "sensitivity to smells"],
+      location: ["unilateral (one side)", "bilateral"],
+      character: ["pulsating", "pounding", "throbbing"]
     },
     redFlags: [
-      "Sudden change in migraine pattern",
-      "Weakness or numbness on one side",
-      "Difficulty speaking",
-      "Vision loss"
-    ],
-    requiredExams: [
-      "Perform a full neurological exam",
-      "Assess for focal neurological deficits",
-      "Check for meningeal signs (if fever/stiffness)"
+      "First ever migraine-like aura",
+      "Aura lasting > 60 minutes",
+      "Weakness on one side"
     ]
   },
   {
-    id: "headache_cluster",
-    label: "Cluster Headache",
+    id: "headache_tension",
+    label: "Tension Headache Features",
     dimensions: {
-      onset: ["sudden (often at night)", "recurs at same time of day"],
-      location: ["strictly one side", "around or behind one eye"],
-      character: ["piercing", "stabbing", "excruciating"],
-      duration: ["15 minutes to 3 hours", "multiple times per day"],
-      associated: ["red/watery eye", "stuffy/runny nose", "drooping eyelid on same side"]
+      location: ["forehead", "temples", "back of neck/head"],
+      character: ["tight band", "squeezing", "heavy pressure", "non-pulsating"],
+      triggers: ["stress", "poor posture", "hunger"]
     },
     redFlags: [
-      "First ever cluster-like headache",
-      "Atypical duration (more than 3 hours)",
-      "Associated confusion or weakness"
-    ]
-  },
-  {
-    id: "headache_sinus",
-    label: "Sinus Pain/Pressure",
-    dimensions: {
-      location: ["under eyes", "bridge of nose", "forehead", "upper teeth"],
-      character: ["aching", "pressure", "throbbing"],
-      triggers: ["leaning forward", "blowing nose", "cold weather"],
-      associated: ["nasal congestion", "discolored mucus", "reduced smell"]
-    },
-    redFlags: [
-      "Swelling or redness around eyes",
-      "High fever",
-      "Confusion or severe drowsiness",
-      "Vision changes"
-    ]
-  },
-  {
-    id: "head_injury_concussion",
-    label: "Head Injury / Concussion",
-    dimensions: {
-      onset: ["immediately after impact", "delayed (hours/days)"],
-      physical: ["headache", "nausea", "dizziness", "fatigue", "light/noise sensitivity"],
-      cognitive: ["confusion", "feeling 'in a fog'", "memory loss", "difficulty concentrating"],
-      emotional: ["irritability", "sadness", "anxiety", "more emotional than usual"]
-    },
-    redFlags: [
-      "Loss of consciousness",
-      "Repeated vomiting",
-      "Seizures",
-      "Unequal pupil size",
-      "Slurred speech",
-      "Worsening confusion"
-    ],
-    requiredExams: [
-      "Assess GCS score",
-      "Perform a full neurological exam",
-      "Check pupil size and reactivity",
-      "Perform balance testing (e.g., Romberg test)"
-    ]
-  },
-  {
-    id: "head_dizziness_vertigo",
-    label: "Dizziness or Vertigo",
-    dimensions: {
-      onset: ["sudden", "gradual"],
-      type: ["spinning (vertigo)", "lightheadedness", "unsteadiness", "feeling of fainting"],
-      triggers: ["standing up", "turning head", "rolling over in bed", "stress"],
-      duration: ["seconds", "minutes", "hours", "constant"]
-    },
-    redFlags: [
-      "Sudden hearing loss",
-      "Double vision",
-      "Difficulty speaking or swallowing",
-      "Facial drooping or limb weakness"
-    ],
-    requiredExams: [
-      "Perform Dix-Hallpike maneuver (if vertigo)",
-      "Assess for nystagmus",
-      "Check orthostatic blood pressure",
-      "Perform HINTS exam (if acute vestibular syndrome)"
-    ]
-  },
-  {
-    id: "facial_weakness_paralysis",
-    label: "Facial Weakness or Drooping (Bell's Palsy)",
-    dimensions: {
-      onset: ["sudden (over hours/days)", "gradual"],
-      location: ["one side of face", "both sides (rare)"],
-      severity: ["mild weakness", "complete paralysis"],
-      associated: ["difficulty closing eye", "drooling", "change in taste", "pain behind ear"]
-    },
-    redFlags: [
-      "Weakness also in arms or legs (Stroke concern)",
-      "Difficulty speaking or understanding speech",
-      "Severe headache or vision changes",
-      "History of recent trauma"
+      "Doesn't respond to usual treatments",
+      "Increasing frequency",
+      "Associated with personality changes"
     ]
   },
   {
     id: "facial_pain",
     label: "Facial Pain",
     dimensions: {
-      location: ["cheek", "jaw", "around eye", "forehead"],
-      character: ["electric shock-like", "sharp/stabbing", "burning", "dull ache"],
-      triggers: ["touching face", "chewing", "talking", "cold wind"]
+      location: ["cheek", "jaw", "forehead", "around eye"],
+      character: ["electric shock-like", "aching", "burning", "stabbing"],
+      triggers: ["chewing", "talking", "cold wind", "touching face"]
     },
     redFlags: [
-      "Unexplained facial swelling",
+      "Pain with facial swelling",
       "Persistent numbness",
-      "Pain preventing eating/drinking",
-      "New skin lesions in the painful area"
-    ]
-  },
-  {
-    id: "dental_tooth_pain",
-    label: "Toothache or Dental Pain",
-    dimensions: {
-      location: ["upper teeth", "lower teeth", "radiating to jaw/ear"],
-      character: ["sharp", "throbbing", "constant", "only when chewing"],
-      triggers: ["hot or cold food/drink", "sweet food", "biting down"]
-    },
-    redFlags: [
-      "Swelling in the gums or face",
-      "Fever and chills",
-      "Difficulty swallowing or breathing",
-      "Foul taste or discharge in mouth"
-    ]
-  },
-  {
-    id: "jaw_pain_tmj",
-    label: "Jaw Pain (TMJ)",
-    dimensions: {
-      location: ["jaw joint", "in front of ear", "side of face"],
-      character: ["aching", "stiffness", "clicking/popping sound"],
-      triggers: ["chewing", "yawning", "stress/teeth grinding"]
-    },
-    redFlags: [
-      "Jaw locked open or closed",
-      "Severe swelling in the jaw area",
-      "Difficulty breathing or swallowing",
-      "High fever"
-    ]
-  },
-  {
-    id: "neck_swelling_lumps",
-    label: "Neck Swelling or Lumps (Lymph Nodes)",
-    dimensions: {
-      location: ["under jaw", "side of neck", "back of neck", "above collarbone"],
-      character: ["tender/painful", "painless", "soft/rubbery", "hard/fixed"],
-      onset: ["sudden (with infection)", "gradual"]
-    },
-    redFlags: [
-      "Hard, fixed, non-tender lump",
-      "Lump larger than 1 inch",
-      "Rapidly growing lump",
-      "Unexplained weight loss or night sweats",
-      "Difficulty swallowing or persistent hoarseness"
-    ]
-  },
-  {
-    id: "neck_pain_stiffness",
-    label: "Neck Pain or Stiffness",
-    dimensions: {
-      onset: ["sudden", "gradual", "after injury"],
-      location: ["back of neck", "sides of neck", "radiating to shoulders/arms"],
-      character: ["stiff", "aching", "sharp with movement", "burning"],
-      triggers: ["looking up/down", "turning head", "long periods at computer"]
-    },
-    redFlags: [
-      "Fever and severe headache",
-      "Weakness in arms or hands",
-      "Numbness or tingling in extremities",
-      "Loss of bladder/bowel control"
-    ]
-  },
-  {
-    id: "scalp_symptoms",
-    label: "Scalp Tenderness or Sores",
-    dimensions: {
-      character: ["tender to touch", "itching", "burning", "visible sores/crusts"],
-      location: ["localized patch", "entire scalp", "temples"]
-    },
-    redFlags: [
-      "Tenderness at the temples (with headache/vision changes)",
-      "Rapidly spreading rash",
-      "Large, non-healing sores",
-      "Sudden hair loss with inflammation"
+      "Weight loss"
     ]
   },
   {
     id: "facial_swelling",
     label: "Facial Swelling",
     dimensions: {
-      location: ["around eyes", "cheeks", "lips", "entire face"],
-      onset: ["sudden", "gradual"]
+      location: ["eyes/eyelids", "lips", "cheeks", "one side", "both sides"],
+      onset: ["sudden (minutes/hours)", "gradual (days)"]
     },
     redFlags: [
-      "Difficulty breathing or swallowing",
-      "Swelling of the tongue or throat",
-      "Sudden onset after new medication/food"
+      "Swelling of tongue or throat",
+      "Difficulty breathing",
+      "Fever and severe pain"
     ]
   },
   {
-    id: "thyroid_swelling",
-    label: "Thyroid Area Swelling/Pain",
+    id: "facial_asymmetry",
+    label: "Facial Asymmetry / Drooping",
     dimensions: {
-      location: ["front of neck", "lower neck"],
-      associated: ["difficulty swallowing", "voice change", "fast heart rate"]
+      onset: ["sudden (Stroke concern)", "over days (Bell's palsy concern)"],
+      location: ["lower face only", "entire one side (including forehead)"],
+      associated: ["difficulty closing eye", "drooling", "slurred speech"]
+    },
+    redFlags: [
+      "Associated arm/leg weakness",
+      "Difficulty understanding speech",
+      "Severe headache",
+      "Vision changes"
+    ]
+  },
+  {
+    id: "jaw_pain_tmj",
+    label: "Jaw / TMJ Pain",
+    dimensions: {
+      location: ["jaw joint", "radiating to ear", "temples"],
+      character: ["clicking", "popping", "lockjaw", "grinding", "aching"],
+      triggers: ["chewing", "yawning", "stress/clenching"]
+    },
+    redFlags: [
+      "Inability to open mouth",
+      "Severe swelling in the jaw area",
+      "Jaw pain associated with chest pressure (Heart alert)"
+    ]
+  },
+  {
+    id: "facial_numbness",
+    label: "Facial Numbness / Tingling",
+    dimensions: {
+      location: ["lips", "cheek", "one side", "patchy"],
+      onset: ["sudden", "intermittent"]
+    },
+    redFlags: [
+      "Sudden onset (Stroke concern)",
+      "Associated with weakness",
+      "Difficulty swallowing"
+    ]
+  },
+  {
+    id: "facial_twitching",
+    label: "Facial Twitching / Spasms",
+    dimensions: {
+      location: ["eyelid", "corner of mouth", "cheek"],
+      frequency: ["intermittent", "constant"]
+    },
+    redFlags: [
+      "Complete eyelid closure",
+      "Spasms spreading to neck",
+      "Associated with weakness"
+    ]
+  },
+  {
+    id: "neck_pain_stiffness",
+    label: "Neck Pain / Stiffness",
+    dimensions: {
+      onset: ["sudden", "after injury", "gradual"],
+      limitations: ["difficulty touching chin to chest", "pain on turning head"],
+      radiation: ["to shoulders", "down arms", "to back of head"]
+    },
+    redFlags: [
+      "Fever and severe headache",
+      "Inability to flex neck",
+      "Weakness in hands/arms",
+      "Pain following significant trauma"
+    ]
+  },
+  {
+    id: "neck_swelling_masses",
+    label: "Neck Swelling / Masses",
+    dimensions: {
+      location: ["front of neck", "sides of neck", "under jaw"],
+      character: ["hard/fixed", "soft/rubbery", "tender", "painless"],
+      mobility: ["moves with swallowing", "fixed to tissue"]
     },
     redFlags: [
       "Rapidly growing lump",
-      "Hard, fixed lump",
-      "Severe pain in the front of neck"
+      "Hard, painless, fixed node",
+      "Lump above collarbone (Supraclavicular)",
+      "Persistent hoarseness"
     ]
   },
   {
-    id: "head_hoarseness",
-    label: "Hoarseness (Voice changes)",
+    id: "lymph_node_enlargement",
+    label: "Lymph Node Enlargement (Neck)",
     dimensions: {
-      duration: ["acute (days)", "chronic (weeks)"],
-      triggers: ["shouting", "cold/flu", "smoking"]
+      duration: ["recent", "persisting > 3 weeks"],
+      associated: ["sore throat", "fever", "weight loss", "night sweats"]
     },
     redFlags: [
-      "Lasting more than 3 weeks",
+      "Fixed, matted nodes",
+      "Size > 2cm",
+      "Systemic 'B symptoms' (fever/weight loss/sweats)"
+    ]
+  },
+  {
+    id: "limited_neck_movement",
+    label: "Limited Neck Movement",
+    dimensions: {
+      direction: ["rotation (turning)", "flexion (down)", "extension (up)"],
+      reason: ["pain", "mechanical blockage", "muscle spasm"]
+    },
+    redFlags: [
+      "Meningismus (stiff neck with fever/light sensitivity)",
+      "Pain referred to arm/hand"
+    ]
+  },
+  {
+    id: "thyroid_enlargement",
+    label: "Thyroid Enlargement (Goiter symptoms)",
+    dimensions: {
+      sensation: ["pressure in neck", "tightness when wearing collars"],
+      associated: ["difficulty swallowing", "voice changes", "feelings of heat/cold"]
+    },
+    redFlags: [
       "Difficulty breathing",
-      "Lump in the neck"
+      "Rapid growth of neck mass",
+      "Voice hoarseness"
     ]
   },
   {
-    id: "head_dysphagia",
-    label: "Difficulty Swallowing",
+    id: "throat_tightness",
+    label: "Throat Tightness (Neck-related)",
     dimensions: {
-      type: ["solids", "liquids", "both"],
-      location: ["high in throat", "behind breastbone"]
+      character: ["globus sensation (lump)", "constriction", "choking feeling"],
+      triggers: ["stress", "after meals", "constant"]
     },
     redFlags: [
-      "Complete inability to swallow",
-      "Weight loss",
-      "Regurgitation of undigested food"
-    ]
-  },
-  {
-    id: "scalp_rash",
-    label: "Scalp Rash/Lesions",
-    dimensions: {
-      character: ["scaling", "crusting", "oozing", "bumps"],
-      associated: ["hair loss", "itching", "pain"]
-    },
-    redFlags: [
-      "Pus drainage",
-      "Fever with rash",
-      "Rapidly spreading"
-    ]
-  },
-  {
-    id: "neck_spasm",
-    label: "Neck Muscle Tightness/Spasm",
-    dimensions: {
-      location: ["sides of neck", "trapezius area"],
-      triggers: ["stress", "poor posture", "sudden movement"]
-    },
-    redFlags: [
-      "Inability to touch chin to chest",
-      "Weakness in arms"
-    ]
-  },
-  {
-    id: "facial_flushing",
-    label: "Facial Flushing",
-    dimensions: {
-      triggers: ["emotion", "heat", "alcohol", "spicy food"],
-      associated: ["sweating", "racing heart"]
-    },
-    redFlags: [
-      "Associated with hives or wheezing",
-      "Persistent redness with visible blood vessels"
+      "True difficulty swallowing",
+      "Painful swallowing",
+      "Weight loss"
     ]
   }
 ];
 
 export const EAR_MODELS: SymptomModel[] = [
-    {
-        id: "ear_pain",
-        label: "Ear Pain (Otalgia)",
-        dimensions: {
-            location: ["outer ear", "inner ear", "behind the ear"],
-            type: ["sharp", "dull", "throbbing", "stabbing"],
-            severity: ["mild", "moderate", "severe"]
-        },
-        redFlags: [
-            "High fever with severe pain",
-            "Swelling behind the ear (Mastoiditis)",
-            "Facial weakness or paralysis",
-            "Sudden hearing loss"
-        ]
+  {
+    id: "ear_hearing_loss",
+    label: "Hearing Loss",
+    dimensions: {
+      onset: ["sudden (ENT emergency)", "gradual", "fluctuating"],
+      location: ["one ear (unilateral)", "both ears (bilateral)"],
+      character: ["muffled sounds", "difficulty understanding speech", "total loss"],
+      progression: ["improving", "stable", "worsening"]
     },
-    {
-        id: "hearing_loss_sudden",
-        label: "Sudden Hearing Loss",
-        dimensions: {
-            affected_side: ["one ear", "both ears"],
-            onset: ["instantaneous", "over a few hours"],
-            associated_symptoms: ["vertigo", "tinnitus", "fullness"]
-        },
-        redFlags: [
-            "Total loss of hearing in one ear",
-            "Sudden loss after head trauma",
-            "Associated neurological symptoms"
-        ]
+    redFlags: [
+      "Sudden unilateral hearing loss (ENT emergency)",
+      "Hearing loss after head trauma",
+      "Progressive loss in only one ear",
+      "Associated neurological symptoms"
+    ]
+  },
+  {
+    id: "ear_tinnitus",
+    label: "Tinnitus (Ringing/Noise in ears)",
+    dimensions: {
+      type: ["ringing", "buzzing/hissing", "pulsatile (matches heartbeat)", "roaring"],
+      location: ["one ear", "both ears", "inside head"],
+      frequency: ["constant", "intermittent", "only in quiet"]
     },
-    {
-        id: "hearing_loss_gradual",
-        label: "Gradual Hearing Loss",
-        dimensions: {
-            progression: ["slow", "moderate"],
-            environment: ["noisy places", "quiet places"],
-            clarity: ["muffled sounds", "difficulty understanding speech"]
-        },
-        redFlags: [
-            "Progressive loss in only one ear",
-            "Associated with balance problems",
-            "Discharge from the ear"
-        ]
+    redFlags: [
+      "Pulsatile tinnitus (vascular cause suspicion)",
+      "Unilateral tinnitus (one side only)",
+      "Associated with sudden hearing loss or vertigo"
+    ]
+  },
+  {
+    id: "ear_fullness_pressure",
+    label: "Ear Fullness / Pressure",
+    dimensions: {
+      sensation: ["clogged feeling", "pressure sensation", "muffled"],
+      triggers: ["after swimming", "during/after a cold", "altitude changes"],
+      relief: ["improves with yawning/popping", "constant"]
     },
-    {
-        id: "tinnitus",
-        label: "Ringing in Ears (Tinnitus)",
-        dimensions: {
-            sound_type: ["ringing", "buzzing", "hissing", "roaring"],
-            frequency: ["constant", "intermittent"],
-            severity: ["mildly annoying", "disturbing sleep", "debilitating"]
-        },
-        redFlags: [
-            "Pulsatile tinnitus (rhythmic with heartbeat)",
-            "Tinnitus in only one ear",
-            "Associated with sudden hearing loss"
-        ]
+    redFlags: [
+      "Persistent pressure in one ear only",
+      "Associated with vertigo",
+      "Rapid onset with hearing loss"
+    ]
+  },
+  {
+    id: "ear_pain_otalgia",
+    label: "Ear Pain (Otalgia)",
+    dimensions: {
+      location: ["deep inside", "outer ear canal", "behind the ear"],
+      character: ["sharp/stabbing", "dull/aching", "throbbing"],
+      triggers: ["chewing", "pulling on earflap", "spontaneous"]
     },
-    {
-        id: "ear_discharge_fluid",
-        label: "Ear Discharge (Fluid/Pus)",
-        dimensions: {
-            appearance: ["clear", "yellow", "green", "cloudy"],
-            odor: ["foul smelling", "odorless"],
-            consistency: ["thin/watery", "thick/sticky"]
-        },
-        redFlags: [
-            "Discharge after head injury",
-            "Foul-smelling discharge with fever",
-            "Chronic discharge that doesn't resolve"
-        ]
+    redFlags: [
+      "Fever and swelling behind the ear (Mastoiditis)",
+      "Severe pain unresponsive to medication",
+      "Pain in adult with no ear finding (referred pain screening)"
+    ]
+  },
+  {
+    id: "ear_discharge_otorrhea",
+    label: "Ear Discharge (Otorrhea)",
+    dimensions: {
+      character: ["clear/watery", "pus-like (yellow/green)", "bloody", "foul-smelling"],
+      duration: ["acute", "chronic (recurrent)"]
     },
-    {
-        id: "ear_discharge_blood",
-        label: "Bloody Ear Discharge",
-        dimensions: {
-            amount: ["spotting", "significant bleeding"],
-            trigger: ["after trauma", "spontaneous", "after cleaning ear"]
-        },
-        redFlags: [
-            "Bleeding after head trauma (skull fracture risk)",
-            "Bleeding associated with severe pain",
-            "Sudden bleeding with hearing loss"
-        ]
+    redFlags: [
+      "Bloody or clear discharge after head trauma",
+      "Fever + discharge (acute infection complication)",
+      "Painless chronic foul discharge"
+    ]
+  },
+  {
+    id: "ear_itching_irritation",
+    label: "Ear Itching / Irritation",
+    dimensions: {
+      severity: ["mild bothersome", "intense itching"],
+      associated: ["dry skin/flaking", "pain when touched", "swelling"]
     },
-    {
-        id: "ear_fullness",
-        label: "Ear Pressure or Fullness",
-        dimensions: {
-            sensation: ["clogged feeling", "pressure like being on a plane"],
-            timing: ["constant", "comes and goes"],
-            triggers: ["after swimming", "during a cold", "altitude changes"]
-        },
-        redFlags: [
-            "Persistent fullness in one ear",
-            "Associated with dizziness or vertigo",
-            "Sudden onset with hearing loss"
-        ]
+    redFlags: [
+      "Spreading redness to the face",
+      "Complete closure of the ear canal from swelling"
+    ]
+  },
+  {
+    id: "ear_foreign_body_sensation",
+    label: "Foreign Body Sensation",
+    dimensions: {
+      onset: ["sudden (know something's in there)", "vague sensation"],
+      associated: ["hearing loss", "pain", "movement/buzzing (insect)"]
     },
-    {
-        id: "vertigo",
-        label: "Dizziness or Vertigo",
-        dimensions: {
-            sensation: ["spinning", "lightheadedness", "unsteadiness"],
-            triggers: ["moving head", "standing up", "spontaneous"],
-            duration: ["seconds", "minutes", "hours", "days"]
-        },
-        redFlags: [
-            "Vertical nystagmus (eyes moving up/down)",
-            "Unable to walk or stand",
-            "Associated with double vision or slurred speech"
-        ]
+    redFlags: [
+      "Bleeding from the ear",
+      "Severe pain or sudden deafness"
+    ]
+  },
+  {
+    id: "ear_vertigo_vestibular",
+    label: "Vertigo / Balance (Ear-related)",
+    dimensions: {
+      type: ["spinning (vertigo)", "unsteadiness", "gait instability", "motion intolerance"],
+      triggers: ["head movement", "standing up", "spontaneous"],
+      associated: ["nausea/vomiting", "fullness", "hearing change"]
     },
-    {
-        id: "ear_itching",
-        label: "Itchy Ear Canal",
-        dimensions: {
-            severity: ["mild", "intense"],
-            location: ["deep inside", "outer canal"],
-            triggers: ["after swimming", "using hearing aids", "dry skin"]
-        },
-        redFlags: [
-            "Itching with severe pain when touching the outer ear",
-            "Swelling that closes the ear canal",
-            "Spreading redness to the face"
-        ]
+    redFlags: [
+      "Vertigo with double vision or slurred speech (Stroke alert)",
+      "Inability to walk or stand",
+      "Sudden hearing loss with vertigo"
+    ],
+    requiredExams: [
+      "Dix-Hallpike maneuver",
+      "HINTS exam for acute vestibular syndrome",
+      "Assess for nystagmus"
+    ]
+  },
+  {
+    id: "ear_infection_recurrent",
+    label: "Recurrent Ear Infections",
+    dimensions: {
+      frequency: ["multiple times per year", "constant drainage"],
+      associated: ["childhood history", "fever", "hearing decline"]
     },
-    {
-        id: "hyperacusis",
-        label: "Sensitivity to Loud Noises",
-        dimensions: {
-            severity: ["mild discomfort", "painful"],
-            sounds: ["all loud noises", "specific frequencies"],
-            impact: ["avoids social situations", "wears earplugs"]
-        },
-        redFlags: [
-            "Sudden onset after trauma",
-            "Associated with facial nerve weakness",
-            "Rapidly worsening sensitivity"
-        ]
+    redFlags: [
+      "Fever and chills with ear pain",
+      "Swelling or redness behind the ear",
+      "Developmental/speech delay in children"
+    ]
+  },
+  {
+    id: "ear_post_uri",
+    label: "Post-Cold/URI Ear Symptoms",
+    dimensions: {
+      timing: ["started during cold", "started after cold mostly resolved"],
+      sensation: ["fluid sloshing", "muffled", "popping/clicking"]
     },
-    {
-        id: "ear_redness",
-        label: "Redness of the Outer Ear",
-        dimensions: {
-            location: ["earlobe", "cartilage part", "whole ear"],
-            temperature: ["hot to touch", "normal"],
-            appearance: ["bright red", "pinkish"]
-        },
-        redFlags: [
-            "Redness, swelling, and severe pain of the cartilage (Perichondritis)",
-            "Spreading redness to the cheek",
-            "Fever and chills"
-        ]
-    },
-    {
-        id: "ear_swelling",
-        label: "Swelling of the Ear",
-        dimensions: {
-            location: ["behind the ear", "ear canal", "outer ear"],
-            onset: ["sudden", "gradual"],
-            firmness: ["soft/fluctuant", "hard/firm"]
-        },
-        redFlags: [
-            "Swelling behind the ear pushing the ear forward (Mastoiditis)",
-            "Swelling that blocks the ear canal completely",
-            "Rapidly expanding swelling after trauma"
-        ]
-    }
+    redFlags: [
+      "Severe pain returning after getting better",
+      "High fever"
+    ]
+  },
+  {
+    id: "ear_hearing_fluctuation",
+    label: "Hearing Fluctuation",
+    dimensions: { timing: ["sudden drops", "random variability"], associated: ["vertigo", "tinnitus", "ear fullness (Ménière's concern)"] }
+  },
+  {
+    id: "ear_noise_sensitivity",
+    label: "Noise Sensitivity (Hyperacusis)",
+    dimensions: { severity: ["mildly annoying", "painful"], associated: ["tinnitus", "headache"] }
+  }
 ];
 
 export const EYE_MODELS: SymptomModel[] = [
   {
-    id: "vision_blurring",
+    id: "eye_vision_blurred",
     label: "Blurred Vision",
     dimensions: {
       onset: ["sudden", "gradual"],
-      eye: ["one eye", "both eyes"],
-      severity: ["mild", "moderate", "severe"]
+      location: ["one eye", "both eyes"],
+      character: ["all the time", "comes and goes", "difficulty focusing"]
     },
     redFlags: [
-      "Sudden loss of vision",
-      "Pain with eye movement",
-      "Seeing flashes or floaters",
-      "Associated headache or nausea"
+      "Sudden vision loss (retinal/vascular emergency)",
+      "Severe eye pain",
+      "Associated with headache and nausea"
     ]
   },
   {
-    id: "eye_pain",
-    label: "Eye Pain",
+    id: "eye_vision_loss_sudden",
+    label: "Sudden Vision Loss",
     dimensions: {
-      location: ["on surface", "behind eye", "deep ache"],
-      character: ["sharp", "gritty", "throbbing"],
-      triggers: ["light", "eye movement", "touch"]
+      onset: ["instantaneous", "over minutes", "over hours"],
+      location: ["one eye", "both eyes", "part of visual field"],
+      character: ["complete darkness", "graying out", "blurring"]
     },
     redFlags: [
-      "Severe pain with nausea/vomiting",
+      "Requires immediate emergency evaluation",
+      "Associated with eye pain",
+      "Associated with neurological symptoms (weakness/speech)"
+    ]
+  },
+  {
+    id: "eye_vision_loss_gradual",
+    label: "Gradual Vision Loss",
+    dimensions: {
+      progression: ["over weeks", "over months", "over years"],
+      character: ["central blurring", "peripheral loss (tunnel vision)", "night vision problems"]
+    },
+    redFlags: [
+      "Progressive worsening that doesn't stabilize",
+      "Pain associated with movement"
+    ]
+  },
+  {
+    id: "eye_diplopia",
+    label: "Double Vision (Diplopia)",
+    dimensions: {
+      type: ["horizontal", "vertical", "diagonal"],
+      condition: ["goes away if one eye covered", "persists with one eye covered"],
+      onset: ["sudden", "gradual"]
+    },
+    redFlags: [
+      "Sudden onset double vision",
+      "Associated with neurological symptoms (brainstem pathology)",
+      "New pupil size difference"
+    ]
+  },
+  {
+    id: "eye_pain_ocular",
+    label: "Eye Pain (Ocular Pain)",
+    dimensions: {
+      location: ["on the surface", "deep inside", "behind the eye"],
+      character: ["burning", "stabbing/sharp", "aching", "pressure"],
+      triggers: ["eye movement", "light", "touch"]
+    },
+    redFlags: [
+      "Eye pain + red eye + vision loss (acute glaucoma / uveitis)",
       "Pain after chemical exposure",
-      "Inability to keep eye open"
+      "Deep, boring pain preventing sleep"
     ]
   },
   {
-    id: "eye_redness",
-    label: "Redness (Bloodshot eyes)",
+    id: "eye_foreign_body",
+    label: "Foreign Body Sensation",
     dimensions: {
-      pattern: ["localized spot", "generalized redness"],
-      onset: ["sudden", "gradual"],
-      eye: ["one eye", "both eyes"]
+      character: ["gritty/sandy", "something stuck"],
+      associated: ["tearing", "redness", "pain with blinking"]
     },
     redFlags: [
-      "Pain associated with redness",
-      "Vision changes with redness",
-      "History of recent eye surgery"
+      "Known trauma with metal/glass",
+      "Reduced vision",
+      "Pupil looking irregular"
     ]
   },
   {
-    id: "eye_itching",
-    label: "Itching/Burning",
+    id: "eye_photophobia",
+    label: "Light Sensitivity (Photophobia)",
     dimensions: {
-      timing: ["seasonal", "constant", "after screen use"],
-      triggers: ["allergens", "contact lenses", "wind/smoke"]
-    },
-    redFlags: [
-      "Yellow or green discharge",
-      "Severe eyelid swelling"
-    ]
-  },
-  {
-    id: "dry_eyes",
-    label: "Dry Eyes",
-    dimensions: {
-      character: ["stinging", "sandy feeling", "fatigued"],
-      timing: ["worse at night", "worse in morning"]
-    },
-    redFlags: [
-      "Associated dry mouth/joint pain",
-      "Inability to produce any tears"
-    ]
-  },
-  {
-    id: "watery_eyes",
-    label: "Excessive Tearing",
-    dimensions: {
-      triggers: ["cold air", "reading", "irritants"],
-      eye: ["one eye", "both eyes"]
-    },
-    redFlags: [
-      "Painful lump near tear duct",
-      "Blood-tinged tears"
-    ]
-  },
-  {
-    id: "photophobia",
-    label: "Light Sensitivity",
-    dimensions: {
-      severity: ["mild discomfort", "need to wear sunglasses indoors"],
+      severity: ["mild discomfort", "need sunglasses indoors", "painful"],
       onset: ["sudden", "chronic"]
     },
     redFlags: [
@@ -585,202 +527,323 @@ export const EYE_MODELS: SymptomModel[] = [
     ]
   },
   {
-    id: "double_vision",
-    label: "Double Vision (Diplopia)",
+    id: "eye_redness_inflammation",
+    label: "Red Eye / Inflammation",
     dimensions: {
-      type: ["horizontal", "vertical"],
-      condition: ["persists when one eye closed", "goes away when one eye closed"]
+      location: ["across the white part", "localized spot", "eyelids"],
+      sensation: ["itching", "irritation", "burning"],
+      associated: ["discharge", "swelling"]
     },
     redFlags: [
-      "Sudden onset double vision",
-      "Associated weakness or slurred speech",
-      "New pupil size difference"
+      "Vision changes with redness",
+      "Pain with redness",
+      "Cloudy cornea"
     ]
   },
   {
-    id: "eye_flashes",
-    label: "Flashes of Light",
+    id: "eye_swelling",
+    label: "Eye / Eyelid Swelling",
     dimensions: {
-      character: ["streaks", "lightning bolts", "stars"],
-      frequency: ["occasional", "frequent"]
+      location: ["eyelid only (Ptosis)", "entire eye area", "protruding eye (Proptosis)"],
+      onset: ["sudden", "gradual"]
     },
     redFlags: [
-      "Sudden increase in frequency",
-      "Associated with 'curtain' over vision",
+      "Proptosis (bulging eye) + pain (orbital infection / tumor concern)",
+      "Inability to move the eye",
+      "Vision loss"
+    ]
+  },
+  {
+    id: "eye_discharge_tearing",
+    label: "Eye Discharge / Tear Changes",
+    dimensions: {
+      character: ["excessive tearing (epiphora)", "purulent (pus-like)", "clear/watery", "sticky/crusty"],
+      timing: ["worse in morning", "constant"]
+    },
+    redFlags: [
+      "Rapidly increasing swelling and pain",
+      "Reduced vision"
+    ]
+  },
+  {
+    id: "eye_dryness",
+    label: "Dry Eyes",
+    dimensions: {
+      character: ["stinging", "sandy feeling", "fatigued"],
+      associated: ["dry mouth/joint pain (Sjögren's screening)", "worse with screen use"]
+    },
+    redFlags: [
+      "Inability to produce any tears",
+      "Corneal cloudiness"
+    ]
+  },
+  {
+    id: "eye_movement_issues",
+    label: "Eye Movement / Functional Issues",
+    dimensions: {
+      type: ["pain with movement", "restricted movement", "misalignment (strabismus)", "uncontrolled jiggling (nystagmus)"],
+      location: ["one eye", "both eyes"]
+    },
+    redFlags: [
+      "Sudden onset misalignment",
+      "Associated with neurological deficits",
+      "Pain with movement + vision loss"
+    ]
+  },
+  {
+    id: "eye_neuro_ophthalmic",
+    label: "Neuro-ophthalmic Symptoms",
+    dimensions: {
+      type: ["visual field loss", "tunnel vision", "blind spots (scotomas)", "transient obscurations"],
+      character: ["sudden", "flickering", "blackout"]
+    },
+    redFlags: [
+      "Sudden onset visual field loss",
+      "Associated with slurred speech or weakness"
+    ]
+  },
+  {
+    id: "eye_flashes_floaters",
+    label: "Flashes & Floaters",
+    dimensions: {
+      type: ["flashes of light (photopsia)", "floaters (spots/webs)", "shadows"],
+      frequency: ["shower of many new ones", "stable occasional spots"]
+    },
+    redFlags: [
+      "Flashes + floaters (retinal detachment risk)",
+      "Sudden 'curtain' or veil over vision",
       "Recent eye trauma"
     ]
   },
   {
-    id: "eye_floaters",
-    label: "Floaters (Spots/Webs)",
-    dimensions: {
-      character: ["black dots", "cobwebs", "shadows"],
-      movement: ["follows eye movement"]
-    },
-    redFlags: [
-      "Shower of many new floaters",
-      "Flashes of light with floaters"
-    ]
-  },
-  {
-    id: "eye_discharge",
-    label: "Eye Discharge",
-    dimensions: {
-      color: ["clear/watery", "yellow", "green", "white"],
-      consistency: ["sticky", "crusty", "thick"]
-    },
-    redFlags: [
-      "Severe pain",
-      "Lids stuck together in morning",
-      "Reduced vision"
-    ]
+    id: "eye_strain",
+    label: "Eye Strain / Fatigue",
+    dimensions: { triggers: ["screen use", "reading", "night driving"], relief: ["resting eyes"] }
   }
 ];
 
 export const THROAT_MODELS: SymptomModel[] = [
-    {
-        id: "sore_throat",
-        label: "Sore Throat",
-        dimensions: {
-            severity: ["mild", "moderate", "severe"],
-            onset: ["sudden", "gradual"],
-            triggers: ["swallowing", "talking", "morning only"],
-            cough: ["absent", "present"],
-            nodes: ["swollen/tender", "normal"],
-            fever: ["present (>38C)", "absent"],
-            tonsils: ["exudates/swelling", "normal"]
-        },
-        redFlags: [
-            "Difficulty breathing or swallowing saliva",
-            "Drooling (inability to swallow)",
-            "Muffled 'hot potato' voice",
-            "Visible swelling of the neck or airway"
-        ]
+  // NASAL SYMPTOMS
+  {
+    id: "nasal_congestion",
+    label: "Nasal Congestion (Stuffy Nose)",
+    dimensions: {
+      location: ["one side", "both sides", "alternating"],
+      timing: ["morning", "night", "worse when lying down", "seasonal"],
+      duration: ["acute (new)", "chronic (long-term)"]
     },
-    {
-        id: "throat_dysphagia",
-        label: "Difficulty Swallowing (Dysphagia)",
-        dimensions: {
-            type: ["solids", "liquids", "both"],
-            location: ["high in throat", "behind breastbone"],
-            frequency: ["intermittent", "progressive/worsening"]
-        },
-        redFlags: [
-            "Total inability to swallow",
-            "Weight loss with swallowing difficulty",
-            "Regurgitation of undigested food",
-            "Painful swallowing"
-        ]
+    redFlags: [
+      "Facial pain or pressure",
+      "Persistent blockage in one side only",
+      "Associated with high fever"
+    ]
+  },
+  {
+    id: "rhinorrhea",
+    label: "Runny Nose (Rhinorrhea)",
+    dimensions: {
+      character: ["clear/watery", "thick/discolored (yellow/green)", "bloody", "pus-like"],
+      trigger: ["cold air", "eating", "allergens", "irritants"],
+      associated: ["sneezing", "nasal itching", "postnasal drip"]
     },
-    {
-        id: "odynophagia",
-        label: "Painful Swallowing (Odynophagia)",
-        dimensions: {
-            severity: ["mild", "sharp/stabbing", "intense"],
-            location: ["one side", "both sides"],
-            triggers: ["swallowing saliva", "swallowing food"]
-        },
-        redFlags: [
-            "Severe pain preventing any oral intake",
-            "Associated with high fever and chills",
-            "Unilateral (one-sided) severe pain"
-        ]
-    },
-    {
-        id: "throat_hoarseness",
-        label: "Hoarseness or Voice Change",
-        dimensions: {
-            duration: ["under 2 weeks", "over 2 weeks"],
-            quality: ["raspy", "breathy", "strained", "weak"],
-            timing: ["worse at end of day", "worse in morning"]
-        },
-        redFlags: [
-            "Hoarseness lasting more than 3 weeks (especially in smokers)",
-            "Difficulty breathing (Stridor)",
-            "Lump in the neck"
-        ]
-    },
-    {
-        id: "globus_sensation",
-        label: "Lump in Throat Sensation",
-        dimensions: {
-            feeling: ["stuck object", "tightness", "mucus clearing"],
-            relation_to_meals: ["better while eating", "worse after eating"],
-            triggers: ["stress/anxiety", "acid reflux"]
-        },
-        redFlags: [
-            "Actual difficulty swallowing food",
-            "Pain associated with the sensation",
-            "Weight loss"
-        ]
-    },
-    {
-        id: "frequent_throat_clearing",
-        label: "Frequent Throat Clearing",
-        dimensions: {
-            triggers: ["after eating", "when lying down", "constant"],
-            associated_symptoms: ["mucus sensation", "tickle in throat"]
-        },
-        redFlags: [
-            "Associated with chronic cough",
-            "Change in voice quality",
-            "Feeling of food getting stuck"
-        ]
-    },
-    {
-        id: "throat_dryness",
-        label: "Throat Dryness",
-        dimensions: {
-            severity: ["mildly scratchy", "very dry/parched"],
-            timing: ["morning", "night", "constant"],
-            triggers: ["mouth breathing", "dry air", "dehydration"]
-        },
-        redFlags: [
-            "Dryness associated with severe thirst (Diabetes risk)",
-            "Associated with dry eyes and dry mouth (Sjogren's risk)",
-            "Inability to produce saliva"
-        ]
-    },
-    {
-        id: "throat_itching",
-        label: "Throat Itching or Tickle",
-        dimensions: {
-            triggers: ["allergens", "cold air", "talking"],
-            severity: ["mild irritation", "triggers coughing fits"]
-        },
-        redFlags: [
-            "Rapid onset with lip or tongue swelling (Anaphylaxis risk)",
-            "Associated with wheezing or shortness of breath",
-            "Hives or rash"
-        ]
-    },
-    {
-        id: "swollen_neck_glands",
-        label: "Swollen Glands in Neck",
-        dimensions: {
-            location: ["under jaw", "side of neck", "back of neck"],
-            consistency: ["soft/tender", "hard/painless"],
-            mobility: ["moves easily", "fixed/stuck"]
-        },
-        redFlags: [
-            "Hard, painless, and fixed lump",
-            "Rapidly growing lump",
-            "Night sweats and unexplained weight loss"
-        ]
-    },
-    {
-        id: "bad_breath",
-        label: "Bad Breath (Halitosis)",
-        dimensions: {
-            onset: ["recent", "chronic"],
-            associated_symptoms: ["bad taste in mouth", "white spots on tonsils"]
-        },
-        redFlags: [
-            "Fecal odor (bowel obstruction risk)",
-            "Fruity odor (Diabetic ketoacidosis risk)",
-            "Ammonia-like odor (Kidney issue risk)"
-        ]
+    redFlags: [
+      "Clear fluid after head trauma (CSF fluid risk)",
+      "Foul-smelling discharge from one side only"
+    ]
+  },
+  {
+    id: "postnasal_drip",
+    label: "Postnasal Drip",
+    dimensions: {
+      sensation: ["mucus in back of throat", "frequent clearing", "tickle"],
+      associated: ["cough", "sore throat", "hoarseness"]
     }
+  },
+  {
+    id: "smell_disturbance",
+    label: "Loss or Reduced Smell (Anosmia/Hyposmia)",
+    dimensions: {
+      onset: ["sudden", "gradual"],
+      character: ["total loss (anosmia)", "reduced sensation (hyposmia)"],
+      associated: ["taste disturbance"]
+    },
+    redFlags: [
+      "Sudden onset without nasal symptoms",
+      "Associated with neurological changes"
+    ]
+  },
+  {
+    id: "epistaxis",
+    label: "Nosebleed (Epistaxis)",
+    dimensions: {
+      frequency: ["first time", "recurrent"],
+      severity: ["minor spotting", "heavy flow", "uncontrollable"],
+      trigger: ["spontaneous", "picking/trauma", "dry air"]
+    },
+    redFlags: [
+      "Uncontrollable bleeding",
+      "Recurrent or very heavy bleeding (coagulopathy / tumor suspicion)",
+      "Bleeding from both nostrils or posterior throat"
+    ]
+  },
+
+  // MOUTH SYMPTOMS
+  {
+    id: "mouth_ulcers",
+    label: "Mouth Ulcers / Sores",
+    dimensions: {
+      location: ["tongue", "inner cheek", "gums", "lips"],
+      character: ["single ulcer", "multiple/clusters", "painful", "painless"],
+      duration: ["heals within 2 weeks", "persists > 3 weeks"]
+    },
+    redFlags: [
+      "Ulcers persisting > 3 weeks (malignancy screening)",
+      "Associated with systemic symptoms (fever/rash/weight loss)",
+      "Recurrent aggressive ulcers (autoimmune / HIV suspicion)"
+    ]
+  },
+  {
+    id: "oral_pain_burning",
+    label: "Oral Pain / Burning Sensation",
+    dimensions: {
+      location: ["tongue", "roof of mouth", "generalized"],
+      character: ["burning sensation", "sharp pain", "soreness"],
+      associated: ["dry mouth", "taste changes"]
+    }
+  },
+  {
+    id: "gum_bleeding_swelling",
+    label: "Gum Issues (Bleeding/Swelling)",
+    dimensions: {
+      type: ["bleeding when brushing", "painful/swollen gums", "receding gums"],
+      associated: ["tooth pain", "bad breath"]
+    },
+    redFlags: [
+      "Severe spontaneous bleeding",
+      "Loose teeth without trauma"
+    ]
+  },
+  {
+    id: "xerostomia_dry_mouth",
+    label: "Dry Mouth (Xerostomia)",
+    dimensions: {
+      timing: ["morning/waking", "constant", "only when talking"],
+      associated: ["frequent thirst", "difficulty speaking", "burning tongue"]
+    },
+    redFlags: [
+      "Associated with dry eyes and joint pain (Sjögren's risk)",
+      "Significant difficulty swallowing due to dryness"
+    ]
+  },
+  {
+    id: "halitosis",
+    label: "Bad Breath (Halitosis)",
+    dimensions: {
+      character: ["chronic", "recent change"],
+      associated: ["bad taste (dysgeusia)", "tonsil stones", "postnasal drip"]
+    },
+    redFlags: [
+      "Fecal or fruity odor (Systemic issues alert)"
+    ]
+  },
+  {
+    id: "taste_disturbance",
+    label: "Taste Disturbance (Dysgeusia)",
+    dimensions: {
+      character: ["metallic taste", "bitter", "loss of taste", "reduced taste"],
+      onset: ["sudden", "gradual"]
+    }
+  },
+
+  // THROAT SYMPTOMS
+  {
+    id: "sore_throat",
+    label: "Sore Throat",
+    dimensions: {
+      severity: ["mild irritation/scratchy", "moderate", "severe pain"],
+      associated: ["fever", "cough", "white patches/exudates", "swollen tonsils", "tender neck nodes"],
+      onset: ["sudden", "gradual"]
+    },
+    redFlags: [
+      "Drooling or inability to swallow saliva (Epiglottitis alert)",
+      "Muffled 'hot potato' voice",
+      "Difficulty breathing or stridor",
+      "Severe neck swelling"
+    ]
+  },
+  {
+    id: "throat_dysphagia",
+    label: "Difficulty Swallowing (Dysphagia)",
+    dimensions: {
+      type: ["difficulty with solids", "difficulty with liquids", "choking/coughing when swallowing"],
+      location: ["high in throat", "behind breastbone"],
+      onset: ["sudden/acute", "gradual and progressive"]
+    },
+    redFlags: [
+      "Progressive dysphagia + weight loss (malignancy suspicion)",
+      "Sudden inability to swallow anything",
+      "Frequent aspiration (food/liquid going into lungs)"
+    ]
+  },
+  {
+    id: "odynophagia",
+    label: "Painful Swallowing (Odynophagia)",
+    dimensions: {
+      severity: ["sharp pain", "intense burning"],
+      location: ["central", "one-sided"]
+    },
+    redFlags: [
+      "Severe pain preventing oral intake",
+      "Pain localized to one side of the throat"
+    ]
+  },
+  {
+    id: "throat_hoarseness",
+    label: "Hoarseness or Voice Change",
+    dimensions: {
+      duration: ["under 1 week", "1-3 weeks", "over 3 weeks"],
+      quality: ["raspy", "breathy/weak", "strained", "muffled"]
+    },
+    redFlags: [
+      "Hoarseness persisting > 3 weeks (laryngeal cancer rule-out)",
+      "Difficulty breathing",
+      "Neck mass associated with voice change"
+    ]
+  },
+  {
+    id: "throat_tightness_globus",
+    label: "Throat Tightness / foreign body sensation",
+    dimensions: {
+      character: ["lump in throat (globus)", "constriction", "something stuck"],
+      relation_to_food: ["better while eating", "worse after eating", "constant"]
+    },
+    redFlags: [
+      "Actual difficulty swallowing food",
+      "Pain associated with the sensation",
+      "Weight loss"
+    ]
+  },
+  {
+    id: "nasal_sneezing",
+    label: "Sneezing",
+    dimensions: { frequency: ["occasional", "frequent bursts"], triggers: ["dust", "pollen", "bright light", "spontaneous"] }
+  },
+  {
+    id: "nasal_dryness",
+    label: "Nasal Dryness",
+    dimensions: { severity: ["mild", "severe with crusting"], associated: ["nosebleeds"] }
+  },
+  {
+    id: "oral_tooth_pain",
+    label: "Tooth Pain",
+    dimensions: { location: ["upper jaw", "lower jaw", "specific tooth"], character: ["sharp", "throbbing", "sensitivity to cold/heat"] }
+  },
+  {
+    id: "oral_tongue_swelling",
+    label: "Tongue Swelling / Pain",
+    dimensions: { onset: ["sudden (hours)", "gradual"], associated: ["difficulty speaking", "difficulty swallowing"] },
+    redFlags: ["Rapid swelling with difficulty breathing (Anaphylaxis risk)"]
+  }
 ];
 
 export const BACK_MODELS: SymptomModel[] = [
@@ -903,923 +966,1855 @@ export const BACK_MODELS: SymptomModel[] = [
 ];
 
 export const LUNGS_MODELS: SymptomModel[] = [
+  // BREATHING SYMPTOMS
   {
-    id: "cough_dry",
-    label: "Dry Cough",
+    id: "lungs_dyspnea",
+    label: "Shortness of Breath (Dyspnea)",
     dimensions: {
-      onset: ["sudden", "gradual"],
-      duration: ["acute (<3 weeks)", "chronic (>8 weeks)"],
-      triggers: ["cold air", "exercise", "lying down"]
+      onset: ["sudden (Emergency)", "gradual over days", "chronic"],
+      triggers: ["at rest", "light activity", "heavy exertion (DOE)", "no clear trigger"],
+      severity: ["cannot speak in full sentences", "affects normal conversation", "only with exercise"]
     },
     redFlags: [
-      "Coughing up blood",
-      "Shortness of breath",
-      "Unexplained weight loss"
-    ]
-  },
-  {
-    id: "lungs_shortness_of_breath",
-    label: "Shortness of Breath",
-    dimensions: {
-      onset: ["sudden (Emergency!)", "gradual"],
-      triggers: ["exertion", "at rest", "lying flat", "allergic trigger"],
-      severity: ["cannot speak full sentences", "worse with activity", "mild"]
-    },
-    redFlags: [
-      "Bluish tint to lips/nails (Emergency)",
-      "Inability to speak in full sentences",
-      "Severe chest pain",
-      "Stridor (high-pitched breathing sound)"
+      "Sudden severe dyspnea (PE / Asthma attack / Pneumothorax alert)",
+      "Inability to speak sentences",
+      "Bluish tint to lips/fingernails (Cyanosis)",
+      "Silent chest (no air movement heard)"
     ],
     requiredExams: [
-      "Auscultate for breath sounds (wheezing, crackles)",
-      "Assess for use of accessory muscles",
+      "Auscultation for wheezing, crackles, or absent breath sounds",
       "Check oxygen saturation",
-      "Perform chest percussion"
+      "Assess for use of accessory muscles"
     ]
   },
   {
-    id: "cough_productive",
-    label: "Wet/Productive Cough",
+    id: "lungs_noisy_breathing",
+    label: "Noisy Breathing / Stridor",
+    dimensions: { character: ["whistling (Stridor)", "snoring (Stertor)", "rattling"], associated: ["difficulty swallowing", "hoarseness"] },
+    redFlags: ["Sudden stridor (Airway emergency)"]
+  },
+  {
+    id: "lungs_rapid_breathing",
+    label: "Rapid Breathing / Air Hunger",
+    dimensions: { character: ["gasping", "shallow but fast", "feeling of not enough air"], associated: ["anxiety", "chest pain"] }
+  },
+  {
+    id: "lungs_positional_breathing",
+    label: "Positional Breathing Issues (Orthopnea/PND)",
     dimensions: {
-      sputum_color: ["clear/white", "yellow/green", "rusty/brown", "pink/frothy"],
-      duration: ["acute", "chronic"]
+      type: ["difficulty breathing when flat (Orthopnea)", "waking up gasping at night (PND)"],
+      severity: ["needs 1 pillow", "needs 2+ pillows", "must sleep in chair"]
     },
     redFlags: [
-      "Rusty or blood-streaked phlegm",
-      "Pink, frothy phlegm",
-      "High fever and chills"
+      "Orthopnea + leg/ankle edema (Heart failure suspicion)",
+      "Sudden waking with extreme air hunger and frothy sputum",
+      "Worsening weight gain with these symptoms"
     ]
   },
   {
-    id: "wheezing",
-    label: "Wheezing (Whistling sound)",
+    id: "lungs_tachypnea_air_hunger",
+    label: "Rapid Breathing / Air Hunger",
     dimensions: {
-      timing: ["breathing in", "breathing out", "both"],
-      triggers: ["allergens", "cold air", "exercise", "at night"]
+      character: ["feeling 'air hunger'", "rapid/shallow breathing (Tachypnea)", "gasping"],
+      associated: ["anxiety/panic", "chest tightness"]
     },
     redFlags: [
-      "Severe difficulty breathing",
-      "Silent chest (no air moving)",
-      "Associated with hives or lip swelling"
+      "Breathing rate > 30 bpm",
+      "Confusion or altered mental state",
+      "Central cyanosis"
     ]
   },
   {
-    id: "pleuritic_chest_pain",
-    label: "Pain when Breathing",
+    id: "lungs_noisy_breathing_variant",
+    label: "Noisy Breathing (Stridor/Wheezing)",
     dimensions: {
-      character: ["sharp", "stabbing"],
-      triggers: ["deep breath", "coughing", "sneezing"]
+      type: ["high-pitched on inspiration (Stridor)", "whistling on expiration (Wheezing)", "snoring/gurgling"],
+      associated: ["cough", "throat tightness"]
     },
     redFlags: [
-      "Sudden sharp pain with shortness of breath",
-      "Fever and productive cough",
-      "Recent leg surgery or long travel"
+      "Stridor (severe upper airway obstruction alert)",
+      "Drooling or inability to swallow with noisy breathing",
+      "Rapidly worsening obstruction"
     ]
   },
+
+  // COUGH SYMPTOMS
   {
-    id: "tachypnea",
-    label: "Rapid Breathing",
+    id: "lungs_cough",
+    label: "Cough",
     dimensions: {
-      onset: ["sudden", "gradual"],
-      context: ["at rest", "after light activity"]
+      character: ["dry/hacking", "productive (wet/phlegm)", "whooping/paroxysmal", "barking"],
+      duration: ["acute (< 3 weeks)", "subacute (3-8 weeks)", "chronic (> 8 weeks)"],
+      timing: ["nocturnal (at night)", "morning only", "post-viral sequence", "constant"]
     },
     redFlags: [
-      "Cannot speak in full sentences",
-      "Rate > 30 breaths per minute",
-      "Confusion or lethargy"
+      "Coughing up significant blood (Hemoptysis)",
+      "High fever and chills",
+      "Significant unexplained weight loss",
+      "New cough in long-term smoker"
     ]
   },
+
+  // SPUTUM / SECRETIONS
   {
-    id: "hemoptysis",
-    label: "Coughing up Blood",
+    id: "lungs_sputum",
+    label: "Sputum / Phlegm Production",
     dimensions: {
-      amount: ["streaks", "teaspoons", "large amounts"],
-      frequency: ["once", "repeatedly"]
+      character: ["clear/white", "yellow/green (purulent)", "thick/tenacious", "foul-smelling", "pink/frothy"],
+      amount: ["small/streaks", "significant teaspoons", "cups per day"]
     },
     redFlags: [
-      "Large volume of blood (Emergency)",
-      "Weight loss and night sweats",
-      "History of smoking or cancer"
+      "Blood-streaked or frank blood (TB / Cancer / PE alert)",
+      "Pink, frothy sputum (Pulmonary edema alert)",
+      "Foul-smelling 'anchovy paste' or similar unique odors"
     ]
   },
+
+  // CHEST SOUNDS & SENSATION
   {
-    id: "chest_tightness",
-    label: "Chest Tightness",
+    id: "lungs_chest_tightness_congestion",
+    label: "Chest Tightness / Congestion",
     dimensions: {
-      timing: ["constant", "intermittent", "with exercise"],
-      character: ["band-like", "heavy weight", "squeezing"]
+      character: ["squeezing sensation", "heavy weight", "congestion/rattle", "internal crackling"],
+      triggers: ["cold air", "exercise", "allergens"]
     },
     redFlags: [
-      "Radiating to arm or jaw",
-      "Associated with severe shortness of breath",
+      "Radiating to neck/arm/jaw",
+      "Associated with profuse sweating (Diaphoresis)",
       "Not relieved by rest"
     ]
   },
+
+  // CHEST DISCOMFORT
   {
-    id: "sleep_apnea",
-    label: "Snoring / Sleep Apnea",
+    id: "lungs_pleuritic_pain",
+    label: "Pain with Breathing (Pleuritic)",
     dimensions: {
-      character: ["loud snoring", "gasping/choking", "silent pauses"],
-      associated: ["daytime sleepiness", "morning headaches"]
+      character: ["sharp/stabbing", "catches when breathing in", "localized"],
+      triggers: ["deep breath", "coughing", "sneezing", "movement"]
     },
     redFlags: [
-      "Observed stopping breathing during sleep",
-      "Falling asleep while driving"
+      "Pleuritic chest pain + sudden dyspnea (Pulmonary Embolism alert)",
+      "Pleuritic pain + fever + productive cough (Pneumonia alert)",
+      "Trauma to chest preceding pain"
+    ]
+  },
+  {
+    id: "lungs_chest_burning_pressure",
+    label: "Chest Burning / Pressure",
+    dimensions: {
+      character: ["burning sensation", "pressure/fullness", "generalized ache"],
+      relation_to_meals: ["worse after eating", "unrelated to food"],
+      relation_to_exertion: ["comes on with walking", "stable at rest"]
+    }
+  },
+
+  // INFECTIOUS / INFLAMMATORY
+  {
+    id: "lungs_infections_recurrent",
+    label: "Recurrent Chest Infections",
+    dimensions: {
+      frequency: ["multiple times per year", "lingering 'colds' that go to chest"],
+      associated: ["smoker history", "chronic fatigue", "fever"]
+    },
+    redFlags: [
+      "Recurrent pneumonia in the same lung area",
+      "Night sweats and weight loss"
     ]
   }
 ];
 
 export const HEART_MODELS: SymptomModel[] = [
+  // CHEST SYMPTOMS
   {
-    id: "heart_chest_pain",
+    id: "heart_chest_pain_pressure",
     label: "Chest Pain or Pressure",
     dimensions: {
-      onset: ["sudden", "gradual"],
-      character: ["heavy pressure", "sharp", "stabbing", "burning"],
-      location: ["center of chest", "left side", "radiating to arm/jaw"]
+      location: ["central (retrosternal)", "left-sided", "radiating to left arm", "radiating to jaw/neck", "radiating to back"],
+      character: ["crushing/heavy pressure", "tightness/squeezing", "sharp/stabbing", "burning sensation"],
+      onset: ["sudden", "gradual", "with exertion", "at rest"],
+      duration: ["seconds", "minutes (persistent)", "hours"]
     },
     redFlags: [
-      "Pain radiating to jaw, neck, or left arm",
-      "Sweating and nausea (cold sweat)",
-      "Shortness of breath",
-      "Pain lasting more than 15 minutes"
+      "Acute crushing chest pain (MI suspicion)",
+      "Chest pain + radiation + profuse sweating (Diaphoresis)",
+      "Pain not relieved by rest or nitroglycerin (if prescribed)",
+      "Pain associated with severe nausea/vomiting"
     ],
     requiredExams: [
-      "Perform a full cardiovascular exam",
-      "Auscultate for heart sounds and murmurs",
-      "Check for peripheral edema",
-      "Assess for jugular venous distension (JVD)"
+      "Check blood pressure and heart rate",
+      "Auscultate for murmurs or rubs",
+      "Assess for JVD",
+      "Check peripheral pulses"
     ]
   },
   {
-    id: "palpitations",
-    label: "Palpitations (Racing Heart)",
+    id: "heart_pleuritic_pain",
+    label: "Pleuritic Chest Pain (Cardiac-related)",
     dimensions: {
-      character: ["fluttering", "skipping beats", "pounding", "racing"],
-      triggers: ["stress", "caffeine", "exercise", "at rest"]
+      character: ["sharp/stabbing", "worse with deep breath", "worse when lying flat"],
+      relief: ["improves when leaning forward (Pericarditis screening)"]
     },
     redFlags: [
-      "Associated fainting or near-fainting",
-      "Chest pain with palpitations",
-      "Severe shortness of breath"
+      "Sudden onset + dyspnea (Pulmonary Embolism suspicion)",
+      "Associated fever and friction rub"
+    ]
+  },
+
+  // CARDIAC SYMPTOMS
+  {
+    id: "heart_palpitations",
+    label: "Palpitations / Rhythm Changes",
+    dimensions: {
+      character: ["racing heart (tachycardia)", "irregular/skipped beats (ectopy)", "fluttering", "pounding in chest"],
+      onset: ["sudden start/stop", "gradual"],
+      triggers: ["exertion", "stress", "caffeine", "at rest"]
+    },
+    redFlags: [
+      "Palpitations + fainting (Syncope)",
+      "Palpitations + severe chest pain",
+      "Heart rate > 150 bpm at rest"
     ]
   },
   {
-    id: "heart_shortness_of_breath_exertion",
-    label: "Shortness of Breath (on movement)",
+    id: "heart_syncope_fainting",
+    label: "Fainting or Near-Fainting (Syncope)",
     dimensions: {
-      severity: ["after stairs", "after walking flat", "minimal movement"],
-      onset: ["recent change", "gradual worsening"]
+      type: ["complete loss of consciousness (Syncope)", "near-fainting/blacking out (Presyncope)", "lightheadedness on standing"],
+      triggers: ["during exertion", "standing up", "emotional stress", "no warning"]
     },
     redFlags: [
-      "Rapidly decreasing exercise tolerance",
-      "Chest tightness",
-      "Associated leg swelling"
+      "Syncope during physical exertion (Arrhythmia/Structural heart disease alert)",
+      "Sudden syncope without prodrome",
+      "Associated chest pain or palpitations",
+      "Fainting with known heart condition"
+    ]
+  },
+
+  // CIRCULATORY / PERFUSION SYMPTOMS
+  {
+    id: "heart_dyspnea_perfusion",
+    label: "Circulatory Shortness of Breath",
+    dimensions: {
+      type: ["Shortness of breath on exertion (DOE)", "Difficulty breathing when flat (Orthopnea)", "Waking gasping at night (PND)"],
+      severity: ["worsening exercise intolerance", "needs multiple pillows to sleep"]
+    },
+    redFlags: [
+      "Orthopnea + leg/ankle swelling (Heart failure alert)",
+      "Sudden waking with extreme air hunger"
     ]
   },
   {
-    id: "heart_shortness_of_breath_rest",
-    label: "Shortness of Breath (at rest)",
+    id: "heart_limb_swelling_edema",
+    label: "Leg or Arm Swelling (Edema)",
     dimensions: {
-      onset: ["sudden", "gradual"],
-      position: ["worse lying flat", "need to prop up on pillows"]
+      location: ["both legs (bilateral)", "one leg only (unilateral)", "hands/arms"],
+      severity: ["pitting (leaves indentation)", "non-pitting"]
     },
     redFlags: [
-      "Waking up at night gasping for air (PND)",
-      "Bluish tint to lips or nails",
-      "Inability to speak in full sentences"
+      "Sudden unilateral leg swelling + pain (DVT alert)",
+      "Swelling associated with shortness of breath",
+      "Rapid weight gain (fluid retention)"
     ]
   },
   {
-    id: "leg_swelling_heart",
-    label: "Swelling in Legs/Ankles",
+    id: "heart_peripheral_perfusion",
+    label: "Peripheral Circulation Issues",
     dimensions: {
-      location: ["both legs", "one leg only"],
-      timing: ["worse at end of day", "constant"]
+      character: ["cold extremities", "skin color changes (cyanosis/blue)", "paleness (pallor)"],
+      location: ["fingertips", "toes", "generalized"]
     },
     redFlags: [
-      "Sudden onset in one leg with pain (DVT concern)",
-      "Swelling reaching the thighs or abdomen",
-      "Associated shortness of breath"
+      "Sudden cold, painful, pale limb (Acute limb ischemia alert)",
+      "Central cyanosis (blue lips/tongue)"
+    ]
+  },
+
+  // VASCULAR SYMPTOMS
+  {
+    id: "heart_claudication",
+    label: "Leg Pain on Walking (Claudication)",
+    dimensions: {
+      character: ["cramping in calves/thighs", "aching", "heaviness"],
+      triggers: ["starts with walking same distance", "relieved by rest"]
+    },
+    redFlags: [
+      "Pain at rest",
+      "Non-healing ulcers on feet/toes"
     ]
   },
   {
-    id: "heart_fainting_syncope",
-    label: "Fainting (Syncope)",
+    id: "heart_venous_varicose",
+    label: "Venous Symptoms (Varicose/Stasis)",
     dimensions: {
-      triggers: ["standing up", "during exercise", "emotional stress"],
-      warning_signs: ["tunnel vision", "nausea", "sweating", "none"]
-    },
-    redFlags: [
-      "Fainting during physical activity",
-      "Fainting without any warning",
-      "Associated chest pain or palpitations"
-    ]
+      character: ["aching/heaviness in legs", "visible bulging veins", "leg fatigue at end of day"],
+      associated: ["skin discoloration near ankles", "itching"]
+    }
   },
+
+  // ASSOCIATED SYSTEMIC CLUES
   {
-    id: "cyanosis",
-    label: "Cyanosis (Blue Lips/Skin)",
+    id: "heart_exercise_intolerance",
+    label: "Exercise Intolerance / Fatigue",
     dimensions: {
-      location: ["lips", "fingertips", "toes", "generalized"],
-      onset: ["sudden", "gradual", "with cold"]
+      character: ["reduced capacity for usual activity", "extreme fatigue after light exertion"],
+      onset: ["recent change", "chronic"]
     },
     redFlags: [
-      "Sudden onset with shortness of breath",
-      "Central cyanosis (lips/tongue)",
-      "Associated with chest pain"
-    ]
-  },
-  {
-    id: "orthopnea",
-    label: "Difficulty Breathing Lying Down",
-    dimensions: {
-      severity: ["needs 2 pillows", "needs to sit upright", "wakes up gasping"]
-    },
-    redFlags: [
-      "Waking up gasping for air (PND)",
-      "Associated with severe leg swelling",
-      "Pink frothy sputum"
+      "Rapidly declining stamina",
+      "Associated with chest pressure or dyspnea"
     ]
   }
 ];
 
 export const DIGESTIVE_MODELS: SymptomModel[] = [
+  // UPPER GI SLOTS
   {
-    id: "abdominal_pain",
-    label: "Abdominal Pain",
+    id: "gi_abdominal_pain_epigastric",
+    label: "Epigastric Pain (Upper Center)",
     dimensions: {
-      onset: ["sudden", "gradual"],
-      location: ["upper right", "upper left", "lower right", "lower left", "generalized"],
-      character: ["crampy", "sharp", "dull ache"]
+      character: ["gnawing/hunger-like", "sharp", "burning", "dull ache"],
+      relation_to_food: ["worse after eating", "better after eating", "worse when hungry"],
+      associated: ["bloating", "nausea"]
     },
-    redFlags: [
-      "Rigid, board-like abdomen",
-      "Fever and vomiting",
-      "Bloody stools"
-    ],
-    requiredExams: [
-      "Perform McBurney's point palpation (if lower right pain)",
-      "Assess for Murphy's sign (if upper right pain)",
-      "Check for rebound tenderness and guarding"
-    ]
+    redFlags: ["Radiates to back", "Associated with black tarry stools"]
   },
   {
-    id: "heartburn_reflux",
-    label: "Heartburn / Acid Reflux",
+    id: "gi_abdominal_pain_ruq",
+    label: "Right Upper Quadrant (RUQ) Pain",
     dimensions: {
-      timing: ["after meals", "at night", "when lying down"],
-      associated: ["sour taste", "coughing", "chest pain"]
+      character: ["crampy (Colicky)", "steady/severe", "aching"],
+      associated: ["nausea/vomiting", "jaundice", "fever", "pain in right shoulder"]
     },
-    redFlags: [
-      "Difficulty swallowing",
-      "Pain when swallowing",
-      "Unexplained weight loss"
-    ]
+    redFlags: ["Murphy's sign positive", "Associated jaundice and fever"]
   },
   {
-    id: "nausea",
-    label: "Nausea",
+    id: "gi_reflux_heartburn",
+    label: "Heartburn / Acid Reflux (GERD)",
     dimensions: {
-      timing: ["morning", "after eating", "constant"],
-      triggers: ["smells", "movement", "food"]
-    },
-    redFlags: [
-      "Associated severe headache",
-      "Confusion",
-      "Unable to keep fluids down"
-    ]
+      location: ["behind breastbone", "reaching throat"],
+      triggers: ["lying down", "spicy foods", "large meals"],
+      associated: ["bitter taste", "regurgitation", "chronic cough"]
+    }
   },
   {
-    id: "vomiting",
-    label: "Vomiting",
+    id: "gi_nausea_vomiting",
+    label: "Nausea & Vomiting",
     dimensions: {
-      content: ["food", "bile (yellow/green)", "blood", "coffee grounds"],
-      frequency: ["once", "multiple times"]
+      content: ["food", "bile (yellow/green)", "blood (Hematemesis)", "coffee grounds"],
+      frequency: ["intermittent", "constant", "projectile"],
+      associated: ["abdominal pain", "dizziness"]
     },
-    redFlags: [
-      "Vomiting blood or coffee ground material",
-      "Severe abdominal pain",
-      "Signs of dehydration"
-    ]
+    redFlags: ["Vomiting blood", "Signs of dehydration", "Inability to keep fluids down"]
   },
   {
-    id: "diarrhea",
+    id: "gi_dysphagia_difficulty_swallowing",
+    label: "Difficulty Swallowing (Dysphagia)",
+    dimensions: {
+      type: ["solids", "liquids", "both"],
+      location: ["high (throat)", "low (chest)"],
+      associated: ["pain when swallowing (Odynophagia)", "weight loss"]
+    },
+    redFlags: ["Progressive dysphagia", "Associated weight loss"]
+  },
+
+  // LOWER GI SLOTS
+  {
+    id: "gi_abdominal_pain_llq",
+    label: "Lower Left Quadrant (LLQ) Pain",
+    dimensions: {
+      character: ["crampy", "persistent ache"],
+      associated: ["fever", "constipation", "diarrhea", "bloating"]
+    },
+    redFlags: ["Severe pain + fever (Diverticulitis suspicion)"]
+  },
+  {
+    id: "gi_abdominal_pain_rlq",
+    label: "Lower Right Quadrant (RLQ) Pain",
+    dimensions: {
+      character: ["sharp", "shifting from umbilicus", "steady"],
+      associated: ["fever", "nausea", "loss of appetite"]
+    },
+    redFlags: ["McBurney point tenderness", "Rebound tenderness"]
+  },
+  {
+    id: "gi_diarrhea",
     label: "Diarrhea",
     dimensions: {
-      consistency: ["loose", "watery", "bloody", "mucus"],
+      type: ["watery", "bloody/mucus", "oily (Steatorrhea)", "mushy"],
+      frequency: ["3-5 times/day", ">5 times/day"],
       duration: ["acute (<2 weeks)", "chronic (>4 weeks)"]
     },
-    redFlags: [
-      "Bloody diarrhea",
-      "High fever (>102°F)",
-      "Severe dehydration"
-    ]
+    redFlags: ["Bloody stools", "Nocturnal diarrhea (wakes from sleep)", "Dehydration"]
   },
   {
-    id: "constipation",
+    id: "gi_constipation",
     label: "Constipation",
     dimensions: {
-      duration: ["recent change", "long-term"],
-      character: ["hard/dry stools", "straining", "incomplete evacuation"]
+      character: ["hard/lumpy stools", "straining", "incomplete evacuation"],
+      frequency: ["<3 times per week", "recent change"]
     },
-    redFlags: [
-      "Sudden change in bowel habits (>50 years old)",
-      "Rectal bleeding",
-      "Thin, pencil-like stools"
-    ]
+    redFlags: ["Sudden change in elderly", "Thin/pencil stools", "Weight loss"]
   },
   {
-    id: "bloating_gas",
-    label: "Bloating / Excessive Gas",
-    dimensions: {
-      timing: ["after meals", "constant", "worse at end of day"],
-      associated: ["belching", "flatulence", "abdominal distension"]
-    },
-    redFlags: [
-      "Severe abdominal pain",
-      "Unexplained weight loss",
-      "Blood in stool"
-    ]
+    id: "gi_bloating_distension",
+    label: "Abdominal Bloating & Gas",
+    dimensions: { sensation: ["fullness", "pressure", "visible distension"], associated: ["excessive flatulence", "burping"] }
   },
   {
-    id: "blood_in_stool",
-    label: "Blood in Stool",
+    id: "gi_bleeding_rectal",
+    label: "Rectal Bleeding / Stool Blood",
     dimensions: {
-      color: ["bright red", "dark red/maroon", "black/tarry"],
-      amount: ["streaks on paper", "mixed in stool", "large amounts"]
+      character: ["bright red (Hematochezia)", "maroon", "black tarry (Melena)", "only on paper"],
+      associated: ["pain with BM", "dizziness"]
     },
-    redFlags: [
-      "Large volume of blood",
-      "Associated dizziness or fainting",
-      "Severe abdominal pain"
-    ]
+    redFlags: ["Melena (Upper GI bleed)", "Significant volume", "Postmenopausal bleeding (anal/rectal)"]
+  },
+
+  // SYSTEMIC GI
+  {
+    id: "gi_jaundice",
+    label: "Jaundice (Yellow eyes/skin)",
+    dimensions: { associated: ["dark urine", "pale stools", "itching", "abdominal pain"] },
+    redFlags: ["Painless jaundice", "Fever + RUQ pain + Jaundice"]
   },
   {
-    id: "jaundice",
-    label: "Jaundice (Yellowing of Skin/Eyes)",
-    dimensions: {
-      onset: ["sudden", "gradual"],
-      associated: ["dark urine", "pale stools", "itching"]
-    },
-    redFlags: [
-      "Severe abdominal pain",
-      "High fever",
-      "Confusion or extreme sleepiness"
-    ]
+    id: "gi_early_satiety",
+    label: "Early Satiety (Fullness quickly)",
+    dimensions: { severity: ["after a few bites", "moderate"], associated: ["nausea", "weight loss"] }
   },
   {
-    id: "loss_of_appetite",
-    label: "Loss of Appetite",
-    dimensions: {
-      duration: ["days", "weeks", "months"],
-      associated: ["nausea", "early satiety (feeling full quickly)", "weight loss"]
-    },
-    redFlags: [
-      "Significant unintentional weight loss",
-      "Difficulty swallowing",
-      "Severe abdominal pain"
-    ]
+    id: "gi_tenesmus",
+    label: "Tenesmus (Constant urge)",
+    dimensions: { character: ["painful straining", "feeling of incomplete evacuation"] }
   },
   {
-    id: "belching_hiccups",
-    label: "Persistent Belching / Hiccups",
-    dimensions: {
-      duration: ["hours", "days", "weeks"],
-      associated: ["heartburn", "chest pain", "abdominal bloating"]
-    },
-    redFlags: [
-      "Hiccups lasting more than 48 hours",
-      "Associated with severe chest/abdominal pain",
-      "Difficulty swallowing"
-    ]
+    id: "gi_distension",
+    label: "Abdominal Distension",
+    dimensions: { character: ["visible swelling", "tightness"] }
+  },
+  {
+    id: "gi_food_intolerance",
+    label: "Food Intolerance",
+    dimensions: { triggers: ["dairy", "gluten", "fatty foods", "spicy foods"] }
   }
 ];
 
 export const KIDNEY_MODELS: SymptomModel[] = [
+  // URINARY SYMPTOMS
   {
-    id: "painful_urination",
-    label: "Painful Urination",
+    id: "renal_dysuria",
+    label: "Painful Urination (Dysuria)",
     dimensions: {
-      onset: ["sudden", "gradual"],
-      frequency: ["increased", "normal"],
-      associated: ["blood in urine", "fever", "back pain"]
+      character: ["burning sensation", "sharp pain", "stinging"],
+      timing: ["during urination", "after urination"],
+      associated: ["urgency", "frequency", "foul smell"]
     },
     redFlags: [
-      "High fever and back pain",
-      "Inability to urinate",
+      "Fever and chills (Pyelonephritis alert)",
+      "Severe back/flank pain",
       "Visible blood in urine"
     ]
   },
   {
-    id: "hematuria",
-    label: "Blood in Urine",
+    id: "renal_frequency_urgency",
+    label: "Frequency & Urgency",
     dimensions: {
-      color: ["pink", "red", "cola-colored"],
-      timing: ["beginning of stream", "end of stream", "throughout"]
+      type: ["increased frequency (more often)", "urgency (sudden strong need)", "both"],
+      nocturia: ["waking at night to urinate (Nocturia)"],
+      frequency_count: ["every hour", "every 2 hours", "more than 8 times/day"]
     },
     redFlags: [
-      "Painless bleeding (Risk of cancer)",
-      "Large clots in urine",
-      "Associated severe flank pain"
+      "Sudden changes with excessive thirst (Diabetes screening)",
+      "Associated with fever"
     ]
   },
   {
-    id: "nycturia",
-    label: "Frequent Night Urination",
+    id: "renal_obstructive_voiding",
+    label: "Voiding Issues (Hesitancy/Weak Stream)",
     dimensions: {
-      frequency: ["1-2 times", "3+ times", "hourly"],
-      onset: ["recent change", "long-standing"]
+      character: ["difficulty starting (Hesitancy)", "weak stream", "intermittent/stop-start", "straining to finish"],
+      sensation: ["feeling of incomplete emptying"]
     },
     redFlags: [
-      "Sudden increase in frequency",
-      "Excessive thirst",
-      "Leg swelling"
+      "Complete inability to urinate (Acute retention ER alert)",
+      "Lower back pain and leg weakness (Cauda equina alert)"
     ]
   },
   {
-    id: "urinary_urgency",
-    label: "Urgent Urination",
-    dimensions: {
-      character: ["sudden strong need", "fear of leaking"]
-    },
-    redFlags: [
-      "Associated with fever and chills",
-      "New onset in elderly (Risk of UTI/delirium)",
-      "Blood in urine"
-    ]
-  },
-  {
-    id: "hesitancy",
-    label: "Difficulty Starting Urination",
-    dimensions: {
-      severity: ["mild delay", "significant straining needed"]
-    },
-    redFlags: [
-      "Complete inability to urinate",
-      "Associated lower back pain",
-      "Weakness in legs"
-    ]
-  },
-  {
-    id: "flank_pain",
-    label: "Flank Pain (Kidney Area)",
-    dimensions: {
-      character: ["sharp/colicky", "dull ache", "throbbing"],
-      location: ["one side", "both sides", "radiating to groin"]
-    },
-    redFlags: [
-      "Severe, unbearable pain",
-      "Associated fever and chills",
-      "Inability to urinate"
-    ]
-  },
-  {
-    id: "urinary_incontinence",
+    id: "renal_incontinence",
     label: "Urinary Incontinence",
     dimensions: {
-      type: ["stress (coughing/sneezing)", "urge", "overflow"],
-      onset: ["sudden", "gradual"]
+      type: ["leakage with cough/sneeze (Stress)", "sudden urge followed by leak (Urge)", "constant dribbling (Overflow)"],
+      frequency: ["occasional", "daily", "requires pads"]
+    }
+  },
+
+  // URINE APPEARANCE
+  {
+    id: "renal_hematuria",
+    label: "Blood in Urine (Hematuria)",
+    dimensions: {
+      color: ["bright red", "pink", "dark/cola-colored (old blood)", "clots visible"],
+      associated: ["pain during urination", "painless bleeding"]
     },
     redFlags: [
-      "Associated with leg weakness",
-      "Numbness in the saddle area",
-      "Sudden onset with confusion"
+      "Hematuria + unexplained weight loss (Malignancy suspicion)",
+      "Painless hematuria in smokers or those >50 years",
+      "Large blood clots preventing urination"
     ]
   },
   {
-    id: "cloudy_foul_urine",
-    label: "Cloudy or Foul-Smelling Urine",
+    id: "renal_urine_character",
+    label: "Urine Character Changes",
     dimensions: {
-      appearance: ["cloudy", "milky", "dark"],
-      odor: ["strong ammonia", "foul/sweet", "fishy"]
+      character: ["dark (dehydration/liver)", "foamy (proteinuria)", "cloudy (infection)", "foul-smelling"],
+      volume: ["reduced output (Oliguria)", "no output (Anuria)", "excessive output (Polyuria)"]
     },
     redFlags: [
-      "Associated with high fever and chills",
-      "Severe flank or back pain",
-      "Confusion (especially in elderly)"
+      "Anuria/Oliguria (Acute Kidney Injury concern)",
+      "Foamy urine + generalized swelling (Nephrotic syndrome alert)"
+    ]
+  },
+
+  // RENAL / FLANK SYMPTOMS
+  {
+    id: "renal_pain_flank",
+    label: "Flank & Back Pain (Renal)",
+    dimensions: {
+      character: ["sharp/colicky (comes in waves)", "constant dull ache", "throbbing"],
+      location: ["left side", "right side", "radiating to groin"],
+      relief: ["cannot find a comfortable position (Colic)"]
+    },
+    redFlags: [
+      "Severe or unbearable flank pain (Stone/Obstruction alert)",
+      "Fever + flank pain (Pyelonephritis alert)",
+      "Pain following trauma"
     ]
   },
   {
-    id: "oliguria",
-    label: "Decreased Urine Output",
+    id: "renal_bladder_discomfort",
+    label: "Bladder & Suprapubic Pain",
     dimensions: {
-      severity: ["noticeably less", "very little", "none at all"],
-      associated: ["swelling in legs", "shortness of breath", "confusion"]
+      location: ["lower abdomen (above pubic bone)", "deep pelvic"],
+      associated: ["pressure feeling", "relief after urinating"]
+    }
+  },
+
+  // FLUID / SYSTEMIC SIGNS
+  {
+    id: "renal_edema_fluid",
+    label: "Fluid Retention & Edema",
+    dimensions: {
+      location: ["puffy face (morning)", "swollen ankles/legs", "swollen eyelids"],
+      associated: ["shortness of breath (fluid overload)", "sudden weight gain"]
     },
     redFlags: [
-      "No urine output for over 12 hours",
-      "Associated with severe dehydration",
-      "Shortness of breath and generalized swelling"
+      "Edema + foamy urine",
+      "Rapidly worsening shortness of breath"
     ]
   }
 ];
 
 export const SKIN_MODELS: SymptomModel[] = [
-    {
-        id: "skin_rash",
-        label: "Skin Rash",
-        dimensions: {
-            location: ["face", "trunk", "limbs", "generalized"],
-            appearance: ["flat", "raised", "bumpy", "scaly"],
-            severity: ["mild", "moderate", "severe"]
-        },
-        redFlags: [
-            "Rash that does not blanch (turn white) under pressure",
-            "Rash with high fever and joint pain",
-            "Rapidly spreading purple spots (Purpura)",
-            "Rash with difficulty breathing or lip swelling"
-        ]
-    },
-    {
-        id: "skin_itching",
-        label: "Itching (Pruritus)",
-        dimensions: {
-            location: ["localized", "widespread"],
-            timing: ["worse at night", "after showering", "constant"],
-            triggers: ["new soap/detergent", "stress", "heat"]
-        },
-        redFlags: [
-            "Itching associated with yellowing of skin or eyes (Jaundice)",
-            "Widespread itching without a rash",
-            "Itching with weight loss or night sweats"
-        ]
-    },
-    {
-        id: "skin_redness",
-        label: "Skin Redness (Erythema)",
-        dimensions: {
-            location: ["localized", "spreading"],
-            temperature: ["warm to touch", "normal"],
-            appearance: ["bright red", "faint pink", "circular/ring-like"]
-        },
-        redFlags: [
-            "Redness that is rapidly spreading",
-            "Redness with severe pain and fever (Cellulitis risk)",
-            "Bull's-eye shaped rash (Lyme disease risk)"
-        ]
-    },
-    {
-        id: "skin_lesion_changes",
-        label: "Mole / Skin Lesion Changes",
-        dimensions: {
-            change_type: ["size", "color", "shape", "bleeding"],
-            appearance: ["asymmetrical", "irregular borders", "multiple colors"]
-        },
-        redFlags: [
-            "Rapid growth",
-            "Bleeding or oozing",
-            "Diameter larger than a pencil eraser (6mm)"
-        ]
-    },
-    {
-        id: "hives_urticaria",
-        label: "Hives (Urticaria)",
-        dimensions: {
-            appearance: ["raised welts", "red", "itchy"],
-            onset: ["sudden", "chronic"]
-        },
-        redFlags: [
-            "Swelling of the lips, tongue, or throat",
-            "Difficulty breathing or swallowing",
-            "Feeling faint or dizzy"
-        ]
-    },
-    {
-        id: "skin_bruising",
-        label: "Easy Bruising",
-        dimensions: {
-            location: ["limbs", "trunk", "unexplained"],
-            frequency: ["occasional", "frequent"]
-        },
-        redFlags: [
-            "Bruising without trauma",
-            "Associated with bleeding gums or nosebleeds",
-            "Petechiae (tiny red/purple dots on skin)"
-        ]
-    }
-];
-
-export const MUSCULOSKELETAL_MODELS: SymptomModel[] = [
+  // SKIN SYMPTOMS
   {
-    id: "msk_joint_pain",
-    label: "Joint Pain",
+    id: "skin_rash",
+    label: "Skin Rash",
     dimensions: {
-      location: ["knee", "shoulder", "hip", "wrist", "fingers", "multiple"],
-      character: ["aching", "sharp", "stiff", "throbbing"],
-      timing: ["worse in morning", "worse with activity", "constant"],
-      severity: ["mild", "moderate", "severe"]
+      location: ["generalized", "localized (face/trunk/limbs)", "flexural (folds)"],
+      appearance: ["flat (macular)", "raised (papular)", "blistering (vesicular)", "bumpy", "scaly/peeling"],
+      character: ["itchy", "painful", "burning", "numb"]
     },
     redFlags: [
-      "Hot, swollen, red joint",
-      "Inability to bear weight",
-      "Associated fever",
-      "Sudden onset of severe pain"
-    ],
-    requiredExams: [
-      "Assess for joint effusion",
-      "Check range of motion",
-      "Perform Lachman test (if ACL suspected)",
-      "Perform McMurray test (if meniscus suspected)"
+      "Rapidly spreading rash + high fever (Sepsis/Meningococcemia alert)",
+      "Rash with difficulty breathing or lip swelling (Anaphylaxis alert)",
+      "Purple/non-blanching spots (Vasculitis/Bleeding disorder alert)",
+      "Widespread skin peeling or mucosal involvement (SJS/TEN alert)"
     ]
   },
   {
-    id: "msk_muscle_weakness",
-    label: "Muscle Weakness",
+    id: "skin_itching_dryness",
+    label: "Itching & Dryness",
     dimensions: {
-      location: ["arms", "legs", "one side", "generalized"],
-      onset: ["sudden", "gradual"],
-      associated: ["numbness", "pain", "fatigue"]
+      type: ["itching (Pruritus)", "skin dryness (Xerosis)", "scaling/peeling"],
+      timing: ["worse at night", "after showering", "constant"],
+      context: ["new soap/detergent", "stress", "cold weather"]
     },
     redFlags: [
-      "Sudden weakness on one side",
-      "Progressive weakness over days",
-      "Difficulty breathing or swallowing"
+      "Itching associated with jaundice (yellow skin/eyes)",
+      "Widespread itching with weight loss or night sweats",
+      "Itching associated with a new medication"
     ]
+  },
+  {
+    id: "skin_redness_erythema",
+    label: "Skin Redness (Erythema)",
+    dimensions: {
+      location: ["localized/spreading", "facial (butterfly distribution)", "circular (target-like)"],
+      temperature: ["warm to touch", "normal"]
+    },
+    redFlags: [
+      "Redness spreading rapidly with severe pain and fever (Cellulitis/Necrotizing alert)",
+      "Bull's-eye rash (Lyme disease suspicion)"
+    ]
+  },
+  {
+    id: "skin_lesions_ulcers",
+    label: "Skin Lesions & Ulcers",
+    dimensions: {
+      type: ["new or changing mole", "non-healing ulcer", "skin discoloration", "blisters/vesicles"],
+      character: ["bleeding/oozing", "irregular borders", "multiple colors"]
+    },
+    redFlags: [
+      "Mole changing in size, shape, or color (Melanoma suspicion)",
+      "Non-healing skin ulcer (Malignancy/Vascular disease alert)",
+      "New lesion in an elderly patient or on sun-exposed area"
+    ]
+  },
+  {
+    id: "skin_bruising_petichiae",
+    label: "Bruising & Sensitivity",
+    dimensions: {
+      character: ["easy bruising", "small red/purple dots (petichiae)", "skin sensitivity/pain"],
+      location: ["generalized", "unexpected areas"]
+    },
+    redFlags: [
+      "Extensive bruising without trauma",
+      "Associated with bleeding gums or nosebleeds"
+    ]
+  },
+
+  // HAIR SYMPTOMS
+  {
+    id: "skin_hair_loss",
+    label: "Hair Symptoms",
+    dimensions: {
+      type: ["generalized thinning", "patchy loss (Alopecia)", "excessive shedding", "excess growth (Hirsutism)"],
+      character: ["dry/brittle hair", "scarring visible on scalp"]
+    },
+    redFlags: [
+      "Hair loss + systemic symptoms (weight change/fatigue - Endocrine alert)",
+      "Sudden, rapid hair loss",
+      "Excess hair growth in a female with menstrual changes"
+    ]
+  },
+
+  // NAIL SYMPTOMS
+  {
+    id: "skin_nail_changes",
+    label: "Nail Symptoms",
+    dimensions: {
+      character: ["brittle nails", "nail discoloration (yellow/brown)", "thickening", "pitting", "nail separation (Onycholysis)"],
+      appearance: ["clubbing (rounded tips)", "Beau's lines (horizontal ridges)", "fungal infection signs"]
+    },
+    redFlags: [
+      "Digital clubbing (Chronic heart/lung disease suspicion)",
+      "Splinter hemorrhages under nails",
+      "Sudden dark streak under a single nail (Subungual melanoma alert)"
+    ]
+  },
+
+  // SYSTEMIC & SENSITIVITY
+  {
+    id: "skin_photosensitivity",
+    label: "Photosensitivity & Temperature",
+    dimensions: {
+      sensation: ["rash after sun exposure", "easy burning", "cold/heat intolerance affecting skin"]
+    },
+    redFlags: [
+      "Malar (butterfly) rash + joint pain (Lupus suspicion)"
+    ]
+  },
+  {
+    id: "skin_urticaria",
+    label: "Hives (Urticaria)",
+    dimensions: { type: ["itchy welts", "swelling (Angioedema)"], triggers: ["food", "medication", "stress", "unknown"] }
+  },
+  {
+    id: "skin_fungal_infection",
+    label: "Fungal Infection signs",
+    dimensions: { location: ["feet (Athlete's foot)", "groin (Jock itch)", "nails", "trunk (Ringworm)"] }
+  }
+];
+
+export const MUSCULOSKELETAL_MODELS: SymptomModel[] = [
+  // JOINT SYMPTOMS
+  {
+    id: "msk_joint_pain",
+    label: "Joint Pain (Arthralgia)",
+    dimensions: {
+      location: ["single joint", "multiple joints", "symmetrical", "migratory"],
+      character: ["aching", "sharp", "throbbing", "stabbing"],
+      timing: ["worse in morning", "worse with activity", "constant"]
+    },
+    redFlags: ["Sudden severe pain", "Pain following injury"]
   },
   {
     id: "msk_joint_swelling",
     label: "Joint Swelling",
     dimensions: {
-      location: ["single joint", "multiple joints", "symmetrical"],
-      onset: ["after injury", "spontaneous", "gradual"]
+      location: ["knee", "shoulder", "hip", "wrists/hands", "ankles/feet"],
+      onset: ["sudden", "gradual"]
     },
-    redFlags: [
-      "Joint is hot and red",
-      "Associated high fever",
-      "Inability to move the joint"
-    ]
+    redFlags: ["Red, hot, swollen joint + fever (Septic arthritis alert)"]
   },
   {
-    id: "msk_leg_swelling_pain",
-    label: "Leg Pain / Swelling",
+    id: "msk_joint_stiffness",
+    label: "Joint Stiffness",
     dimensions: {
-      location: ["single leg", "both legs", "calf only"],
-      character: ["sharp", "dull ache", "pitting edema"],
-      cancer: ["active/recent", "none"],
-      calf_swelling: [">3cm", "normal"],
-      veins: ["collateral/prominent", "normal"],
-      edema: ["pitting", "non-pitting", "none"],
-      prev_dvt: ["yes", "no"],
-      leg_swelling: ["entire leg", "localized"],
-      tenderness: ["along deep veins", "none"],
-      immobilization: ["yes", "no"],
-      recent_surgery: ["yes", "no"],
-      alt_diag: ["likely", "unlikely"]
+      timing: ["morning stiffness > 1 hour", "morning stiffness < 30 mins", "after inactivity"],
+      severity: ["prevents movement", "mildly restricts movement"]
+    }
+  },
+  {
+    id: "msk_joint_redness",
+    label: "Joint Redness",
+    dimensions: { associated: ["warmth", "swelling", "severe pain"] }
+  },
+  {
+    id: "msk_joint_deformity",
+    label: "Joint Deformity",
+    dimensions: { type: ["crooked fingers", "bony growths/nodes", "malignment of limb"] }
+  },
+  {
+    id: "msk_joint_instability",
+    label: "Joint Instability / Giving Way",
+    dimensions: { location: ["knee", "ankle", "shoulder"], associated: ["clicking", "locking", "popping"] }
+  },
+
+  // MUSCLE SYMPTOMS
+  {
+    id: "msk_muscle_pain",
+    label: "Muscle Pain (Myalgia)",
+    dimensions: {
+      location: ["generalized", "localized", "proximal", "distal"],
+      character: ["aching", "burning", "stiffness"]
     },
-    redFlags: [
-      "Sudden onset of severe swelling",
-      "Associated shortness of breath",
-      "Chest pain",
-      "Cold, pale limb"
-    ],
-    requiredExams: [
-      "Measure calf circumference (if unilateral swelling)",
-      "Assess for Homan's sign (though low sensitivity)",
-      "Check for pitting edema",
-      "Assess peripheral pulses"
-    ]
+    redFlags: ["Severe pain with dark urine (Rhabdomyolysis)"]
+  },
+  {
+    id: "msk_muscle_weakness",
+    label: "Muscle Weakness",
+    dimensions: {
+      onset: ["sudden", "gradual"],
+      location: ["shoulders/hips", "hands/feet", "unilateral", "bilateral"]
+    },
+    redFlags: ["Progressive weakness", "Associated with difficulty breathing"]
   },
   {
     id: "msk_muscle_cramps",
     label: "Muscle Cramps / Spasms",
+    dimensions: { timing: ["at night", "during exercise", "constant"], location: ["calves", "hands", "back"] }
+  },
+  {
+    id: "msk_muscle_twitching",
+    label: "Muscle Twitching (Fasciculations)",
+    dimensions: { location: ["eyelid", "thigh", "generalized"], frequency: ["intermittent", "constant"] }
+  },
+  {
+    id: "msk_muscle_wasting",
+    label: "Muscle Wasting (Atrophy)",
+    dimensions: { location: ["hands", "thighs", "shoulder girdle"], symmetry: ["one side", "both sides"] }
+  },
+
+  // SPINE / BACK SYMPTOMS
+  {
+    id: "msk_back_pain_lower",
+    label: "Lower Back Pain",
     dimensions: {
-      location: ["calves", "thighs", "feet", "back"],
-      timing: ["at night", "during exercise", "at rest"]
+      character: ["sharp", "dull ache", "stiffness", "radiating to legs"],
+      triggers: ["lifting", "sitting", "walking"]
     },
     redFlags: [
-      "Severe, unrelenting spasm",
-      "Associated with dark urine",
-      "Significant muscle weakness"
+      "Loss of bowel/bladder control (Cauda Equina alert)",
+      "Saddle anesthesia",
+      "Nocturnal pain"
     ]
   },
   {
-    id: "msk_bone_pain",
-    label: "Bone Pain",
-    dimensions: {
-      character: ["deep ache", "sharp", "worse at night"],
-      location: ["long bones", "spine", "ribs"]
-    },
-    redFlags: [
-      "Pain waking patient from sleep",
-      "Unexplained weight loss",
-      "History of cancer"
-    ]
+    id: "msk_back_pain_upper_neck",
+    label: "Upper Back & Neck Pain",
+    dimensions: { character: ["sharp", "stiff", "muscle knots"], location: ["neck", "between shoulder blades", "shoulders"] }
   },
   {
-    id: "joint_stiffness",
-    label: "Joint Stiffness",
+    id: "msk_sciatica",
+    label: "Sciatica (Radiating Leg Pain)",
     dimensions: {
-      timing: ["morning", "after resting", "constant"],
-      duration: ["less than 30 mins", "more than 1 hour"],
-      location: ["hands", "knees", "spine", "multiple"]
-    },
-    redFlags: [
-      "Morning stiffness lasting > 1 hour",
-      "Associated with hot, swollen joints",
-      "Systemic symptoms like fever or fatigue"
-    ]
+      location: ["buttock", "thigh", "calf", "foot"],
+      character: ["electric shock", "burning", "shooting"]
+    }
+  },
+
+  // EXTREMITY & FUNCTIONAL
+  {
+    id: "msk_limb_pain_swelling",
+    label: "Limb Pain & Swelling",
+    dimensions: { type: ["leg pain", "arm pain", "unilateral leg swelling", "bilateral leg swelling"] },
+    redFlags: ["Sudden unilateral leg swelling (DVT risk)"]
   },
   {
-    id: "gait_abnormality",
-    label: "Gait Abnormality / Limping",
+    id: "msk_difficulty_walking_limping",
+    label: "Difficulty Walking / Limping",
     dimensions: {
-      character: ["shuffling", "unsteady/wobbly", "limping due to pain"],
-      onset: ["sudden", "gradual progressive"]
-    },
-    redFlags: [
-      "Sudden inability to walk",
-      "Associated with new weakness or numbness",
-      "Frequent falls"
-    ]
+      character: ["limping", "slow gait", "unsteady", "dragged foot"],
+      associated: ["pain", "weakness", "balance problems"]
+    }
+  },
+  {
+    id: "msk_movement_issues",
+    label: "Difficulty Standing / Stairs",
+    dimensions: { type: ["difficulty standing up from chair", "difficulty climbing stairs", "difficulty reaching overhead"] }
+  },
+
+  // TRAUMA
+  {
+    id: "msk_trauma_injury",
+    label: "Recent Injury / Trauma",
+    dimensions: { mechanism: ["fall", "sports injury", "direct blow", "overuse"], symptoms: ["deformity", "bruising", "inability to bear weight"] }
   }
 ];
 
 export const NEUROLOGICAL_MODELS: SymptomModel[] = [
+  // MOTOR SYMPTOMS
   {
-    id: "neuro_numbness",
-    label: "Numbness or Tingling",
-    dimensions: {
-      location: ["hands", "feet", "one side of body", "face"],
-      pattern: ["glove and stocking", "dermatomal", "patchy"],
-      duration: ["intermittent", "constant", "progressive"]
-    },
-    redFlags: [
-      "Sudden onset on one side",
-      "Associated with weakness",
-      "Loss of bowel/bladder control",
-      "Saddle anesthesia"
-    ]
+    id: "neuro_weakness_generalized",
+    label: "Generalized Weakness",
+    dimensions: { onset: ["sudden", "gradual"], associated: ["fatigue", "fever", "weight loss"] }
   },
   {
-    id: "neuro_tremor",
-    label: "Tremor",
+    id: "neuro_weakness_focal",
+    label: "Focal Weakness / Paralysis",
     dimensions: {
-      type: ["resting", "action", "postural"],
-      location: ["hands", "head", "voice", "legs"],
-      severity: ["mild", "interferes with daily activities"]
+      location: ["one arm", "one leg", "one side of body (Hemiparesis)", "face only"],
+      onset: ["sudden (minutes)", "gradual (days/weeks)"]
     },
-    redFlags: [
-      "Sudden onset",
-      "Associated with altered mental status",
-      "Rapid progression"
-    ]
+    redFlags: ["Sudden unilateral weakness (Stroke alert)", "Associated with slurred speech"]
   },
+  {
+    id: "neuro_motor_coordination",
+    label: "Loss of Coordination (Ataxia)",
+    dimensions: { location: ["arms/hands", "legs/gait", "generalized"], associated: ["dizziness", "falls"] }
+  },
+  {
+    id: "neuro_muscle_stiffness_twitching",
+    label: "Muscle Stiffness & Twitching",
+    dimensions: { type: ["rigidity/stiffness", "twitching (Fasciculations)", "tremor", "spasms"] }
+  },
+
+  // SENSORY SYMPTOMS
+  {
+    id: "neuro_numbness_tingling",
+    label: "Numbness & Tingling (Paresthesia)",
+    dimensions: {
+      location: ["hands", "feet", "face", "one side of body", "glove and stocking pattern"],
+      duration: ["intermittent", "constant", "with certain positions"]
+    }
+  },
+  {
+    id: "neuro_pain_burning",
+    label: "Burning or Neuralgic Pain",
+    dimensions: {
+      character: ["burning", "electric shock-like", "sharp/stabbing", "shooting"],
+      location: ["limbs", "trunk", "face (Trigeminal)"]
+    }
+  },
+  {
+    id: "neuro_sensory_loss",
+    label: "Loss of Sensation",
+    dimensions: { location: ["hands", "feet", "perianal (Saddle anesthesia)"], onset: ["sudden", "gradual"] }
+  },
+
+  // COGNITIVE SYMPTOMS
+  {
+    id: "neuro_memory_loss",
+    label: "Memory Loss",
+    dimensions: { type: ["short-term", "long-term", "forgetting names/places"], onset: ["sudden", "gradual"] }
+  },
+  {
+    id: "neuro_confusion_disorientation",
+    label: "Confusion & Disorientation",
+    dimensions: { type: ["time", "place", "person", "new confusion"], onset: ["sudden (Delirium)", "gradual"] }
+  },
+  {
+    id: "neuro_difficulty_concentrating",
+    label: "Difficulty Concentrating (Brain Fog)",
+    dimensions: { severity: ["mild", "severe", "affects work/daily life"], associated: ["fatigue", "sleep issues"] }
+  },
+
+  // BALANCE & COORDINATION
+  {
+    id: "neuro_dizziness_vertigo",
+    label: "Dizziness & Vertigo",
+    dimensions: { type: ["spinning (Vertigo)", "lightheadedness", "unsteadiness"], triggers: ["head movement", "standing up"] }
+  },
+  {
+    id: "neuro_balance_loss",
+    label: "Loss of Balance / Falls",
+    dimensions: { frequency: ["recurrent falls", "near falls", "unsteadiness when walking"] }
+  },
+
+  // EPISODIC SYMPTOMS
   {
     id: "neuro_seizures",
     label: "Seizures / Convulsions",
-    dimensions: {
-      type: ["full body shaking", "staring spells", "focal twitching"],
-      associated: ["loss of consciousness", "loss of bowel/bladder control", "confusion afterwards"]
-    },
-    redFlags: [
-      "First ever seizure",
-      "Seizure lasting longer than 5 minutes",
-      "Difficulty breathing after seizure",
-      "Repeated seizures without waking up"
-    ]
+    dimensions: { type: ["generalized (shaking)", "focal (twitching)", "absence (staring)"], frequency: ["first time", "recurrent"] },
+    redFlags: ["First ever seizure", "Prolonged seizure > 5 mins (Status Epilepticus)"]
   },
   {
-    id: "neuro_memory_loss",
-    label: "Memory Loss / Confusion",
-    dimensions: {
-      onset: ["sudden", "gradual"],
-      type: ["short-term memory", "long-term memory", "getting lost"],
-      progression: ["stable", "worsening"]
-    },
-    redFlags: [
-      "Sudden onset of confusion or delirium",
-      "Associated with fever or headache",
-      "Following a head injury"
-    ]
+    id: "neuro_loss_of_consciousness",
+    label: "Loss of Consciousness (Fainting)",
+    dimensions: { triggers: ["standing", "pain/stress", "exercise", "none"], associated: ["palpitations", "pre-syncope (feeling faint)"] }
   },
+  {
+    id: "neuro_aura",
+    label: "Aura Symptoms",
+    dimensions: { type: ["visual (flashes/spots)", "sensory (tingling)", "speech disturbance"], duration: ["minutes", "hour"] }
+  },
+
+  // VISUAL & SPEECH
   {
     id: "neuro_speech_difficulty",
-    label: "Speech Difficulty",
-    dimensions: {
-      type: ["slurred speech", "finding words", "understanding speech"],
-      onset: ["sudden", "gradual"]
-    },
-    redFlags: [
-      "Sudden onset (Stroke concern)",
-      "Associated with facial droop or weakness",
-      "Inability to speak at all"
-    ]
+    label: "Speech Difficulty (Dysarthria/Aphasia)",
+    dimensions: { type: ["slurred speech", "difficulty finding words", "cannot speak"], onset: ["sudden", "gradual"] },
+    redFlags: ["Sudden slurred speech or word-finding difficulty (Stroke alert)"]
   },
   {
-    id: "neuro_coordination",
-    label: "Coordination / Balance Problems",
-    dimensions: {
-      type: ["stumbling", "clumsiness", "vertigo"],
-      onset: ["sudden", "gradual"]
-    },
-    redFlags: [
-      "Sudden inability to walk",
-      "Associated with severe headache or vomiting",
-      "Weakness on one side of the body"
-    ]
+    id: "neuro_vision_changes_diplopia",
+    label: "Double Vision (Diplopia)",
+    dimensions: { onset: ["sudden", "gradual"], associated: ["headache", "jaw pain"] }
+  },
+
+  // HEADACHE SPECTRUM
+  {
+    id: "neuro_headache_thunderclap",
+    label: "Severe Sudden Headache (Thunderclap)",
+    dimensions: { severity: ["worst headache of life", "instant peak (seconds)"] },
+    redFlags: ["Subarachnoid Hemorrhage concern - EMERGENCY"]
   },
   {
-    id: "paralysis",
-    label: "Paralysis / Loss of Movement",
-    dimensions: {
-      location: ["one side of body", "lower half", "single limb", "face"],
-      onset: ["sudden", "gradual"]
-    },
-    redFlags: [
-      "Sudden onset (Emergency)",
-      "Associated with loss of bowel/bladder control",
-      "Difficulty breathing or swallowing"
-    ]
+    id: "neuro_headache_migraine",
+    label: "Migraine-type Headache",
+    dimensions: { associated: ["nausea", "light sensitivity", "sound sensitivity", "aura"] }
   },
   {
-    id: "neuropathic_pain",
-    label: "Nerve Pain (Neuropathy)",
-    dimensions: {
-      character: ["burning", "shooting/electric", "stabbing"],
-      location: ["feet/hands", "radiating down leg/arm", "face"]
-    },
-    redFlags: [
-      "Rapidly progressive weakness",
-      "Loss of sensation to sharp objects",
-      "Saddle anesthesia"
-    ]
+    id: "neuro_headache_tension",
+    label: "Tension-type Headache",
+    dimensions: { character: ["band-like pressure", "bilateral", "dull ache"] }
+  },
+
+  // AUTONOMIC / SYSTEMIC NEURO
+  {
+    id: "neuro_autonomic_dysfunction",
+    label: "Autonomic Nervous System issues",
+    dimensions: { type: ["fainting episodes", "sweating abnormalities", "bladder/bowel control issues", "orthostatic dizziness"] },
+    redFlags: ["Sudden loss of bowel/bladder control (Cauda Equina alert)"]
   }
 ];
 
 export const GENERAL_MODELS: SymptomModel[] = [
   {
     id: "gen_fever",
-    label: "Fever / Chills",
+    label: "Fever",
     dimensions: {
       severity: ["low-grade", "high (>103F/39.4C)", "fluctuating"],
-      duration: ["few days", "more than a week", "constant"],
-      associated: ["sweating", "shivering", "body aches"]
+      duration: ["acute (days)", "persistent (weeks)"],
+      associated: ["shills/shivering", "sweating", "headache", "body aches"]
     },
-    redFlags: [
-      "Fever with stiff neck",
-      "Fever with severe unexplained pain",
-      "Fever in immunocompromised patient"
-    ]
+    redFlags: ["Fever + stiff neck", "Fever in immunocompromised"]
+  },
+  {
+    id: "gen_shaking_chills",
+    label: "Shaking Chills (Rigors)",
+    dimensions: { intensity: ["mild shivers", "teeth-chattering rigors"], associated: ["fever", "confusion"] }
+  },
+  {
+    id: "gen_night_sweats",
+    label: "Night Sweats",
+    dimensions: { severity: ["mild dampness", "drenching (need to change clothes)"], frequency: ["occasional", "nightly"] },
+    redFlags: ["Drenching sweats + weight loss"]
   },
   {
     id: "gen_fatigue",
-    label: "Fatigue / Exhaustion",
+    label: "Fatigue / Tiredness",
     dimensions: {
-      onset: ["sudden", "gradual"],
-      severity: ["mild", "interferes with daily life", "bedbound"],
+      severity: ["mild", "interferes with work", "unable to get out of bed"],
       relief: ["improves with rest", "unrelieved by sleep"]
     },
-    redFlags: [
-      "Associated with unexplained weight loss",
-      "Associated with severe shortness of breath",
-      "Sudden extreme fatigue"
-    ]
+    redFlags: ["Sudden extreme fatigue", "Associated with shortness of breath"]
+  },
+  {
+    id: "gen_malaise",
+    label: "Malaise (General unwell feeling)",
+    dimensions: { character: ["feeling 'off'", "vague illness"], associated: ["fever", "body aches"] }
+  },
+  {
+    id: "gen_weakness_generalized",
+    label: "Generalized Weakness / Lethargy",
+    dimensions: { location: ["entire body", "limbs"], onset: ["sudden", "gradual"] },
+    redFlags: ["Sudden inability to move limbs"]
   },
   {
     id: "gen_weight_loss",
     label: "Unintentional Weight Loss",
     dimensions: {
-      amount: ["less than 5%", "5-10%", "more than 10% of body weight"],
-      timeframe: ["over months", "rapid (weeks)"],
-      appetite: ["normal/increased", "decreased"]
+      amount: ["<5%", "5-10%", ">10% of body weight"],
+      timeframe: ["weeks", "months"],
+      appetite: ["increased", "decreased", "normal"]
     },
-    redFlags: [
-      "Rapid, unexplained weight loss",
-      "Associated with night sweats",
-      "Associated with difficulty swallowing"
-    ]
+    redFlags: ["Rapid weight loss > 10% in 6 months"]
   },
   {
-    id: "gen_night_sweats",
-    label: "Night Sweats",
+    id: "gen_weight_gain",
+    label: "Unintentional Weight Gain",
+    dimensions: { timeframe: ["days (fluid)", "months (fat/metabolic)"], associated: ["swelling", "shortness of breath"] }
+  },
+  {
+    id: "gen_appetite_loss",
+    label: "Loss of Appetite / Decreased Appetite",
+    dimensions: { severity: ["mild", "complete refusal of food"], associated: ["nausea", "weight loss"] }
+  },
+  {
+    id: "gen_exercise_intolerance",
+    label: "Exercise Intolerance",
+    dimensions: { character: ["shortness of breath", "fatigue", "muscle pain"], severity: ["mild", "severe"] }
+  },
+  {
+    id: "gen_stamina_reduced",
+    label: "Reduced Stamina / Decreased Activity",
+    dimensions: { duration: ["recent", "chronic"], impact: ["ADLs", "work", "hobbies"] }
+  },
+  {
+    id: "gen_chronic_fatigue",
+    label: "Chronic Fatigue",
+    dimensions: { duration: ["> 6 months"], impact: ["severe neurocognitive issues", "unrefreshing sleep"] }
+  },
+  {
+    id: "gen_dehydration_symptoms",
+    label: "Dehydration Symptoms",
+    dimensions: { character: ["dry mouth", "extreme thirst", "dark urine", "dizziness"] }
+  },
+  {
+    id: "gen_dizziness_general",
+    label: "Dizziness (General/Systemic)",
+    dimensions: { character: ["lightheadedness", "faintness", "room spinning"] }
+  },
+  {
+    id: "gen_syncope_feeling",
+    label: "Syncope-like Feeling (Near Fainting)",
+    dimensions: { triggers: ["standing quickly", "prolonged standing", "dehydration"] }
+  },
+  {
+    id: "gen_brain_fog",
+    label: "Brain Fog / Reduced Concentration",
+    dimensions: { character: ["forgetfulness", "mental fatigue", "confusion"] }
+  },
+  {
+    id: "gen_recurrent_infections",
+    label: "Recurrent Infections",
+    dimensions: { frequency: ["multiple times per year"], type: ["respiratory", "urinary", "skin"] }
+  },
+  {
+    id: "gen_poor_wound_healing",
+    label: "Poor Wound Healing",
+    dimensions: { location: ["feet", "generalized"], associated: ["skin infections", "diabetes history"] }
+  },
+  {
+    id: "gen_sleep_disturbance",
+    label: "Sleep Disturbance / Insomnia",
+    dimensions: { type: ["difficulty falling asleep", "waking up", "restless sleep"] }
+  },
+  {
+    id: "gen_daytime_sleepiness",
+    label: "Daytime Sleepiness / Irritability",
+    dimensions: { severity: ["mild", "severe/nodding off"] }
+  },
+  {
+    id: "gen_body_aches_generalized",
+    label: "Generalized Body Aches",
+    dimensions: { character: ["flu-like", "muscle soreness", "joint discomfort"] }
+  }
+];
+
+export const MALE_MODELS: SymptomModel[] = [
+  // SEXUAL FUNCTION
+  {
+    id: "male_erectile_dysfunction",
+    label: "Erections, Difficulty with (ED)",
     dimensions: {
-      severity: ["mild dampness", "drenching (need to change clothes)"],
-      frequency: ["occasional", "every night"]
+      onset: ["gradual", "sudden", "after starting medication"],
+      timing: ["constant", "only in certain situations", "loss of morning erections"],
+      associated: ["decreased libido", "anxiety", "stress"]
     },
     redFlags: [
-      "Associated with weight loss and fever",
-      "Drenching sweats persisting for weeks",
-      "Associated with chronic cough"
+      "Sudden onset after trauma to pelvis or spine",
+      "Associated with sudden leg weakness",
+      "Associated with new urinary incontinence"
     ]
   },
   {
-    id: "gen_thirst",
+    id: "male_libido_decreased",
+    label: "Decreased Libido (Sex Drive)",
+    dimensions: {
+      duration: ["recent change", "long-standing"],
+      associated: ["fatigue", "mood changes", "erectile dysfunction", "weight changes"]
+    }
+  },
+  {
+    id: "male_ejaculation_issues",
+    label: "Ejaculation issues (Premature/Delayed)",
+    dimensions: {
+      type: ["premature ejaculation", "delayed ejaculation", "inability to ejaculate (Anorgasmia)"],
+      associated: ["pain during ejaculation", "blood in semen (Hematospermia)"]
+    },
+    redFlags: [
+      "Painful ejaculation with fever",
+      "Repeated blood in semen in men over 50"
+    ]
+  },
+
+  // TESTICULAR & SCROTAL
+  {
+    id: "male_testicular_pain",
+    label: "Testicular Pain",
+    dimensions: {
+      onset: ["sudden (Severe)", "gradual ache"],
+      location: ["left side", "right side", "both"],
+      associated: ["swelling", "nausea", "fever", "abdominal pain"]
+    },
+    redFlags: [
+      "Sudden severe pain (Testicular Torsion ER alert)",
+      "Pain with nausea and vomiting",
+      "Pain following trauma",
+      "High fever and scrotal redness"
+    ],
+    requiredExams: [
+      "Checking for Prehn's sign",
+      "Testing cremasteric reflex",
+      "Palpation for testicular masses/hard nodules",
+      "Transillumination of scrotum"
+    ]
+  },
+  {
+    id: "male_testicular_swelling_mass",
+    label: "Testicular Swelling or Mass",
+    dimensions: {
+      type: ["painless lump/mass", "general scrotal swelling", "heaviness in scrotum", "fluid feeling (Hydrocele)"],
+      onset: ["gradual", "sudden"]
+    },
+    redFlags: [
+      "Painless firm lump within the testicle (Germ cell tumor concern)",
+      "Rapidly increasing size",
+      "Associated with weight loss"
+    ]
+  },
+  {
+    id: "male_scrotal_skin_changes",
+    label: "Scrotal Skin Changes",
+    dimensions: {
+      type: ["redness/warmth", "itching", "sores/ulcers", "peeling"],
+      associated: ["pain", "discharge"]
+    },
+    redFlags: [
+      "Rapidly spreading redness and extreme pain (Fournier's Gangrene emergency)",
+      "Painless ulcers (Syphilis screening)"
+    ]
+  },
+
+  // PENILE SYMPTOMS
+  {
+    id: "male_penile_discharge",
+    label: "Penile Discharge",
+    dimensions: {
+      character: ["clear", "pus-like (purulent)", "bloody", "watery"],
+      associated: ["pain with urination", "itching/burning"],
+      timing: ["worse in morning", "constant"]
+    },
+    redFlags: [
+      "Discharge + fever + joint pain (Disseminated gonorrhea alert)",
+      "Heavy bleeding from urethra"
+    ]
+  },
+  {
+    id: "male_penile_lesions",
+    label: "Penile Lesions / Ulcers",
+    dimensions: {
+      type: ["painful sores", "painless ulcers", "blisters", "wart-like growths"],
+      associated: ["swollen lymph nodes in groin"]
+    },
+    redFlags: [
+      "Painless ulcer (Chancre suspicion)",
+      "Clustered painful blisters (Herpes suspicion)"
+    ]
+  },
+  {
+    id: "male_penile_pain_swelling",
+    label: "Penile Pain & Swelling",
+    dimensions: {
+      type: ["pain with erection", "curvature (Peyronie's)", "foreskin swelling (Phimosis/Paraphimosis)", "priapism (persistent erection)"],
+      associated: ["trauma during intercourse"]
+    },
+    redFlags: [
+      "Priapism (erection lasting > 4 hours) - Emergency",
+      "Inability to pull foreskin forward over glans (Paraphimosis) - Emergency",
+      "Sudden 'snap' and pain during intercourse (Penile fracture) - Emergency"
+    ]
+  },
+
+  // URINARY FLOW
+  {
+    id: "male_urinary_flow_issues",
+    label: "Urinary Flow & Prostate Issues",
+    dimensions: {
+      character: ["weak stream", "starting delay (Hesitancy)", "nocturnal frequency", "dribbling"]
+    },
+    redFlags: [
+      "Complete inability to urinate (Acute retention)",
+      "Visible blood in urine (Hematuria)",
+      "Severe lower back pain"
+    ]
+  },
+
+  // INFERTILITY & HORMONAL
+  {
+    id: "male_infertility",
+    label: "Infertility / Conception issues",
+    dimensions: {
+      duration: ["trying for > 12 months", "trying for 6-12 months"],
+      associated: ["history of mumps", "history of undescended testicle", "varicocele (bag of worms feeling)"]
+    }
+  },
+  {
+    id: "male_hormonal_symptoms",
+    label: "Hormonal Imbalance signs (Male)",
+    dimensions: {
+      symptoms: ["breast enlargement (Gynecomastia)", "reduced facial/body hair", "decreased muscle mass", "increased body fat"],
+      associated: ["fatigue", "mood changes"]
+    },
+    redFlags: [
+      "Rapid breast enlargement",
+      "Loss of secondary male characteristics"
+    ]
+  }
+];
+
+export const FEMALE_MODELS: SymptomModel[] = [
+  // MENSTRUAL SYMPTOMS
+  {
+    id: "female_amenorrhea",
+    label: "Absent periods (Amenorrhea)",
+    dimensions: {
+      type: ["primary (never started)", "secondary (stopped after having them)"],
+      associated: ["pregnancy suspicion", "excessive exercise", "significant weight loss", "stress"]
+    },
+    redFlags: ["Sudden cessation with severe abdominal pain", "Galactorrhea (milky discharge)"]
+  },
+  {
+    id: "female_menorrhagia",
+    label: "Heavy Menstrual Bleeding (Menorrhagia)",
+    dimensions: {
+      severity: ["soaking through pads/tampons in 1 hour", "passing large clots", "anemia symptoms (fatigue)"],
+      duration: ["periods lasting > 7 days", "intermittent"]
+    },
+    redFlags: ["Postmenopausal bleeding", "Bleeding with signs of shock (dizziness/fainting)"]
+  },
+  {
+    id: "female_irregular_periods",
+    label: "Irregular Menstrual Cycles",
+    dimensions: {
+      pattern: ["infrequent (Oligomenorrhea)", "too frequent (Polymenorrhea)", "bleeding between periods (Metrorrhagia)", "variable cycle length"],
+      associated: ["acne", "excess hair growth (Hirsutism)", "PMS symptoms"]
+    }
+  },
+  {
+    id: "female_dysmenorrhea",
+    label: "Painful periods (Dysmenorrhea)",
+    dimensions: {
+      onset: ["primary (started with first periods)", "secondary (started later in life/worsening)"],
+      severity: ["prevents school/work", "mild/crampy"]
+    },
+    redFlags: ["Severe pain not responding to usual over-the-counter meds"]
+  },
+  {
+    id: "female_pms",
+    label: "Premenstrual Syndrome (PMS)",
+    dimensions: {
+      symptoms: ["mood swings", "irritability", "bloating", "breast tenderness", "cravings"],
+      timing: ["starts 1-2 weeks before period", "resolves after period starts"]
+    }
+  },
+
+  // PREGNANCY RELATED
+  {
+    id: "female_missed_period",
+    label: "Missed Period",
+    dimensions: {
+      duration: ["1 missed cycle", "2+ missed cycles"],
+      pregnancy_test: ["positive", "negative", "not done"]
+    },
+    redFlags: ["Missed period + severe sharp pelvic pain (Ectopic suspicion)"]
+  },
+  {
+    id: "female_morning_sickness",
+    label: "Morning Sickness (Nausea/Vomiting)",
+    dimensions: {
+      severity: ["mild nausea", "occasional vomiting", "unable to keep fluids down (Hyperemesis)"],
+      timing: ["morning and evening", "all day"]
+    }
+  },
+  {
+    id: "female_pregnancy_fatigue",
+    label: "Fatigue (likely pregnancy related)",
+    dimensions: {
+      associated: ["breast tenderness", "missed period", "increased urination"]
+    }
+  },
+
+  // VAGINAL SYMPTOMS
+  {
+    id: "female_vaginal_discharge",
+    label: "Vaginal Discharge",
+    dimensions: {
+      character: ["clear/leukorrhea", "white/clumpy (yeast)", "yellow/green", "foul-smelling", "bloody/brown"],
+      associated: ["itching", "burning", "odor"]
+    }
+  },
+  {
+    id: "female_vaginal_bleeding_abnormal",
+    label: "Abnormal Vaginal Bleeding",
+    dimensions: {
+      type: ["postcoital (after intercourse)", "spotting between periods", "postmenopausal bleeding"],
+      associated: ["pelvic pain", "trauma"]
+    },
+    redFlags: [
+      "Postmenopausal bleeding (Malignancy screening alert)",
+      "Bleeding after intercourse",
+      "Very heavy bleeding with dizziness"
+    ]
+  },
+  {
+    id: "female_vaginal_dryness",
+    label: "Vaginal Dryness / Itching",
+    dimensions: {
+      sensation: ["dryness", "itching", "burning during/after intercourse"],
+      triggers: ["menopause transition", "postpartum", "new soaps/products"]
+    }
+  },
+
+  // PELVIC SYMPTOMS
+  {
+    id: "female_pelvic_pain",
+    label: "Pelvic Pain",
+    dimensions: {
+      character: ["aching", "sharp/stabbing", "chronic pelvic pain", "sudden onset"],
+      timing: ["cyclical (with periods)", "random", "with bowel movements"]
+    },
+    redFlags: [
+      "Severe pelvic pain + fever + discharge (PID concern)",
+      "Sudden severe pain in pregnancy",
+      "Suspected ovarian torsion (sudden severe pain with nausea)"
+    ],
+    requiredExams: [
+      "Perform bimanual pelvic examination",
+      "Assess for cervical motion tenderness",
+      "Abdominal palpation for masses"
+    ]
+  },
+  {
+    id: "female_dyspareunia",
+    label: "Pain during Intercourse (Dyspareunia)",
+    dimensions: {
+      location: ["superficial (at entry)", "deep (inside)"],
+      associated: ["vaginal dryness", "pelvic pain", "bleeding after"]
+    }
+  },
+  {
+    id: "female_pelvic_pressure",
+    label: "Pelvic Pressure sensation",
+    dimensions: {
+      character: ["feeling like something is 'falling out'", "heaviness", "fullness"],
+      associated: ["urinary leakage", "constipation", "visible bulge at vagina (Prolapse)"]
+    }
+  },
+
+  // BREAST SYMPTOMS
+  {
+    id: "female_breast_pain",
+    label: "Breast Pain (Mastalgia)",
+    dimensions: {
+      type: ["cyclical (worse before period)", "non-cyclical", "sharp/burning"],
+      location: ["one breast", "both breasts", "specific area"]
+    }
+  },
+  {
+    id: "female_breast_lump",
+    label: "Breast Lump",
+    dimensions: {
+      character: ["hard/fixed", "soft/rubbery", "painful", "painless"],
+      location: ["upper outer quadrant", "near nipple", "axilla (armpit)"]
+    },
+    redFlags: [
+      "Hard, fixed, painless lump",
+      "Skin changes like 'orange peel' (Peau d'orange)",
+      "New nipple retraction or turning inward"
+    ]
+  },
+  {
+    id: "female_nipple_discharge",
+    label: "Nipple Discharge",
+    dimensions: {
+      character: ["milky (Galactorrhea)", "clear", "bloody", "yellow/green"],
+      onset: ["spontaneous", "only when squeezed"]
+    },
+    redFlags: ["Bloody discharge", "Spontaneous discharge in 1 breast only"]
+  },
+  {
+    id: "female_breast_swelling_tenderness",
+    label: "Breast Swelling & Tenderness",
+    dimensions: {
+      timing: ["hormonal cycle", "pregnancy", "breastfeeding (assess for Mastitis)"],
+      redness: ["present (Mastitis concern)", "absent"]
+    },
+    redFlags: ["Hot, red, painful breast with fever (Mastitis/Abscess concern)"]
+  },
+
+  // FERTILITY & HORMONAL
+  {
+    id: "female_infertility",
+    label: "Infertility / Conception issues",
+    dimensions: {
+      duration: ["trying for > 12 months (age <35)", "trying for > 6 months (age >35)"],
+      associated: ["irregular periods", "history of STIs/PID"]
+    }
+  },
+  {
+    id: "female_hirsutism_hormonal",
+    label: "Excess Hair / Hormonal changes",
+    dimensions: {
+      type: ["excess facial/body hair (Hirsutism)", "oily skin/acne", "hair thinning on head"],
+      associated: ["weight gain", "clitoral enlargement (Virilization signs)"]
+    }
+  }
+];
+
+export const ENDOCRINE_MODELS: SymptomModel[] = [
+  // WEIGHT & METABOLIC
+  {
+    id: "endo_weight_gain",
+    label: "Unintentional Weight Gain",
+    dimensions: {
+      timeframe: ["rapid (weeks)", "steady (months)"],
+      associated: ["increased appetite", "difficulty losing weight", "fatigue", "swelling/edema"]
+    }
+  },
+  {
+    id: "endo_weight_loss",
+    label: "Unintentional Weight Loss (Endocrine)",
+    dimensions: {
+      appetite: ["increased (Polyphagia)", "decreased", "normal"],
+      associated: ["palpitations", "anxiety", "increased thirst"]
+    },
+    redFlags: ["Weight loss despite increased appetite"]
+  },
+  {
+    id: "endo_appetite_changes",
+    label: "Appetite Changes (Metabolic)",
+    dimensions: { type: ["frequent hunger (Polyphagia)", "decreased appetite", "cravings"] }
+  },
+
+  // TEMPERATURE REGULATION
+  {
+    id: "endo_heat_intolerance",
+    label: "Heat Intolerance",
+    dimensions: { associated: ["excessive sweating", "palpitations", "anxiety"] }
+  },
+  {
+    id: "endo_cold_intolerance",
+    label: "Cold Intolerance",
+    dimensions: { associated: ["dry skin", "constipation", "fatigue", "weight gain"] }
+  },
+  {
+    id: "endo_sweating_abnormalities",
+    label: "Sweating abnormalities",
+    dimensions: { type: ["excessive sweating (Hyperhidrosis)", "decreased sweating", "night sweats"] }
+  },
+
+  // FLUID & GLUCOSE
+  {
+    id: "endo_thirst_polydipsia",
     label: "Excessive Thirst (Polydipsia)",
+    dimensions: { onset: ["sudden", "insidious"], associated: ["dry mouth", "frequent urination"] }
+  },
+  {
+    id: "endo_urination_polyuria",
+    label: "Excessive Urination (Polyuria)",
+    dimensions: { timing: ["all day", "mostly at night (Nocturia)"], character: ["large volumes", "frequent but small"] }
+  },
+  {
+    id: "endo_dehydration_symptoms",
+    label: "Dehydration symptoms",
+    dimensions: { type: ["dizziness on standing", "dry membranes", "dark urine"] }
+  },
+
+  // NEUROMETABOLIC
+  {
+    id: "endo_fatigue_weakness",
+    label: "Fatigue & Weakness (Endocrine)",
+    dimensions: { character: ["lethargy", "muscle weakness (proximal)", "brain fog", "poor concentration"] }
+  },
+  {
+    id: "endo_mood_changes",
+    label: "Hormonal Mood Changes",
+    dimensions: { type: ["irritability", "anxiety", "emotional lability", "depression symptoms"] }
+  },
+
+  // SKIN & BODY CHANGES
+  {
+    id: "endo_skin_hair_changes",
+    label: "Skin & Hair (Endocrine)",
+    dimensions: { 
+      type: ["dry skin", "oily skin", "hair loss", "excess body hair (Hirsutism)", "brittle hair/nails", "pigmentation changes"],
+      associated: ["acne worsening"]
+    }
+  },
+
+  // CARDIO & GROWTH
+  {
+    id: "endo_cardio_endocrine",
+    label: "Cardiometabolic (Palpitations/HR)",
+    dimensions: { type: ["palpitations", "fast heart rate (Tachycardia)", "slow heart rate (Bradycardia)", "flushing"] }
+  },
+  {
+    id: "endo_growth_hormonal",
+    label: "Growth & Physical changes",
+    dimensions: { type: ["delayed growth (child)", "excess growth features (Acromegaly)", "breast discharge (Galactorrhea)", "thyroid swelling (Goiter)"] },
+    redFlags: ["Rapid neck swelling", "Double vision or visual field loss with hormonal changes"]
+  }
+];
+
+export const HEMATOLOGIC_MODELS: SymptomModel[] = [
+  // BLEEDING & BRUISING
+  {
+    id: "hema_bruising_easy",
+    label: "Easy Bruising",
+    dimensions: { context: ["after minor trauma", "spontaneous", "multiple areas"], size: ["small spots", "large patches"] }
+  },
+  {
+    id: "hema_bleeding_excessive",
+    label: "Excessive or Prolonged Bleeding",
+    dimensions: { type: ["minor cuts taking long to stop", "nosebleeds (epistaxis)", "gum bleeding", "heavy periods"], severity: ["requires clinical intervention", "frequent"] }
+  },
+  {
+    id: "hema_skin_bleeding_signs",
+    label: "Skin Bleeding signs (Petechiae/Purpura)",
+    dimensions: { type: ["tiny red spots (Petechiae)", "purple patches (Purpura)", "skin hemorrhages"] },
+    redFlags: ["Sudden generalized petechiae (Platelet emergency alert)"]
+  },
+
+  // ANEMIA RELATED
+  {
+    id: "hema_anemia_symptoms",
+    label: "Anemia Symptoms (Fatigue/Pallor)",
+    dimensions: { character: ["fatigue", "weakness", "dizziness", "shortness of breath on exertion", "pale skin (pallor)", "palpitations"] }
+  },
+
+  // LYMPHATIC
+  {
+    id: "hema_lymphadenopathy",
+    label: "Swollen Lymph Nodes (Lymphadenopathy)",
     dimensions: {
-      onset: ["sudden", "gradual"],
-      associated: ["frequent urination", "dry mouth", "fatigue"]
+      location: ["neck", "armpit (axilla)", "groin (inguinal)", "generalized"],
+      character: ["painful/tender", "painless", "firm/hard", "movable", "fixed/matted"],
+      duration: ["recent", "persisting > 4 weeks"]
+    },
+    redFlags: ["Firm, painless, fixed nodes", "Generalized enlargement", "Persistent enlargement > 1 month"]
+  },
+
+  // CLOTTING & THROMBOTIC
+  {
+    id: "hema_clotting_clues",
+    label: "Clotting clues (DVT/PE suspicion)",
+    dimensions: { type: ["painful swollen leg", "sudden chest pain + dyspnea (PE)", "history of blood clots"], associated: ["limb redness", "warmth"] },
+    redFlags: ["Sudden unilateral leg swelling", "Severe chest pain + shortness of breath"]
+  },
+
+  // MALIGNANCY CLUES
+  {
+    id: "hema_systemic_malignancy",
+    label: "Systemic Malignancy clues",
+    dimensions: { character: ["unexplained weight loss", "persistent fever", "night sweats", "bone pain", "abdominal fullness (Splenomegaly)"] }
+  }
+];
+
+export const PSYCHIATRIC_MODELS: SymptomModel[] = [
+  // MOOD SYMPTOMS
+  {
+    id: "psych_depression",
+    label: "Depression / Low Mood",
+    dimensions: {
+      character: ["constant low mood", "loss of interest (Anhedonia)", "feelings of hopelessness", "guilt/worthlessness", "tearfulness"],
+      duration: ["weeks", "months", "recurrent"]
+    }
+  },
+  {
+    id: "psych_mania_elevated",
+    label: "Elevated Mood (Mania)",
+    dimensions: { character: ["racing thoughts", "decreased need for sleep", "grandiosity", "excessive energy", "impulsivity"] }
+  },
+  {
+    id: "psych_mood_instability",
+    label: "Mood Swings & Irritability",
+    dimensions: { character: ["mood swings", "emotional instability", "irritability", "anger outbursts"] }
+  },
+
+  // ANXIETY SYMPTOMS
+  {
+    id: "psych_anxiety_general",
+    label: "Anxiety & Worry",
+    dimensions: { type: ["excessive worry", "feeling on edge", "restlessness", "social anxiety", "specific phobias"] }
+  },
+  {
+    id: "psych_panic_attacks",
+    label: "Panic Attacks",
+    dimensions: { associated: ["palpitations", "shortness of breath", "fear of dying", "sweating", "trembling"] }
+  },
+
+  // COGNITIVE & THOUGHT
+  {
+    id: "psych_cognitive_psych",
+    label: "Cognitive Psych symptoms",
+    dimensions: { type: ["poor concentration", "confusion (non-organic)", "disorganized thinking", "memory issues"] }
+  },
+
+  // SLEEP
+  {
+    id: "psych_sleep_disturbance",
+    label: "Sleep Disturbance",
+    dimensions: { type: ["difficulty falling asleep (Insomnia)", "frequent awakening", "nightmares", "excessive sleep (Hypersomnia)"] }
+  },
+
+  // BEHAVIORAL
+  {
+    id: "psych_behavioral_changes",
+    label: "Behavioral Changes",
+    dimensions: {
+      character: ["agitation", "withdrawal from social activity", "loss of motivation", "aggressive behavior", "impulsivity"],
+      risk: ["risk-taking behavior", "lack of insight"]
     },
     redFlags: [
-      "Associated with confusion or lethargy",
-      "Sudden onset with high urine volume",
-      "Fruity breath odor"
+      "Severe agitation with risk to others",
+      "Acute withdrawal and isolation in a normally social person"
+    ]
+  },
+
+  // PSYCHOTIC
+  {
+    id: "psych_psychotic_symptoms",
+    label: "Psychotic Symptoms",
+    dimensions: {
+      type: ["hallucinations (auditory/visual)", "delusions (fixed false beliefs)", "paranoia", "loss of reality testing"],
+      speech: ["disorganized speech"]
+    },
+    redFlags: [
+      "Command hallucinations (voices telling you to do things)",
+      "Acute psychosis (first break)",
+      "Paranoia leading to aggressive behavior"
+    ]
+  },
+
+  // RISK & SOMATIC
+  {
+    id: "psych_risk_assessment",
+    label: "Risk & Self-Harm Symptoms",
+    dimensions: {
+      type: ["suicidal thoughts/ideation", "self-harm behavior (cutting/burning)", "homicidal ideation"],
+      intent: ["active plan", "passive thoughts", "no plan"]
+    },
+    redFlags: [
+      "Active suicidal plan or preparation",
+      "Active homicidal ideation with a target",
+      "History of impulsive dangerous behavior"
+    ]
+  },
+  {
+    id: "psych_somatic_symptoms",
+    label: "Somatic & Body-related Symptoms",
+    dimensions: {
+      character: ["unexplained physical complaints", "fatigue without organic cause", "psychosomatic pain", "sexual dysfunction"],
+      appetite: ["increased appetite", "decreased appetite", "no change"]
+    }
+  }
+];
+
+export const IMMUNOLOGIC_MODELS: SymptomModel[] = [
+  // ALLERGIC REACTIONS (GENERAL & SKIN)
+  {
+    id: "immuno_allergic_skin",
+    label: "Allergic Skin Reactions",
+    dimensions: {
+      type: ["hives (Urticaria)", "swelling (Angioedema)", "itching (Pruritus)", "red skin/rash", "Eczema flare", "Contact dermatitis"],
+      location: ["face/lips", "limbs", "trunk", "whole body"],
+      triggers: ["food", "medication", "insect sting", "topical contact (latex/fragrance)", "unknown"]
+    },
+    redFlags: [
+      "Rapidly spreading hives after exposure",
+      "Swelling of the lips, tongue, or face",
+      "Skin reaction associated with difficulty breathing",
+      "Severe, blistering rash after starting new medication"
+    ]
+  },
+
+  // RESPIRATORY ALLERGIC SYMPTOMS
+  {
+    id: "immuno_allergic_rhinitis",
+    label: "Allergic Rhinitis (Hay Fever)",
+    dimensions: {
+      symptoms: ["runny nose", "nasal congestion", "sneezing after exposure", "postnasal drip", "itchy nose"],
+      triggers: ["seasonal (pollen)", "animal dander", "dust", "perfumes/smoke"]
+    }
+  },
+  {
+    id: "immuno_allergic_cough_wheezing",
+    label: "Allergic Cough & Wheezing",
+    dimensions: {
+      character: ["dry allergic cough", "wheezing after exposure", "shortness of breath", "chest tightness"],
+      onset: ["immediate after contact", "delayed"]
+    },
+    redFlags: ["Severe shortness of breath", "Rapidly worsening wheezing"]
+  },
+
+  // EYE ALLERGIC SYMPTOMS
+  {
+    id: "immuno_allergic_conjunctivitis",
+    label: "Allergic Eye Symptoms",
+    dimensions: {
+      character: ["itchy eyes", "red eyes", "watery eyes", "eyelid swelling"],
+      associated: ["light sensitivity (Photophobia)", "sneezing"]
+    }
+  },
+
+  // FOOD & DRUG ALLERGY
+  {
+    id: "immuno_food_drug_allergy",
+    label: "Food & Drug Allergy Symptoms",
+    dimensions: {
+      gastric: ["nausea", "vomiting", "abdominal cramps/pain"],
+      local: ["lip/tongue swelling", "tingling in mouth", "throat tightness/hoarseness"],
+      onset: ["immediate (within minutes)", "delayed (hours)"]
+    },
+    redFlags: [
+      "Sudden difficulty breathing or swallowing (Anaphylaxis emergency)",
+      "Drop in blood pressure (fainting, dizziness)",
+      "Weak, rapid pulse + generalized rash"
+    ]
+  },
+
+  // SYSTEMIC / ANAPHYLAXIS HISTORY
+  {
+    id: "immuno_anaphylaxis_history",
+    label: "Anaphylaxis History",
+    dimensions: {
+      previous_reactions: ["known anaphylaxis history", "previous severe swelling", "multiple system involvement"],
+      known_triggers: ["peanuts/nuts", "shellfish", "NSAIDs", "Penicillin", "bee stings"]
+    },
+    redFlags: [
+      "Active reaction with multi-system involvement (e.g., skin + breathing)",
+      "Rapid onset of symptoms (seconds to minutes)"
+    ]
+  },
+
+  // AUTOIMMUNE / INFLAMMATORY
+  {
+    id: "immuno_autoimmune_patterns",
+    label: "Autoimmune & Inflammatory Patterns",
+    dimensions: {
+      symptoms: ["recurrent joint inflammation", "morning stiffness > 1 hour", "malar (butterfly) rash", "photosensitivity rash"],
+      associated: ["chronic fatigue", "unexplained fevers", "weight loss", "kidney issues (foamy urine)"]
+    },
+    redFlags: [
+      "Vision changes or eye pain (Uveitis suspicion)",
+      "Systemic flare associated with high fever",
+      "Kidney involvement symptoms (edema/foamy urine)"
+    ]
+  },
+
+  // IMMUNE DYSFUNCTION / DEFICIENCY
+  {
+    id: "immuno_deficiency_dysfunction",
+    label: "Immune Deficiency & Dysfunction",
+    dimensions: {
+      character: ["recurrent infections (pneumonia/sinus)", "frequent colds", "slow recovery", "opportunistic infections", "poor wound healing"],
+      frequency: ["multiple antibiotic courses per year", "frequent hospitalizations for infection"]
+    },
+    redFlags: [
+      "Persistent or unusually severe infections",
+      "Infection with unusual organisms",
+      "Failure to thrive in children paired with recurrent infections"
+    ]
+  }
+];
+
+export const PEDIATRIC_MODELS: SymptomModel[] = [
+  {
+    id: "ped_growth_delay",
+    label: "Growth or Height Delay",
+    dimensions: {
+      onset: ["infancy", "preschool", "school age"],
+      associated: ["poor appetite", "developmental delay", "weight plateaus"]
+    },
+    redFlags: [
+      "Failure to thrive (crossing 2+ percentile lines down)",
+      "Unexplained chronic diarrhea",
+      "Dysmorphic features"
+    ]
+  },
+  {
+    id: "ped_fussy_infant",
+    label: "Excessive Crying / Fussiness (Infant)",
+    dimensions: {
+      timing: ["evening (colic pattern)", "after feeding", "constant"],
+      associated: ["fever", "vomiting", "diarrhea", "rash"]
+    },
+    redFlags: [
+      "Bulging fontanelle",
+      "Inconsolable crying for > 2 hours",
+      "Lethargy or poor feeding"
+    ]
+  }
+];
+
+export const GERIATRIC_MODELS: SymptomModel[] = [
+  {
+    id: "geri_fall_risk",
+    label: "Frequent Falls / Instability",
+    dimensions: {
+      triggers: ["turning head", "getting up", "walking at night", "unknown"],
+      associated: ["dizziness", "vision changes", "medication use"]
+    },
+    redFlags: [
+      "Falls resulting in head injury",
+      "Syncope (passing out)",
+      "Sudden inability to walk"
+    ]
+  },
+  {
+    id: "geri_cognitive_decline",
+    label: "Cognitive Decline / Confusion",
+    dimensions: {
+      onset: ["sudden (Delirium concern)", "gradual (Dementia concern)"],
+      type: ["short-term memory", "orientation", "language", "hallucinations"]
+    },
+    redFlags: [
+      "Sudden onset with fever (Infection risk)",
+      "Wandering and getting lost",
+      "Aggressive behavior"
     ]
   }
 ];
 
 export const ALL_MODELS: Record<string, SymptomModel[]> = {
   general: GENERAL_MODELS,
+  pediatric: PEDIATRIC_MODELS,
   head: HEAD_MODELS,
   ear: EAR_MODELS,
   eye: EYE_MODELS,
@@ -1829,7 +2824,14 @@ export const ALL_MODELS: Record<string, SymptomModel[]> = {
   heart: HEART_MODELS,
   digestive: DIGESTIVE_MODELS,
   kidney: KIDNEY_MODELS,
+  male: MALE_MODELS,
+  female: FEMALE_MODELS,
   skin: SKIN_MODELS,
   musculoskeletal: MUSCULOSKELETAL_MODELS,
   neurological: NEUROLOGICAL_MODELS,
+  geriatric: GERIATRIC_MODELS,
+  endocrine: ENDOCRINE_MODELS,
+  hematologic: HEMATOLOGIC_MODELS,
+  psychiatric: PSYCHIATRIC_MODELS,
+  immunologic: IMMUNOLOGIC_MODELS,
 };

@@ -1,7 +1,9 @@
-import { useState } from "react";
-import { Lock, Shield, Key, Smartphone, Eye, EyeOff, AlertTriangle, Check } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Lock, Shield, Key, Smartphone, Eye, EyeOff, AlertTriangle, Check, FileDown, Copy } from "lucide-react";
 import { useSettings } from "../../lib/SettingsContext";
 import { toast } from "sonner";
+import { getOrGenerateMasterKey } from "../../lib/crypto";
+import { useNavigate } from "react-router-dom";
 
 export function SecuritySettings() {
   const { twoFactor, sessionTimeout, updateSettings } = useSettings();
@@ -9,6 +11,21 @@ export function SecuritySettings() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [masterKey, setMasterKey] = useState("");
+  const [showMasterKey, setShowMasterKey] = useState(false);
+
+  useEffect(() => {
+    getOrGenerateMasterKey().then(setMasterKey);
+  }, []);
+
+  const copyMasterKey = async () => {
+    try {
+      await navigator.clipboard.writeText(masterKey);
+      toast.success("Recovery Key copied. Store it in a secure password manager.");
+    } catch {
+      toast.error("Failed to copy recovery key");
+    }
+  };
 
   const handleUpdatePassword = () => {
     if (!currentPassword || !newPassword || !confirmPassword) {
@@ -33,10 +50,10 @@ export function SecuritySettings() {
     }, 500);
   };
 
+  const navigate = useNavigate();
+
   const handleViewAccessLogs = () => {
-    toast.info("Navigating to Audit Logs...");
-    // Ideally this would switch the active tab in Settings.tsx
-    // For now, we just show a toast
+    navigate("/settings/audit");
   };
 
   return (
@@ -133,6 +150,51 @@ export function SecuritySettings() {
           >
             Update Password
           </button>
+        </div>
+      </div>
+
+      <div className="card-panel p-6">
+        <div className="flex items-center gap-2 mb-6">
+          <Shield className="w-5 h-5 text-emerald-600" />
+          <h2 className="text-lg font-bold text-slate-900 dark:text-white">End-to-End Encryption</h2>
+        </div>
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            Physical database backups downloaded to your hard drive are strictly encrypted using military-grade AES-GCM (256-bit). To decrypt and restore backups on a new machine, you <strong>must</strong> have the Master Recovery Key below.
+          </p>
+          <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-lg p-4 flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-500 shrink-0 mt-0.5" />
+            <div className="text-sm text-amber-800 dark:text-amber-400">
+              <span className="font-bold">Warning:</span> If you lose this key, your physical backups will be permanently unrecoverable. We do not store a copy of this key on the cloud.
+            </div>
+          </div>
+          
+          <div className="space-y-2 mt-4">
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Master Recovery Key</label>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <input 
+                  type={showMasterKey ? "text" : "password"} 
+                  readOnly
+                  value={masterKey}
+                  className="w-full p-2.5 pr-10 bg-slate-50 border rounded-lg dark:bg-slate-900/50 dark:border-slate-700 font-mono text-sm text-slate-800 dark:text-slate-200 select-all"
+                />
+                <button 
+                  onClick={() => setShowMasterKey(!showMasterKey)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+                >
+                  {showMasterKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              <button 
+                onClick={copyMasterKey}
+                className="px-4 py-2.5 bg-slate-900 dark:bg-slate-700 text-white rounded-lg flex items-center gap-2 text-sm font-medium hover:bg-slate-800 transition-colors"
+              >
+                <Copy className="w-4 h-4" />
+                Copy
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 

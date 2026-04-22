@@ -1,13 +1,32 @@
 import { GoogleGenAI, GenerateContentParameters, GenerateContentResponse, Chat } from "@google/genai";
 
-const MAX_RETRIES = 3;
-const INITIAL_DELAY = 1000;
+const MAX_RETRIES = 5;
+const INITIAL_DELAY = 1500;
 
 function isTransientError(error: any): boolean {
-  const errorCode = error?.error?.code || error?.code;
+  // Extract error code from various possible structures
+  let errorCode = error?.error?.code || error?.code;
+  
+  // If the error message is a string, check for known proxy errors
+  const errorMessage = error?.message || (typeof error === 'string' ? error : '');
+  
+  // If the error is a stringified JSON, try to parse it
+  if (!errorCode && typeof errorMessage === 'string' && errorMessage.includes('{')) {
+    try {
+      const parsed = JSON.parse(errorMessage.substring(errorMessage.indexOf('{')));
+      errorCode = parsed?.error?.code || parsed?.code;
+    } catch {
+      // Not JSON, ignore
+    }
+  }
+
+  // Common transient error codes:
   // 429: Rate limit
   // 500: Server error
-  return errorCode === 429 || errorCode === 500;
+  // 503: Service Unavailable
+  // 504: Gateway Timeout
+  return errorCode === 429 || errorCode === 500 || errorCode === 503 || errorCode === 504 || 
+         (typeof errorMessage === 'string' && errorMessage.includes('Rpc failed due to xhr error'));
 }
 
 export async function generateContentWithRetry(

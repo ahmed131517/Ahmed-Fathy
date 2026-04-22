@@ -198,6 +198,21 @@ export function CDSSProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
+    // Helper to safely parse JSON strings from DB
+    const safeParse = (data: any, defaultValue: any = []) => {
+      if (!data) return defaultValue;
+      if (typeof data !== 'string') return data;
+      try {
+        const parsed = JSON.parse(data);
+        return Array.isArray(parsed) ? parsed : [parsed];
+      } catch (e) {
+        if (typeof data === 'string' && data.trim()) {
+          return [data.trim()];
+        }
+        return defaultValue;
+      }
+    };
+
     // 3. Check for contraindications and age-based rules
     patients.forEach(patient => {
       const patientId = patient.id || String(patient.localId);
@@ -205,6 +220,22 @@ export function CDSSProvider({ children }: { children: React.ReactNode }) {
       const items = patientPrescriptions.get(patientId) || [];
       const medNames = items.map(i => (i.medicationName || '').toLowerCase());
       const diagNames = patientDiags.map(d => (d.condition || '').toLowerCase());
+      const patientAllergies = safeParse(patient.allergies);
+
+      // Rule: Allergy Check
+      patientAllergies.forEach((allergy: any) => {
+        const allergyStr = typeof allergy === 'string' ? allergy : String(allergy);
+        if (medNames.some(med => med.includes(allergyStr.toLowerCase()))) {
+          const alertId = `contra-allergy-${allergyStr}-${patientId}`;
+          if (!dismissedAlertIds.has(alertId)) {
+            newAlerts.push({
+              id: alertId, patientId, type: 'contraindication', severity: 'high',
+              message: `Contraindication: Patient has known allergy to ${allergyStr}`,
+              details: 'Patient is prescribed medication that may contain this allergen.', timestamp: Date.now()
+            });
+          }
+        }
+      });
 
       // Contraindication: Beta-blocker + Asthma
       if (medNames.some(n => n.includes('propranolol') || n.includes('metoprolol') || n.includes('carvedilol')) && diagNames.some(n => n.includes('asthma') || n.includes('copd'))) {
@@ -270,7 +301,12 @@ export function CDSSProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    setAlerts(newAlerts.sort((a, b) => b.timestamp - a.timestamp));
+    const sortedAlerts = newAlerts.sort((a, b) => b.timestamp - a.timestamp);
+    
+    setAlerts(prev => {
+      if (JSON.stringify(prev) === JSON.stringify(sortedAlerts)) return prev;
+      return sortedAlerts;
+    });
   }, [patients, prescriptions, prescriptionItems, labResults, diagnoses, dismissedAlertIds]);
 
   const dismissAlert = useCallback((id: string) => {

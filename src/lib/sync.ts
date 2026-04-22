@@ -18,184 +18,54 @@ async function addNotification(title: string, message: string, type: 'info' | 's
   });
 }
 
-export async function pushLocalChanges() {
-  const patientsToSync = await db.patients.where('isSynced').equals(0).toArray();
-  const appointmentsToSync = await db.appointments.where('isSynced').equals(0).toArray();
-  const prescriptionsToSync = await db.prescriptions.where('isSynced').equals(0).toArray();
-  const diagnosesToSync = await db.diagnoses.where('isSynced').equals(0).toArray();
-  const labResultsToSync = await db.lab_results.where('isSynced').equals(0).toArray();
-  const vitalsToSync = await db.vitals.where('isSynced').equals(0).toArray();
-
-  if (patientsToSync.length > 0) {
-    for (const patient of patientsToSync) {
-      const { data, error } = await supabase
-        .from('patients')
-        .upsert({
-          id: patient.id,
-          name: patient.name,
-          age: patient.age,
-          gender: patient.gender,
-          blood_type: patient.bloodType,
-          last_visit: patient.lastVisit,
-          status: patient.status,
-          last_modified: patient.lastModified,
-          is_deleted: patient.isDeleted === 1
-        })
-        .select();
-
-      if (!error && data) {
-        await db.patients.update(patient.localId!, { isSynced: 1, id: data[0].id });
-      }
-    }
+export async function pushLocalEvents() {
+  if (!db.isOpen()) {
+    await db.open();
   }
+  
+  try {
+    const pendingEvents = await db.sync_events.toArray();
+    if (pendingEvents.length === 0) return;
 
-  if (appointmentsToSync.length > 0) {
-    for (const appointment of appointmentsToSync) {
-      const { data, error } = await supabase
-        .from('appointments')
-        .upsert({
-          id: appointment.id,
-          patient_id: appointment.patientId,
-          patient_name: appointment.patientName,
-          date: appointment.date,
-          time: appointment.time,
-          type: appointment.type,
-          status: appointment.status,
-          doctor: appointment.doctor,
-          last_modified: appointment.lastModified,
-          is_deleted: appointment.isDeleted === 1
-        })
-        .select();
+    // Map to Supabase column names
+    const eventsToPush = pendingEvents.map(e => ({
+      event_id: e.eventId,
+      entity_type: e.entityType,
+      entity_id: e.entityId,
+      action: e.action,
+      payload: e.payload,
+      timestamp: new Date(e.timestamp).toISOString(),
+      user_id: e.userId
+    }));
 
-      if (!error && data) {
-        await db.appointments.update(appointment.localId!, { isSynced: 1, id: data[0].id });
-      }
+    // Send to Supabase
+    const { error } = await supabase.from('sync_events_log').insert(eventsToPush);
+
+    if (!error) {
+      // Clean up local queue after successful transmission
+      const pushedIds = pendingEvents.map(e => e.id as number);
+      await db.sync_events.bulkDelete(pushedIds);
+    } else {
+      console.warn("Could not push events to Supabase yet. Is the sync_events_log table created? Error:", error.message);
     }
-  }
-
-  if (prescriptionsToSync.length > 0) {
-    for (const rx of prescriptionsToSync) {
-      const { data, error } = await supabase
-        .from('prescriptions')
-        .upsert({
-          id: rx.id,
-          patient_id: rx.patientId,
-          doctor_id: rx.doctorId,
-          diagnosis: rx.diagnosis,
-          notes: rx.notes,
-          refills: rx.refills,
-          status: rx.status,
-          last_modified: rx.lastModified,
-          is_deleted: rx.isDeleted === 1
-        })
-        .select();
-
-      if (!error && data) {
-        const remoteRxId = data[0].id;
-        await db.prescriptions.update(rx.localId!, { isSynced: 1, id: remoteRxId });
-
-        const items = await db.prescription_items.where('prescriptionId').equals(rx.id || rx.localId!.toString()).toArray();
-        for (const item of items) {
-          await supabase.from('prescription_items').upsert({
-            id: item.id,
-            prescription_id: remoteRxId,
-            drug_id: item.drugId,
-            medication_name: item.medicationName,
-            dosage: item.dosage,
-            frequency: item.frequency,
-            duration: item.duration,
-            instructions: item.instructions,
-            form: item.form
-          });
-        }
-      }
-    }
-  }
-
-  if (diagnosesToSync.length > 0) {
-    for (const diag of diagnosesToSync) {
-      const { data, error } = await supabase
-        .from('diagnoses')
-        .upsert({
-          id: diag.id,
-          patient_id: diag.patientId,
-          appointment_id: diag.appointmentId,
-          condition: diag.condition,
-          notes: diag.notes,
-          date: diag.date,
-          last_modified: diag.lastModified,
-          is_deleted: diag.isDeleted === 1
-        })
-        .select();
-
-      if (!error && data) {
-        await db.diagnoses.update(diag.localId!, { isSynced: 1, id: data[0].id });
-      }
-    }
-  }
-
-  if (labResultsToSync.length > 0) {
-    for (const lab of labResultsToSync) {
-      const { data, error } = await supabase
-        .from('lab_results')
-        .upsert({
-          id: lab.id,
-          patient_id: lab.patientId,
-          appointment_id: lab.appointmentId,
-          test_name: lab.testName,
-          value: lab.value,
-          unit: lab.unit,
-          reference_range: lab.referenceRange,
-          status: lab.status,
-          date: lab.date,
-          last_modified: lab.lastModified,
-          is_deleted: lab.isDeleted === 1
-        })
-        .select();
-
-      if (!error && data) {
-        await db.lab_results.update(lab.localId!, { isSynced: 1, id: data[0].id });
-      }
-    }
-  }
-
-  if (vitalsToSync.length > 0) {
-    for (const v of vitalsToSync) {
-      const { data, error } = await supabase
-        .from('vitals')
-        .upsert({
-          id: v.id,
-          patient_id: v.patientId,
-          appointment_id: v.appointmentId,
-          bp_systolic: v.bp_systolic,
-          bp_diastolic: v.bp_diastolic,
-          hr: v.hr,
-          temp: v.temp,
-          rr: v.rr,
-          spo2: v.spo2,
-          oxygen_type: v.oxygenType,
-          oxygen_dose: v.oxygenDose,
-          oxygen_invasive: v.oxygenInvasive,
-          oxygen_device_type: v.oxygenDeviceType,
-          fio2: v.fio2,
-          peep: v.peep,
-          pressure_support: v.pressureSupport,
-          flow_rate: v.flowRate,
-          notes: v.notes,
-          date: v.date,
-          last_modified: v.lastModified,
-          is_deleted: v.isDeleted === 1
-        })
-        .select();
-
-      if (!error && data) {
-        await db.vitals.update(v.localId!, { isSynced: 1, id: data[0].id });
-      }
-    }
+  } catch (err) {
+    console.error("Failed executing pushLocalEvents", err);
   }
 }
 
+export async function pushLocalChanges() {
+  if (!db.isOpen()) {
+    await db.open();
+  }
+  
+  // Call the Delta-Sync event queue processor
+  await pushLocalEvents();
+}
+
 export async function pullRemoteChanges() {
+  if (!db.isOpen()) {
+    await db.open();
+  }
   const lastLocalPatient = await db.patients.orderBy('lastModified').last();
   const lastLocalAppointment = await db.appointments.orderBy('lastModified').last();
   const lastLocalPrescription = await db.prescriptions.orderBy('lastModified').last();

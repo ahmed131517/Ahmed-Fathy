@@ -1,0 +1,96 @@
+src/pages/pharmacy-system/PharmacyInventory.tsx:import { useState, useEffect, useMemo } from "react";
+src/pages/pharmacy-system/PharmacyInventory.tsx:  useEffect(() => {
+src/pages/Schedule.tsx:import { useState, useEffect } from "react";
+src/pages/Schedule.tsx:  useEffect(() => {
+src/pages/settings/LanguageSettings.tsx:import { useState, useEffect } from "react";
+src/pages/settings/LanguageSettings.tsx:  useEffect(() => {
+src/pages/settings/DatabaseManagerSettings.tsx:import React, { useState, useEffect } from 'react';
+src/pages/settings/DatabaseManagerSettings.tsx:  useEffect(() => {
+src/pages/settings/AISettings.tsx:import { useState, useEffect } from "react";
+src/pages/settings/AISettings.tsx:  useEffect(() => {
+src/pages/Pharmacies.tsx:import { useState, useEffect } from "react";
+src/pages/LabRequests.tsx:import { useState, useMemo, useEffect, useRef } from "react";
+src/pages/PhysicalExam.tsx:import { useState, useEffect } from "react";
+src/pages/PhysicalExam.tsx:  useEffect(() => {
+src/pages/PhysicalExam.tsx:  useEffect(() => {
+src/pages/PhysicalExam.tsx:  useEffect(() => {
+src/pages/PhysicalExam.tsx:  useEffect(() => {
+src/pages/AskAI.tsx:import React, { useState, useRef, useEffect } from "react";
+src/pages/AskAI.tsx:  useEffect(() => {
+src/pages/AskAI.tsx:  useEffect(() => {
+src/pages/AskAI.tsx:  useEffect(() => {
+src/pages/AskAI.tsx:  useEffect(() => {
+src/pages/AskAI.tsx:  useEffect(() => {
+src/pages/AskAI.tsx:  useEffect(() => {
+src/pages/AskAI.tsx:  useEffect(() => {
+src/pages/AskAI.tsx:  useEffect(() => {
+src/pages/SymptomAnalysis.tsx:import { useState, MouseEvent, useRef, useEffect, useMemo } from "react";
+src/pages/SymptomAnalysis.tsx:  useEffect(() => {
+src/pages/SymptomAnalysis.tsx:  useEffect(() => {
+src/pages/SymptomAnalysis.tsx:  useEffect(() => {
+src/pages/SymptomAnalysis.tsx:  useEffect(() => {
+src/pages/Prescriptions.tsx:import { useState, useMemo, useEffect } from "react";
+src/pages/Prescriptions.tsx:  useEffect(() => {
+src/pages/Prescriptions.tsx:  useEffect(() => {
+src/pages/Prescriptions.tsx:  useEffect(() => {
+src/pages/Prescriptions.tsx:  useEffect(() => {
+src/pages/Appointments.tsx:import { useState, useMemo, useEffect } from "react";
+src/pages/Appointments.tsx:  useEffect(() => {
+src/pages/UserManagement.tsx:import { useState, useEffect } from "react";
+src/pages/UserManagement.tsx:  useEffect(() => {
+src/pages/StaffCommunication.tsx:import { useState, useEffect, useMemo } from "react";
+src/pages/FinalDiagnosis.tsx:import { useState, useEffect, useCallback, useRef } from "react";
+src/pages/FinalDiagnosis.tsx:  useEffect(() => {
+src/pages/FinalDiagnosis.tsx:  useEffect(() => {
+src/pages/FinalDiagnosis.tsx:  useEffect(() => {
+src/pages/FinalDiagnosis.tsx:  useEffect(() => {
+src/pages/FinalDiagnosis.tsx:  useEffect(() => {
+src/pages/NewPatient.tsx:import { useState, useEffect, useRef } from "react";
+src/pages/NewPatient.tsx:  useEffect(() => {
+src/components/knowledge/Encyclopedia.tsx:import React, { useState, useEffect } from 'react';
+src/components/knowledge/Encyclopedia.tsx:  useEffect(() => {
+src/components/knowledge/Encyclopedia.tsx:  useEffect(() => {
+src/components/knowledge/LabReference.tsx:import React, { useState, useEffect } from 'react';
+src/components/knowledge/LabReference.tsx:  useEffect(() => {
+src/components/knowledge/LabReference.tsx:  useEffect(() => {
+src/components/knowledge/MyLibrary.tsx:import React, { useState, useEffect } from 'react';
+src/components/knowledge/MyLibrary.tsx:  useEffect(() => {
+src/components/knowledge/MyLibrary.tsx:  useEffect(() => {
+src/components/knowledge/DrugDatabase.tsx:import React, { useState, useEffect } from 'react';
+src/components/knowledge/DrugDatabase.tsx:  useEffect(() => {
+src/components/knowledge/DrugDatabase.tsx:  useEffect(() => {
+src/components/knowledge/DrugDatabase.tsx:  useEffect(() => {
+src/components/knowledge/TreatmentProtocols.tsx:import React, { useState, useEffect } from 'react';
+src/components/knowledge/TreatmentProtocols.tsx:  useEffect(() => {
+src/components/knowledge/TreatmentProtocols.tsx:  useEffect(() => {
+src/components/layout/Header.tsx:import { useState, useRef, useEffect } from "react";
+src/components/layout/Header.tsx:  useEffect(() => {
+src/components/layout/Header.tsx:  useEffect(() => {
+src/components/SOAPNoteModal.tsx:import React, { useState, useEffect } from 'react';
+src/components/SOAPNoteModal.tsx:  useEffect(() => {
+src/components/DifferentialDiagnosisGrid.tsx:import React, { useMemo, useState, useEffect } from 'react';
+src/components/DifferentialDiagnosisGrid.tsx:  useEffect(() => {
+src/components/ICD10Search.tsx:import React, { useState, useEffect, useRef } from 'react';
+src/components/ICD10Search.tsx:  useEffect(() => {
+src/components/ICD10Search.tsx:  useEffect(() => {
+src/components/ICD10Search.tsx:  useEffect(() => {
+src/components/WhatsNextModal.tsx:import React, { useState, useEffect } from "react";
+src/components/WhatsNextModal.tsx:  useEffect(() => {
+src/lib/CDSSContext.tsx:import React, { createContext, useContext, useEffect, useState, useMemo, useCallback } from 'react';
+src/lib/CDSSContext.tsx:  useEffect(() => {
+src/lib/PatientContext.tsx:import React, { createContext, useContext, useState, ReactNode, useEffect, useMemo } from 'react';
+src/lib/AISettingsContext.tsx:import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
+src/lib/AISettingsContext.tsx:  useEffect(() => {
+src/lib/ThemeContext.tsx:import React, { createContext, useContext, useEffect, useState } from 'react';
+src/lib/ThemeContext.tsx:  useEffect(() => {
+src/lib/NotificationContext.tsx:import React, { createContext, useContext, useEffect, useState, ReactNode, useMemo, useCallback } from 'react';
+src/lib/NotificationContext.tsx:  useEffect(() => {
+src/lib/SettingsContext.tsx:import React, { createContext, useContext, useEffect, useState, useMemo, useCallback } from 'react';
+src/lib/SettingsContext.tsx:  useEffect(() => {
+src/App.tsx:import { useEffect, useState } from "react";
+src/App.tsx:  useEffect(() => {
+src/App.tsx:  useEffect(() => {
+src/hooks/usePrescription.ts:import { useState, useMemo, useEffect } from "react";
+src/hooks/usePrescription.ts:  useEffect(() => {
+src/hooks/usePrescription.ts:  useEffect(() => {
+src/hooks/usePrescription.ts:  useEffect(() => {

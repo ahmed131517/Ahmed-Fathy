@@ -23,7 +23,10 @@ export interface Allergy {
 
 export interface Patient {
   id: string;
+  mrn?: string;
   name: string;
+  firstName?: string;
+  lastName?: string;
   age: number;
   dob?: string;
   gender: string;
@@ -31,6 +34,7 @@ export interface Patient {
   bloodType: string;
   lastVisit: string;
   status: string;
+  photo?: string;
   allergies?: Allergy[];
   chronicConditions?: string[];
   medications?: Prescription[];

@@ -24,7 +24,8 @@ import { motion, AnimatePresence } from "motion/react";
 
 export function StaffCommunication() {
   const { profile: currentUser } = useUser();
-  const messages = useLiveQuery(() => db.internal_messages.orderBy('createdAt').reverse().toArray()) || [];
+  const [limit, setLimit] = useState(50);
+  const messages = useLiveQuery(() => db.internal_messages.orderBy('createdAt').reverse().limit(limit).toArray()) || [];
   const staff = useLiveQuery(() => db.users.where('isDeleted').equals(0).toArray()) || [];
   const patients = useLiveQuery(() => db.patients.where('isDeleted').equals(0).toArray()) || [];
 
@@ -34,6 +35,10 @@ export function StaffCommunication() {
   const [newMessage, setNewMessage] = useState("");
   const [selectedPatientId, setSelectedPatientId] = useState<string>("");
   const [targetRole, setTargetRole] = useState<string>("all");
+
+  const loadMore = () => {
+    setLimit(prev => prev + 50);
+  };
 
   const filteredMessages = useMemo(() => {
     return messages.filter(m => {
@@ -221,6 +226,9 @@ export function StaffCommunication() {
                 </motion.div>
               ))}
             </AnimatePresence>
+            {filteredMessages.length >= limit && (
+               <button onClick={loadMore} className="w-full text-center text-xs text-indigo-600 hover:text-indigo-800 py-2">Load older messages</button>
+            )}
             {filteredMessages.length === 0 && (
               <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-50">
                 <MessageSquare className="w-12 h-12 mb-4" />

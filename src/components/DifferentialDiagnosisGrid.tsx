@@ -7,8 +7,9 @@ import { Grid, Info, AlertTriangle, BookOpen, ExternalLink, CheckCircle2, X, Sea
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from 'recharts';
 import { usePatient } from '@/lib/PatientContext';
 import { searchPubMed } from '@/services/pubmedService';
-import { checkSafetyAlerts, SafetyAlert } from '@/services/safetyService';
-import { generateSoapNote } from '@/services/soapService';
+import { checkSafetyAlerts, SafetyAlert } from '@/services/clinicalAI/riskEngine';
+import { generateSoapNote } from '@/services/clinicalAI/soapEngine';
+import { calculateWeightedConfidence } from '@/services/clinicalAI/differentialEngine';
 import { PatientTrends } from '@/components/PatientTrends';
 
 interface DifferentialDiagnosisGridProps {
@@ -68,16 +69,7 @@ export const DifferentialDiagnosisGrid: React.FC<DifferentialDiagnosisGridProps>
   }, [selectedDiagnosis]);
 
   const calculateConfidence = (diag: Diagnosis) => {
-    const matchedCount = diag.commonSymptoms.filter(sId => symptoms.some(s => s.id === sId)).length;
-    let score = (matchedCount / diag.commonSymptoms.length) * 100;
-
-    if (selectedPatient) {
-      const hasChronicCondition = selectedPatient.chronicConditions.some(c => diag.name.toLowerCase().includes(c.toLowerCase()));
-      if (hasChronicCondition) score += 10;
-      if (selectedPatient.age > 65 && diag.category === 'Cardiovascular') score += 5;
-    }
-    
-    return Math.min(score, 100);
+    return calculateWeightedConfidence(diag, symptoms, selectedPatient || undefined);
   };
 
   const filteredDiagnoses = useMemo(() => {
@@ -88,7 +80,13 @@ export const DifferentialDiagnosisGrid: React.FC<DifferentialDiagnosisGridProps>
       diag.commonSymptoms.some(sId => symptoms.some(s => s.id === sId))
     ).map(diag => {
       return { ...diag, matchPercentage: calculateConfidence(diag) };
-    }).sort((a, b) => b.matchPercentage - a.matchPercentage)
+    }).sort((a, b) => {
+      const aPriority = a.triagePriority ? (6 - a.triagePriority) : 0;
+      const bPriority = b.triagePriority ? (6 - b.triagePriority) : 0;
+      const aScore = a.matchPercentage + (aPriority * 10);
+      const bScore = b.matchPercentage + (bPriority * 10);
+      return bScore - aScore;
+    })
     .slice(0, 6);
   }, [symptoms, categoryFilter, severityFilter, selectedPatient]);
 
@@ -208,17 +206,31 @@ export const DifferentialDiagnosisGrid: React.FC<DifferentialDiagnosisGridProps>
                 </ResponsiveContainer>
               </div>
               <div className="space-y-4">
-                <div>
-                  <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Diagnostic Tests</h5>
-                  <p className="text-[10px] text-slate-700">{selectedDiagnosis.diagnosticTests?.join(', ') || 'N/A'}</p>
+                <div className="bg-white p-3 rounded-lg border border-slate-100 shadow-sm">
+                  <h5 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Diagnostic Tests</h5>
+                  <div className="flex flex-wrap gap-1">
+                    {selectedDiagnosis.diagnosticTests?.map(test => (
+                      <span key={test} className="text-[10px] bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded border border-indigo-100 font-medium">
+                        {test}
+                      </span>
+                    )) || <span className="text-[10px] text-slate-400 italic">No tests listed in guidelines</span>}
+                  </div>
                 </div>
-                <div>
-                  <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">First-line Treatments</h5>
-                  <p className="text-[10px] text-slate-700">{selectedDiagnosis.firstLineTreatments?.join(', ') || 'N/A'}</p>
+                <div className="bg-white p-3 rounded-lg border border-slate-100 shadow-sm">
+                  <h5 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">First-line Treatments</h5>
+                  <div className="flex flex-wrap gap-1">
+                    {selectedDiagnosis.firstLineTreatments?.map(trt => (
+                      <span key={trt} className="text-[10px] bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-100 font-medium">
+                        {trt}
+                      </span>
+                    )) || <span className="text-[10px] text-slate-400 italic">No treatments listed in guidelines</span>}
+                  </div>
                 </div>
-                <div>
-                  <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Prognosis</h5>
-                  <p className="text-[10px] text-slate-700">{selectedDiagnosis.prognosis || 'N/A'}</p>
+                <div className="bg-white p-3 rounded-lg border border-slate-100 shadow-sm">
+                  <h5 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Prognosis</h5>
+                  <p className="text-[10px] text-slate-700 bg-slate-50 p-2 rounded border border-slate-100 italic">
+                    {selectedDiagnosis.prognosis || 'No prognostic data available.'}
+                  </p>
                 </div>
                 {selectedDiagnosis.redFlags.length > 0 && (
                   <div>

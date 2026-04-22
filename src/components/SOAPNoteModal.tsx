@@ -19,6 +19,8 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
 
+import { generateContentWithRetry } from '@/utils/gemini';
+
 interface SOAPNoteModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -33,6 +35,8 @@ export function SOAPNoteModal({ isOpen, onClose, initialContent, onSave, patient
   const [isSavingTemplate, setIsSavingTemplate] = useState(false);
   const [templateName, setTemplateName] = useState("");
   const [showTemplates, setShowTemplates] = useState(false);
+  const [viewMode, setViewMode] = useState<'structured' | 'raw'>('structured');
+  const [isBeautifying, setIsBeautifying] = useState(false);
 
   const templates = useLiveQuery(() => 
     db.templates
@@ -40,11 +44,90 @@ export function SOAPNoteModal({ isOpen, onClose, initialContent, onSave, patient
       .equals('soap_note')
       .filter(t => !t.userId || t.userId === currentUser?.email)
       .toArray()
-  ) || [];
+  , [currentUser?.email]) || [];
+
+  const parseSOAP = (text: string) => {
+    const sections = { subjective: '', objective: '', assessment: '', plan: '' };
+    if (!text) return sections;
+
+    // More robust regex to handle markdown, colons, and different spacing
+    // Matches: "Subjective:", "S:", "### Subjective", "**Subjective**", etc.
+    const findSection = (headerKeywords: string[], nextKeywords: string[]) => {
+      const headerReg = new RegExp(`(?:^|\\n)(?:#+\\s*|\\*+)?(?:${headerKeywords.join('|')})[:\\s]*\\*?`, 'i');
+      const nextReg = new RegExp(`(?:^|\\n)(?:#+\\s*|\\*+)?(?:${nextKeywords.join('|')})[:\\s]*\\*?`, 'i');
+      
+      const start = text.search(headerReg);
+      if (start === -1) return "";
+
+      // Find where the actual content starts after the header match
+      const match = text.match(headerReg);
+      const contentStart = start + (match ? match[0].length : 0);
+      
+      // Find the start of the next section
+      let contentEnd = text.length;
+      const nextMatch = text.slice(contentStart).search(nextReg);
+      if (nextMatch !== -1) {
+        contentEnd = contentStart + nextMatch;
+      }
+
+      return text.slice(contentStart, contentEnd).trim();
+    };
+
+    sections.subjective = findSection(['Subjective', 'S'], ['Objective', 'Assessment', 'Plan', 'O', 'A', 'P']);
+    sections.objective = findSection(['Objective', 'O'], ['Subjective', 'Assessment', 'Plan', 'S', 'A', 'P']);
+    sections.assessment = findSection(['Assessment', 'A'], ['Subjective', 'Objective', 'Plan', 'S', 'O', 'P']);
+    sections.plan = findSection(['Plan', 'P'], ['Subjective', 'Objective', 'Assessment', 'S', 'O', 'A']);
+
+    // If it's totally unformatted but has content, put it all in subjective for basic visualization
+    if (!sections.subjective && !sections.objective && !sections.assessment && !sections.plan && text.trim()) {
+      sections.subjective = text.trim();
+    }
+    
+    return sections;
+  };
+
+  const [sections, setSections] = useState(parseSOAP(initialContent));
 
   useEffect(() => {
     setContent(initialContent);
+    setSections(parseSOAP(initialContent));
   }, [initialContent]);
+
+  const updateSection = (key: keyof typeof sections, value: string) => {
+    const newSections = { ...sections, [key]: value };
+    setSections(newSections);
+    const reconstructed = `Subjective:\n${newSections.subjective}\n\nObjective:\n${newSections.objective}\n\nAssessment:\n${newSections.assessment}\n\nPlan:\n${newSections.plan}`;
+    setContent(reconstructed);
+  };
+
+  const handleBeautify = async () => {
+    if (!content.trim()) return;
+    setIsBeautifying(true);
+    try {
+      const prompt = `Refine and beautify the following clinical SOAP note into a highly professional, well-structured format. 
+      Ensure clear headings (Subjective:, Objective:, Assessment:, Plan:), expand medical abbreviations where appropriate for clarity, organize findings into bullet points, and use formal clinical language. 
+      
+      Original Note:
+      ${content}
+      
+      Return ONLY the refined SOAP note text.`;
+      
+      const response = await generateContentWithRetry({
+        model: "gemini-3-flash-preview",
+        contents: [{ parts: [{ text: prompt }] }]
+      });
+      
+      const refinedText = response.text || content;
+      setContent(refinedText);
+      setSections(parseSOAP(refinedText));
+      toast.success("Note professionally formatted");
+    } catch (err) {
+      console.error("Beautify failed:", err);
+      toast.error("Failed to format note");
+    } finally {
+      setIsBeautifying(false);
+    }
+  };
 
   const handleSaveTemplate = async () => {
     if (!templateName.trim()) {
@@ -72,6 +155,7 @@ export function SOAPNoteModal({ isOpen, onClose, initialContent, onSave, patient
 
   const handleApplyTemplate = (template: Template) => {
     setContent(template.content);
+    setSections(parseSOAP(template.content));
     setShowTemplates(false);
     toast.success(`Template "${template.name}" applied`);
   };
@@ -112,12 +196,30 @@ export function SOAPNoteModal({ isOpen, onClose, initialContent, onSave, patient
               <h3 className="text-lg font-bold text-slate-900 dark:text-white">
                 SOAP Note Editor
               </h3>
-              {patientName && (
-                <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                  <User className="w-3 h-3" />
-                  Patient: {patientName}
+              <div className="flex items-center gap-2 mt-1">
+                {patientName && (
+                  <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                    <User className="w-3 h-3" />
+                    {patientName}
+                  </div>
+                )}
+                <div className="flex bg-slate-200 dark:bg-slate-800 p-0.5 rounded-md">
+                  <button 
+                    onClick={() => setViewMode('structured')}
+                    className={cn(
+                      "px-2 py-0.5 text-[10px] font-bold rounded transition-all",
+                      viewMode === 'structured' ? "bg-white dark:bg-slate-700 text-indigo-600 shadow-sm" : "text-slate-500"
+                    )}
+                  > Structured </button>
+                  <button 
+                    onClick={() => setViewMode('raw')}
+                    className={cn(
+                      "px-2 py-0.5 text-[10px] font-bold rounded transition-all",
+                      viewMode === 'raw' ? "bg-white dark:bg-slate-700 text-indigo-600 shadow-sm" : "text-slate-500"
+                    )}
+                  > Raw </button>
                 </div>
-              )}
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -139,23 +241,164 @@ export function SOAPNoteModal({ isOpen, onClose, initialContent, onSave, patient
 
         <div className="flex-1 flex min-h-0">
           {/* Main Editor */}
-          <div className="flex-1 flex flex-col p-6 space-y-4">
-            <div className="flex-1 relative">
-              <textarea 
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                className="w-full h-full p-6 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl font-mono text-sm leading-relaxed outline-none focus:ring-2 focus:ring-indigo-500 transition-all resize-none"
-                placeholder="Subjective:\nObjective:\nAssessment:\nPlan:"
-              />
-              <div className="absolute top-4 right-4 flex gap-2">
-                <button 
-                  onClick={handleCopy}
-                  title="Copy to clipboard"
-                  className="p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-500 hover:text-indigo-600 transition-colors shadow-sm"
-                >
-                  <Copy className="w-4 h-4" />
-                </button>
+          <div className="flex-1 flex flex-col p-8 space-y-6">
+            <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
+              {/* Header Context Section - Clinical Overview Style */}
+              <div className="flex items-center justify-between mb-8">
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-3">
+                    <h2 className="font-headline text-2xl font-bold text-blue-900 dark:text-blue-400">Clinical SOAP Note</h2>
+                    {content && (
+                      <div className="flex bg-blue-50 dark:bg-blue-900/30 px-3 py-1 rounded-full border border-blue-100 dark:border-blue-800">
+                        <Sparkles className="w-4 h-4 text-blue-600 dark:text-blue-400 mr-2" />
+                        <span className="text-xs font-bold text-blue-700 dark:text-blue-300">AI Synthesized</span>
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-500 font-medium tracking-tight">Structured encounter documentation with AI-powered synthesis</p>
+                </div>
+
+                <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800/50 p-1 rounded-xl border border-outline-variant/10">
+                  <button 
+                    onClick={() => setViewMode('structured')}
+                    className={cn(
+                      "flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg transition-all",
+                      viewMode === 'structured' 
+                        ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm" 
+                        : "text-slate-500 hover:text-slate-700 dark:text-slate-400 font-medium"
+                    )}
+                  >
+                    <span className="material-symbols-outlined text-sm">dashboard</span>
+                    Structured View
+                  </button>
+                  <button 
+                    onClick={() => setViewMode('raw')}
+                    className={cn(
+                      "flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg transition-all",
+                      viewMode === 'raw' 
+                        ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm" 
+                        : "text-slate-500 hover:text-slate-700 dark:text-slate-400 font-medium"
+                    )}
+                  >
+                    <span className="material-symbols-outlined text-sm">subject</span>
+                    Raw Text
+                  </button>
+                </div>
               </div>
+
+              {isBeautifying ? (
+                <motion.div 
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="flex flex-col items-center justify-center py-32 bg-white dark:bg-slate-900/50 rounded-3xl border border-outline-variant/10 shadow-sm"
+                >
+                  <div className="relative">
+                    <div className="w-20 h-20 border-4 border-blue-50 dark:border-blue-900/30 border-t-blue-600 rounded-full animate-spin"></div>
+                    <Sparkles className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 text-blue-400 animate-pulse" />
+                  </div>
+                  <h3 className="mt-8 font-headline text-lg font-bold text-blue-900 dark:text-blue-200 tracking-tight">Synthesizing Encounter Data...</h3>
+                  <p className="mt-2 text-slate-500 dark:text-slate-400 text-sm max-w-[280px] text-center">
+                    Applying clinical reasoning, expanding medical shorthand, and structuring findings.
+                  </p>
+                </motion.div>
+              ) : (
+                <AnimatePresence mode="wait">
+                  {viewMode === 'structured' ? (
+                    <motion.div 
+                      key="structured"
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: 10 }}
+                      className="grid grid-cols-1 gap-6"
+                    >
+                      <div className="flex items-center justify-between mb-2 px-2">
+                         <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Medical Record Sections</h4>
+                         <button 
+                           onClick={handleBeautify}
+                           disabled={isBeautifying}
+                           className={cn(
+                             "flex items-center gap-1.5 px-4 py-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl text-xs font-bold transition-all border border-indigo-100 dark:border-indigo-900/50 hover:bg-indigo-100",
+                             isBeautifying && "opacity-50 cursor-not-allowed"
+                           )}
+                         >
+                           <Sparkles className="w-3.5 h-3.5" />
+                           Improve & Auto-format Notes
+                         </button>
+                      </div>
+                    {[
+                      { id: 'subjective', label: 'Subjective', icon: 'chat_bubble' },
+                      { id: 'objective', label: 'Objective', icon: 'visibility' },
+                      { id: 'assessment', label: 'Assessment', icon: 'assignment_turned_in' },
+                      { id: 'plan', label: 'Plan', icon: 'event_note' }
+                    ].map((section) => (
+                      <section key={section.id} className="bg-surface-container-lowest dark:bg-slate-900 rounded-xl shadow-sm border border-outline-variant/20 overflow-hidden">
+                        <div className="px-6 py-3 border-b border-outline-variant/10 bg-slate-50/50 dark:bg-slate-800/50 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="material-symbols-outlined text-primary text-lg">{section.icon}</span>
+                            <h3 className="font-headline font-bold text-blue-900 dark:text-blue-400 text-sm tracking-tight">{section.label}</h3>
+                          </div>
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{section.id.charAt(0)}</span>
+                        </div>
+                        <div className="p-4">
+                          <textarea 
+                            value={(sections as any)[section.id]}
+                            onChange={(e) => updateSection(section.id as any, e.target.value)}
+                            className="w-full min-h-[120px] text-sm border-none bg-surface-container-low dark:bg-slate-950 focus:ring-2 focus:ring-primary/20 rounded-xl p-4 text-on-surface dark:text-slate-300 resize-none transition-all leading-relaxed"
+                            placeholder={`Complete ${section.label.toLowerCase()} section...`}
+                          />
+                        </div>
+                      </section>
+                    ))}
+                  </motion.div>
+                ) : (
+                  <motion.div 
+                    key="raw"
+                    initial={{ opacity: 0, x: 10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -10 }}
+                    className="h-full flex flex-col space-y-4"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Raw Clinical Text</p>
+                       <button 
+                         onClick={handleBeautify}
+                         disabled={isBeautifying}
+                         className={cn(
+                           "flex items-center gap-1.5 px-3 py-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg text-[10px] font-bold transition-all border border-indigo-100 dark:border-indigo-900/50",
+                           isBeautifying ? "opacity-50 cursor-not-allowed" : "hover:bg-indigo-100"
+                         )}
+                       >
+                         <Sparkles className={cn("w-3 h-3", isBeautifying && "animate-spin")} />
+                         {isBeautifying ? "Thinking..." : "Beautify & Format"}
+                       </button>
+                    </div>
+                    <div className="flex-1 bg-white dark:bg-slate-950 rounded-2xl shadow-inner border border-slate-200 dark:border-slate-800 p-8 min-h-[500px]">
+                      <textarea 
+                        value={content}
+                        onChange={(e) => {
+                          setContent(e.target.value);
+                          setSections(parseSOAP(e.target.value));
+                        }}
+                        className="w-full h-full bg-transparent border-none font-mono text-sm leading-relaxed outline-none resize-none text-slate-700 dark:text-slate-300"
+                        placeholder="Subjective:\nObjective:\nAssessment:\nPlan:"
+                      />
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            )}
+            </div>
+            
+            <div className="flex justify-between items-center no-print">
+               <div className="flex items-center gap-2">
+                 <button 
+                   onClick={handleCopy}
+                   className="p-2 border border-slate-200 rounded-lg text-slate-500 hover:text-indigo-600 hover:bg-slate-50"
+                   title="Copy to clipboard"
+                 >
+                   <Copy className="w-4 h-4" />
+                 </button>
+               </div>
             </div>
 
             {isSavingTemplate ? (

@@ -9,7 +9,11 @@ import { cn } from "../../lib/utils";
 export function Layout() {
   const location = useLocation();
   const { selectedPatient } = usePatient();
-  const showPatientSelection = [
+  const isEncounterNote = location.pathname === "/encounter-note";
+  const isClinicalOverview = location.pathname === "/clinical-overview";
+  const isSpecialRoute = isEncounterNote || isClinicalOverview;
+
+  const showPatientSelection = !isSpecialRoute && [
     "/new-patient",
     "/symptom-analysis",
     "/physical-exam",
@@ -31,9 +35,12 @@ export function Layout() {
       <div className="flex flex-col flex-1 overflow-hidden">
         <div className="no-print">
           <Header />
-          {selectedPatient && <PatientContextBar />}
+          {!isSpecialRoute && selectedPatient && <PatientContextBar />}
         </div>
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 print:p-0 print:overflow-visible">
+        <main className={cn(
+          "flex-1 overflow-y-auto print:p-0 print:overflow-visible",
+          isSpecialRoute ? "p-0" : "p-4 md:p-6"
+        )}>
           {showPatientSelection && <div className="no-print"><PatientSelection variant="compact" /></div>}
           <Outlet />
         </main>

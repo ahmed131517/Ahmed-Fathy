@@ -24,22 +24,22 @@ export interface PatientRecord {
   emergencyPhone?: string;
   emergencyRelationship?: string;
   hasAllergies?: string;
-  allergies?: string; // JSON string of allergies
+  allergies?: any; // Replaced JSON string with native array/object support
   hasConditions?: string;
-  conditions?: string; // JSON string of conditions
+  conditions?: any; // Replaced JSON string with native array/object support
   otherConditions?: string;
   hasMedications?: string;
-  medications?: string; // JSON string of medications
+  medications?: any; // Replaced JSON string with native array/object support
   hasSurgeries?: string;
   surgeries?: string;
-  familyHistory?: string; // JSON string of family history
+  familyHistory?: any; // Replaced JSON string with native array/object support
   familyHistoryNotes?: string;
   photo?: string;
   signature?: string;
   consentTreatment?: boolean;
   consentPrivacy?: boolean;
   consentFinancial?: boolean;
-  communication?: string; // JSON string of communication preferences
+  communication?: any; // Replaced JSON string with native object support
   lastVisit: string;
   status: string;
   lastModified: number;
@@ -64,6 +64,15 @@ export interface Appointment {
 }
 
 // --- Professional Medication Schema ---
+
+export interface ClinicalDraft {
+  id?: string;
+  localId?: number;
+  patientId: string;
+  type: string;
+  content: any;
+  lastModified: number;
+}
 
 export interface Drug {
   id?: number;
@@ -257,6 +266,7 @@ export interface PharmacyBatch {
   quantity: number;
   lastModified: number;
   isDeleted: number;
+  isSynced: number;
 }
 
 export interface Notification {
@@ -290,14 +300,14 @@ export interface LabRequest {
   localId?: number;
   patientId: string;
   patientName: string;
-  tests: any[]; // JSON string of tests
+  tests: any[]; // Native array of tests
   priority: 'standard' | 'urgent';
   physician: string;
   requestDate: string;
   status: 'pending' | 'collecting' | 'processing' | 'reviewing' | 'completed';
   clinicalInfo: string;
   notes: string;
-  results?: any[]; // JSON string of results
+  results?: any[]; // Native array of results
   aiAnalysis?: string;
   signature?: string;
   uploadedLabUrl?: string;
@@ -457,6 +467,17 @@ export interface Task {
   isSynced: number;
 }
 
+export interface SyncEvent {
+  id?: number;
+  eventId: string;
+  entityType: string;
+  entityId: string;
+  action: 'CREATE' | 'UPDATE' | 'DELETE';
+  payload: any;
+  timestamp: number;
+  userId: string;
+}
+
 export class AppDatabase extends Dexie {
   patients!: Table<PatientRecord>;
   appointments!: Table<Appointment>;
@@ -471,6 +492,7 @@ export class AppDatabase extends Dexie {
   pharmacy_inventory!: Table<PharmacyInventoryItem>;
   notifications!: Table<Notification>;
   audit_logs!: Table<AuditLog>;
+  sync_events!: Table<SyncEvent>;
   backups!: Table<Backup>;
   templates!: Table<Template>;
   chat_messages!: Table<ChatMessage>;
@@ -479,6 +501,7 @@ export class AppDatabase extends Dexie {
   obstetric_records!: Table<ObstetricRecord>;
   pharmacy_batches!: Table<PharmacyBatch>;
   internal_messages!: Table<InternalMessage>;
+  clinical_drafts!: Table<ClinicalDraft>;
   
   // Knowledge Base Tables
   knowledge_encyclopedia!: Table<KnowledgeArticle>;
@@ -499,7 +522,7 @@ export class AppDatabase extends Dexie {
 
   constructor() {
     super('MedicalAppDB');
-    this.version(18).stores({
+    this.version(19).stores({
       patients: '++localId, id, name, lastModified, isDeleted, isSynced',
       appointments: '++localId, id, patientId, date, lastModified, isDeleted, isSynced',
       prescriptions: '++localId, id, patientId, lastModified, isDeleted, isSynced',
@@ -514,6 +537,7 @@ export class AppDatabase extends Dexie {
       pharmacy_batches: '++localId, id, inventoryItemId, batchNumber, expiryDate, isDeleted',
       notifications: '++localId, id, type, category, isRead, createdAt, lastModified, isDeleted, isSynced',
       audit_logs: '++localId, id, userId, timestamp',
+      sync_events: '++id, eventId, entityType, entityId, timestamp',
       backups: '++id, timestamp',
       templates: '++localId, id, category, userId, lastModified',
       chat_messages: 'id, patientId, timestamp',
@@ -521,6 +545,7 @@ export class AppDatabase extends Dexie {
       mental_health_assessments: '++localId, id, patientId, type, date, isDeleted',
       obstetric_records: '++localId, id, patientId, date, isDeleted',
       internal_messages: '++localId, id, senderId, receiverId, receiverRole, type, patientId, createdAt',
+      clinical_drafts: '++localId, id, patientId, type, lastModified',
       
       // Knowledge Base
       knowledge_encyclopedia: '++id, term, category',
@@ -540,15 +565,20 @@ export class AppDatabase extends Dexie {
       drug_indications: '++id, drug_id, disease'
     });
 
-    // Audit Hooks
-    const tablesToAudit = ['patients', 'prescriptions', 'diagnoses', 'lab_results', 'vitals', 'physical_exams'];
+    // Audit and Sync Hooks
+    const tablesToAudit = ['patients', 'appointments', 'prescriptions', 'diagnoses', 'lab_results', 'vitals', 'physical_exams'];
     
     const getCurrentUser = () => {
       try {
         const saved = localStorage.getItem('user_profile');
         if (saved) {
-          const profile = JSON.parse(saved);
-          return profile.email || 'system';
+          try {
+            const profile = JSON.parse(saved);
+            return profile.email || 'system';
+          } catch (e) {
+            console.warn('Failed to parse user_profile for audit', e);
+            return 'system';
+          }
         }
       } catch (e) {
         console.error('Failed to get user for audit', e);
@@ -557,34 +587,91 @@ export class AppDatabase extends Dexie {
     };
 
     tablesToAudit.forEach(tableName => {
-      const table = (this as any)[tableName];
+      const table = (this as any)[tableName] as Table;
+      if (!table) return;
+
       table.hook('creating', (primKey: any, obj: any) => {
-        this.audit_logs.add({
-          userId: getCurrentUser(),
-          action: 'create',
-          entity: tableName,
-          entityId: String(primKey || 'new'),
-          timestamp: Date.now()
+        // Use Dexie.ignoreTransaction to safely write outside the current transaction scope
+        Dexie.ignoreTransaction(() => {
+          this.audit_logs.add({
+            userId: getCurrentUser(),
+            action: 'create',
+            entity: tableName,
+            entityId: String(obj.id || primKey || 'new'),
+            timestamp: Date.now()
+          }).catch(err => console.error('Audit log (creating) failed:', err));
+          
+          this.sync_events.add({
+            eventId: crypto.randomUUID(),
+            entityType: tableName,
+            entityId: String(obj.id || primKey),
+            action: 'CREATE',
+            payload: obj,
+            timestamp: Date.now(),
+            userId: getCurrentUser()
+          }).catch(err => console.error('Sync Event log (creating) failed:', err));
         });
       });
-      table.hook('updating', (modifications: any, primKey: any) => {
-        this.audit_logs.add({
-          userId: getCurrentUser(),
-          action: 'update',
-          entity: tableName,
-          entityId: String(primKey),
-          timestamp: Date.now()
+
+      table.hook('updating', (modifications: any, primKey: any, obj: any) => {
+        Dexie.ignoreTransaction(() => {
+          this.audit_logs.add({
+            userId: getCurrentUser(),
+            action: 'update',
+            entity: tableName,
+            entityId: String(obj.id || primKey),
+            timestamp: Date.now()
+          }).catch(err => console.error('Audit log (updating) failed:', err));
+
+          this.sync_events.add({
+            eventId: crypto.randomUUID(),
+            entityType: tableName,
+            entityId: String(obj.id || primKey),
+            action: 'UPDATE',
+            payload: modifications,
+            timestamp: Date.now(),
+            userId: getCurrentUser()
+          }).catch(err => console.error('Sync Event log (updating) failed:', err));
         });
       });
-      table.hook('deleting', (primKey: any) => {
-        this.audit_logs.add({
-          userId: getCurrentUser(),
-          action: 'delete',
-          entity: tableName,
-          entityId: String(primKey),
-          timestamp: Date.now()
+
+      table.hook('deleting', (primKey: any, obj: any) => {
+        Dexie.ignoreTransaction(() => {
+          this.audit_logs.add({
+            userId: getCurrentUser(),
+            action: 'delete',
+            entity: tableName,
+            entityId: String(primKey),
+            timestamp: Date.now()
+          }).catch(err => console.error('Audit log (deleting) failed:', err));
+
+          this.sync_events.add({
+            eventId: crypto.randomUUID(),
+            entityType: tableName,
+            entityId: String(obj?.id || primKey),
+            action: 'DELETE',
+            payload: { id: obj?.id || primKey, isDeleted: 1 },
+            timestamp: Date.now(),
+            userId: getCurrentUser()
+          }).catch(err => console.error('Sync Event log (deleting) failed:', err));
         });
       });
+    });
+
+    this.on('blocked', () => {
+      console.warn('Dexie database is blocked by another tab');
+    });
+
+    this.on('ready', () => {
+      console.log('Dexie database is ready');
+    });
+
+    // Try to open the database and handle errors
+    this.open().catch(err => {
+      console.error('Failed to open Dexie database:', err);
+      if (err.name === 'UnknownError') {
+        console.error('IndexedDB Internal Error detected. This may require a browser restart or clearing site data.');
+      }
     });
   }
 }

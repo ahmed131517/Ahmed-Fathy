@@ -33,9 +33,6 @@ export function MedicalRecords() {
   const [aiResponse, setAiResponse] = useState("");
   const [isQuerying, setIsQuerying] = useState(false);
   const [selectedTrendMetric, setSelectedTrendMetric] = useState("Blood Pressure");
-  const [showPatientSummary, setShowPatientSummary] = useState(false);
-  const [patientSummary, setPatientSummary] = useState("");
-  const [isGeneratingPatientSummary, setIsGeneratingPatientSummary] = useState(false);
 
   const timelineEvents = useLiveQuery(
     async () => {
@@ -64,33 +61,6 @@ export function MedicalRecords() {
       .map(e => e.details)
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   }, [timelineEvents]);
-
-  const generatePatientSummary = async () => {
-    setShowPatientSummary(true);
-    if (patientSummary) return; // Don't regenerate if already exists
-    
-    setIsGeneratingPatientSummary(true);
-    try {
-      const prompt = `Analyze the complete medical history of this patient: ${JSON.stringify(records)}. 
-      Provide a comprehensive clinical summary including:
-      1. Key Diagnoses
-      2. Chronic Conditions
-      3. Recent Trends
-      4. Outstanding Items/Risks
-      
-      Format the response with clear headings and bullet points.`;
-      
-      const response = await generateContentWithRetry({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-      });
-      setPatientSummary(response.text || "Failed to generate summary.");
-    } catch (error) {
-      setPatientSummary("Error generating summary. Please try again.");
-    } finally {
-      setIsGeneratingPatientSummary(false);
-    }
-  };
 
   const getTrendData = (metric: string) => {
     if (metric === 'Blood Pressure') {
@@ -208,7 +178,7 @@ export function MedicalRecords() {
         </div>
         <div className="flex items-center gap-3">
           <button 
-            onClick={generatePatientSummary}
+            onClick={() => navigate("/clinical-overview")}
             className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm font-medium text-sm"
           >
             <Sparkles className="w-4 h-4" /> Patient Overview
@@ -935,54 +905,6 @@ export function MedicalRecords() {
                   );
                 })}
               </div>
-            </div>
-          </div>
-        </div>
-      )}
-      {showPatientSummary && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col animate-in zoom-in-95 duration-200">
-            <div className="p-6 border-b border-slate-200 flex justify-between items-center bg-slate-50 rounded-t-xl">
-              <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-indigo-600" /> Patient Clinical Overview
-              </h3>
-              <button 
-                onClick={() => setShowPatientSummary(false)} 
-                className="p-2 hover:bg-slate-200 rounded-full text-slate-400 hover:text-slate-600 transition-colors"
-              >
-                <span className="sr-only">Close</span>
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-x w-5 h-5"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-              </button>
-            </div>
-            <div className="p-6 overflow-y-auto leading-relaxed text-slate-700">
-              {isGeneratingPatientSummary ? (
-                <div className="flex flex-col items-center justify-center py-12">
-                  <RefreshCw className="w-8 h-8 text-indigo-600 animate-spin mb-4" />
-                  <p className="text-slate-500 font-medium">Analyzing complete patient history...</p>
-                  <p className="text-slate-400 text-sm mt-2">Synthesizing diagnoses, labs, and trends.</p>
-                </div>
-              ) : (
-                <div className="prose prose-indigo max-w-none whitespace-pre-wrap">
-                  {patientSummary}
-                </div>
-              )}
-            </div>
-            <div className="p-4 border-t border-slate-200 bg-slate-50 rounded-b-xl flex justify-end gap-2">
-              <button 
-                onClick={() => {
-                  setPatientSummary(""); // Clear to force regenerate
-                  generatePatientSummary();
-                }}
-                className="px-4 py-2 text-indigo-600 hover:bg-indigo-50 rounded-lg text-sm font-medium transition-colors"
-              >
-                Regenerate
-              </button>
-              <button 
-                onClick={() => setShowPatientSummary(false)}
-                className="px-4 py-2 bg-slate-900 text-white hover:bg-slate-800 rounded-lg text-sm font-medium transition-colors"
-              >
-                Close
-              </button>
             </div>
           </div>
         </div>

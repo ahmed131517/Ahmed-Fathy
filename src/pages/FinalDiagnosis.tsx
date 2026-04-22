@@ -1,12 +1,13 @@
+import { ClinicalScoresWidget } from "@/components/ClinicalScoresWidget";
 import { 
   CheckCircle, Activity, Clipboard, Database, Edit3, Cpu, RefreshCw, 
   Printer, Save, AlertTriangle, ChevronRight, AlertCircle, ArrowRight,
   Shield, Info, FileText, Mic, Stethoscope, Pill, UserPlus, BookOpen, 
   CheckSquare, UserCheck, GitBranch, Trash2, Plus, X, Heart, Wind, Copy, FolderOpen,
-  Sparkles
+  Sparkles, ExternalLink
 } from "lucide-react";
 import { SpeakButton } from "../components/SpeakButton";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { ICD10Search } from "../components/ICD10Search";
 import { ICD10Code } from "../data/icd10";
@@ -21,8 +22,9 @@ import { motion } from "motion/react";
 import { toast } from "sonner";
 import { useLiveQuery } from "dexie-react-hooks";
 import { getDifferentialDiagnosisPrompt, getSoapNotePrompt, getPatientEducationPrompt } from "@/services/aiConfig";
-import { generateContentWithRetry } from "../utils/gemini";
+import { generateContentWithRetry, parseJsonResponse } from "../utils/gemini";
 import { SOAPNoteModal } from "@/components/SOAPNoteModal";
+import { PatientSummaryModal } from "@/components/PatientSummaryModal";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -32,6 +34,8 @@ interface ClinicalData {
   symptoms: string[];
   examFindings: string[];
   labResults: string[];
+  currentMedications: string[];
+  labTrends: string;
   vitals: {
     bp: string;
     hr: string;
@@ -61,6 +65,7 @@ interface AIDiagnosis {
   recommendations: string[];
   missingInfo?: string[];
   redFlags?: string[];
+  references?: { title: string, url: string }[];
 }
 
 export function FinalDiagnosis() {
@@ -69,6 +74,25 @@ export function FinalDiagnosis() {
   const { selectedPatient, setConfirmedDiagnosis } = usePatient();
   const { symptoms } = useSymptom();
   
+  const patientData = useMemo(() => {
+    if (selectedPatient) {
+      return {
+        age: selectedPatient.age,
+        gender: selectedPatient.gender?.toLowerCase() || 'female',
+        conditions: selectedPatient.chronicConditions || [],
+        medications: selectedPatient.medications?.map((m: any) => m.name || m) || [],
+        allergies: selectedPatient.allergies?.map((a: any) => a.name || a) || []
+      };
+    }
+    return {
+      age: 32,
+      gender: 'female',
+      conditions: [],
+      medications: [],
+      allergies: []
+    };
+  }, [selectedPatient]);
+
   if (!hasRole('doctor')) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -89,6 +113,8 @@ export function FinalDiagnosis() {
   const [soapNote, setSoapNote] = useState<string | null>(null);
   const [isSoapModalOpen, setIsSoapModalOpen] = useState(false);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+  const [patientSummary, setPatientSummary] = useState<string | null>(null);
+  const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
   const [isPeerReview, setIsPeerReview] = useState(false);
   
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
@@ -120,6 +146,8 @@ export function FinalDiagnosis() {
     symptoms: symptoms.map(s => s.label),
     examFindings: [],
     labResults: [],
+    currentMedications: [],
+    labTrends: "",
     vitals: {
       bp: "",
       hr: "",
@@ -231,27 +259,92 @@ export function FinalDiagnosis() {
 
   useEffect(() => {
     if (!isLabsInitializedRef.current && liveLabs && liveLabs.length > 0) {
-      const labStrings = liveLabs.map(l => `${l.testName}: ${l.value} ${l.unit} (${l.status})`);
+      const labStrings = liveLabs.map(l => `${l.testName}: ${l.value} ${l.unit} (${l.status}) - ${l.date}`);
+      
+      // Calculate lab trends
+      const grouped = liveLabs.reduce((acc: any, lab) => {
+        if (!acc[lab.testName]) acc[lab.testName] = [];
+        acc[lab.testName].push(lab);
+        return acc;
+      }, {});
+
+      const trends = Object.entries(grouped).map(([name, labs]: [string, any]) => {
+        if (labs.length < 2) return null;
+        const sorted = labs.sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        const oldest = sorted[0];
+        const latest = sorted[sorted.length - 1];
+        if (oldest.value === latest.value) return null;
+        return `${name}: ${oldest.value} -> ${latest.value} (over ${labs.length} readings)`;
+      }).filter(Boolean);
+
       setClinicalData(prev => ({
         ...prev,
-        labResults: labStrings
+        labResults: labStrings,
+        labTrends: trends.join("; ")
       }));
       isLabsInitializedRef.current = true;
     }
   }, [liveLabs]);
 
+  // Fetch Current Medications
   useEffect(() => {
-    if (clinicalData.vitals.weight && clinicalData.vitals.height) {
-      const weight = parseFloat(clinicalData.vitals.weight);
-      const height = parseFloat(clinicalData.vitals.height) / 100; // cm to m
-      if (weight > 0 && height > 0) {
-        const bmi = (weight / (height * height)).toFixed(1);
-        setClinicalData(prev => ({
-          ...prev,
-          vitals: { ...prev.vitals, bmi }
-        }));
+    const fetchMeds = async () => {
+      if (!selectedPatient?.id) return;
+      
+      // Try fetching from prescriptions first
+      const prescriptions = await db.prescriptions
+        .where('patientId')
+        .equals(selectedPatient.id)
+        .reverse()
+        .limit(5)
+        .toArray();
+      
+      let medicationList: string[] = [];
+      
+      if (prescriptions.length > 0) {
+        for (const p of prescriptions) {
+          const items = await db.prescription_items.where('prescriptionId').equals(p.id!).toArray();
+          medicationList.push(...items.map(i => i.medicationName));
+        }
       }
-    }
+      
+      // Complement with patient record medications if empty
+      if (medicationList.length === 0 && selectedPatient.medications) {
+        if (Array.isArray(selectedPatient.medications)) {
+          medicationList = selectedPatient.medications.map((m: any) => 
+            typeof m === 'string' ? m : m.name || m.medicationName || "Unknown Medication"
+          );
+        } else if (typeof selectedPatient.medications === 'string') {
+          medicationList = [selectedPatient.medications];
+        }
+      }
+
+      // De-duplicate
+      const uniqueMeds = Array.from(new Set(medicationList));
+      
+      setClinicalData(prev => ({
+        ...prev,
+        currentMedications: uniqueMeds
+      }));
+    };
+    
+    fetchMeds();
+  }, [selectedPatient?.id, selectedPatient?.medications]);
+
+  useEffect(() => {
+    const weight = parseFloat(clinicalData.vitals.weight || '0');
+    const height = parseFloat(clinicalData.vitals.height || '0');
+    const bmi = (weight > 0 && height > 0) 
+      ? (weight / ((height / 100) * (height / 100))).toFixed(1)
+      : '';
+
+    setClinicalData(prev => {
+      if (prev.vitals.bmi === bmi) return prev;
+      return {
+        ...prev,
+        vitals: { ...prev.vitals, bmi }
+      };
+    });
   }, [clinicalData.vitals.weight, clinicalData.vitals.height]);
 
   useEffect(() => {
@@ -274,7 +367,11 @@ export function FinalDiagnosis() {
     setSuggestions(null);
 
     try {
-      const prompt = getDifferentialDiagnosisPrompt(selectedPatient, clinicalData);
+      const patientContext = {
+        ...selectedPatient,
+        chronicConditions: selectedPatient.chronicConditions || []
+      };
+      const prompt = getDifferentialDiagnosisPrompt(patientContext as any, clinicalData);
       
       const response = await generateContentWithRetry({
         model: "gemini-3-flash-preview",
@@ -282,7 +379,7 @@ export function FinalDiagnosis() {
         config: { responseMimeType: "application/json" }
       });
 
-      const data = JSON.parse(response.text || "{}");
+      const data = parseJsonResponse(response.text, {} as any);
       
       if (data.top_diagnosis) {
         const allSuggestions = [
@@ -440,9 +537,10 @@ export function FinalDiagnosis() {
         model: "gemini-3-flash-preview",
         contents: prompt,
       });
-      setSoapNote(response.text || "No note generated.");
-      setIsSoapModalOpen(true);
+      const generatedNote = response.text || "No note generated.";
+      sessionStorage.setItem('draft_soap_note', generatedNote);
       toast.success("SOAP note generated successfully");
+      navigate('/soap-editor');
     } catch (error) {
       console.error("SOAP note generation failed:", error);
       toast.error("Failed to generate SOAP note.");
@@ -458,13 +556,17 @@ export function FinalDiagnosis() {
     }
     setIsGeneratingSummary(true);
     try {
-      const prompt = getPatientEducationPrompt(selectedDiagnosis.description);
+      // Find the Plan section from reasoning if it exists, or just use the whole clinical context
+      // Actually, let's just use the current reasoning as context for the plan
+      const prompt = getPatientEducationPrompt(selectedDiagnosis.description, reasoning);
       const response = await generateContentWithRetry({
         model: "gemini-3-flash-preview",
-        contents: prompt,
+        contents: [{ parts: [{ text: prompt }] }],
       });
+      
+      setPatientSummary(response.text || "");
+      setIsSummaryModalOpen(true);
       toast.success("Patient education summary generated");
-      console.log(response.text);
     } catch (error) {
       console.error("Patient summary generation failed:", error);
       toast.error("Failed to generate patient summary.");
@@ -608,6 +710,21 @@ export function FinalDiagnosis() {
               )}
             </div>
 
+            {/* Clinical Scores Widget */}
+            <ClinicalScoresWidget 
+              symptoms={symptoms} 
+              patientHistory={patientData} 
+              vitals={liveVitals ? {
+                hr: liveVitals.hr,
+                sbp: liveVitals.bp_systolic,
+                dbp: liveVitals.bp_diastolic,
+                temp: liveVitals.temp,
+                rr: liveVitals.rr,
+                spo2: liveVitals.spo2,
+                oxygenType: liveVitals.oxygenType
+              } : undefined}
+            />
+
             {/* Symptoms */}
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="bg-slate-50 border-b border-slate-200 px-4 py-3 flex items-center justify-between">
@@ -694,6 +811,45 @@ export function FinalDiagnosis() {
                 </ul>
               </div>
             </div>
+
+            {/* Current Medications */}
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="bg-slate-50 border-b border-slate-200 px-4 py-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Pill className="w-4 h-4 text-indigo-500" />
+                  <h3 className="font-semibold text-slate-800 text-sm">Active Medications</h3>
+                </div>
+              </div>
+              <div className="p-4">
+                {clinicalData.currentMedications.length > 0 ? (
+                  <ul className="space-y-2">
+                    {clinicalData.currentMedications.map((m, i) => (
+                      <li key={i} className="text-sm text-slate-700 flex items-start gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-400 mt-1.5 flex-shrink-0"></span>
+                        {m}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-slate-500 italic">No active medications documented.</p>
+                )}
+              </div>
+            </div>
+
+            {/* Lab Trends */}
+            {clinicalData.labTrends && (
+              <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="bg-slate-50 border-b border-slate-200 px-4 py-3 flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-indigo-500" />
+                  <h3 className="font-semibold text-slate-800 text-sm">Lab Trends (Detected)</h3>
+                </div>
+                <div className="p-4">
+                  <p className="text-xs text-slate-600 leading-relaxed bg-amber-50 border border-amber-100 p-2 rounded">
+                    {clinicalData.labTrends}
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Middle Column: Diagnosis & Reasoning */}
@@ -810,6 +966,26 @@ export function FinalDiagnosis() {
                           </div>
                         )}
 
+                        {suggestions[0].references && suggestions[0].references.length > 0 && (
+                          <div className="mb-4">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2 underline decoration-indigo-200">Evidence-Based References</label>
+                            <div className="flex flex-wrap gap-2">
+                              {suggestions[0].references.map((ref, i) => (
+                                <a 
+                                  key={i} 
+                                  href={ref.url} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-1.5 px-2 py-1 bg-indigo-50 text-indigo-700 rounded text-[10px] font-medium border border-indigo-100 hover:bg-indigo-100 transition-colors"
+                                >
+                                  <ExternalLink className="w-2.5 h-2.5" />
+                                  {ref.title}
+                                </a>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
                         <button 
                           onClick={() => handleApplySuggestion(suggestions[0])}
                           className="w-full py-1.5 bg-indigo-600 text-white rounded text-xs font-medium hover:bg-indigo-700 transition-colors flex items-center justify-center gap-1"
@@ -884,6 +1060,24 @@ export function FinalDiagnosis() {
                             <p className="text-xs text-slate-600 mb-2 line-clamp-2 group-hover:line-clamp-none transition-all">
                               {suggestion.reasoning}
                             </p>
+
+                            {suggestion.references && suggestion.references.length > 0 && (
+                              <div className="flex flex-wrap gap-1.5 mb-3">
+                                {suggestion.references.map((ref, i) => (
+                                  <a 
+                                    key={i} 
+                                    href={ref.url} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="flex items-center gap-1 px-1.5 py-0.5 bg-slate-50 text-slate-500 rounded text-[9px] border border-slate-100 hover:bg-slate-100 transition-colors"
+                                  >
+                                    <ExternalLink className="w-2 h-2" />
+                                    {ref.title}
+                                  </a>
+                                ))}
+                              </div>
+                            )}
+
                             <button 
                               onClick={() => handleApplySuggestion(suggestion)}
                               className="text-xs text-indigo-600 font-medium hover:underline flex items-center gap-1"
@@ -929,14 +1123,6 @@ export function FinalDiagnosis() {
           </div>
         </div>
       )}
-
-      {/* SOAP Note Modal */}
-      <SOAPNoteModal 
-        isOpen={isSoapModalOpen}
-        onClose={() => setIsSoapModalOpen(false)}
-        initialContent={soapNote || ""}
-        patientName={selectedPatient?.name}
-      />
 
       {/* Edit Modal */}
       {editingField && (
@@ -1051,6 +1237,15 @@ export function FinalDiagnosis() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <PatientSummaryModal 
+        isOpen={isSummaryModalOpen}
+        onOpenChange={setIsSummaryModalOpen}
+        patientName={selectedPatient?.name || "Patient"}
+        summaryText={patientSummary || ""}
+        planText={reasoning} // Passing reasoning as the base for the plan
+        diagnosis={selectedDiagnosis?.description || ""}
+      />
     </div>
   );
 }

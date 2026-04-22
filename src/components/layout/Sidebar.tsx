@@ -35,6 +35,7 @@ const navItems: { name: string; key: TranslationKey; path: string; icon: any }[]
   { name: "Knowledge", key: "knowledge", path: "/knowledge", icon: BookOpen },
   { name: "Ask AI", key: "askAI", path: "/ask-ai", icon: Bot },
   { name: "Staff Communication", key: "staff", path: "/staff-communication", icon: Users },
+  { name: "Encounter Note", key: "encounterNote", path: "/encounter-note", icon: FileText },
   { name: "Settings", key: "settings", path: "/settings", icon: Settings },
 ];
 

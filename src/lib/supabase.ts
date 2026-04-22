@@ -9,16 +9,33 @@ if (!isConfigured) {
   console.warn('Supabase credentials missing. Sync will be disabled.');
 }
 
+const createDummyResponse = () => Promise.resolve({ data: [], error: { message: 'Supabase not configured' } });
+
+// A robust dummy client that handles chaining and terminal calls
 const dummyClient = {
-  from: () => ({
-    select: () => ({
-      gt: () => ({ data: [], error: 'Supabase not configured' }),
-      eq: () => ({ data: [], error: 'Supabase not configured' }),
-    }),
-    upsert: () => ({
-      select: () => ({ data: [], error: 'Supabase not configured' }),
-    }),
-  }),
+  from: () => {
+    const builder: any = new Proxy({}, {
+      get: (target, prop) => {
+        if (prop === 'then') {
+          return (onfulfilled: any) => createDummyResponse().then(onfulfilled);
+        }
+        // These methods usually represent the end of a chain or a terminal operation
+        if (['insert', 'upsert', 'update', 'delete', 'gt', 'eq', 'lt', 'lte', 'gte', 'single', 'maybeSingle', 'execute'].includes(prop as string)) {
+          return () => createDummyResponse();
+        }
+        // For everything else (select, order, limit, etc.), return the builder itself for chaining
+        return () => builder;
+      }
+    });
+    return builder;
+  },
+  auth: {
+    getSession: () => Promise.resolve({ data: { session: null }, error: null }),
+    getUser: () => Promise.resolve({ data: { user: null }, error: null }),
+    onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
+    signInWithPassword: () => createDummyResponse(),
+    signOut: () => Promise.resolve({ error: null }),
+  },
   channel: () => {
     const channelObj = {
       on: () => channelObj,

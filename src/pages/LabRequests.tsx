@@ -10,8 +10,8 @@ import {
 import { cn } from "@/lib/utils";
 import { Textarea } from "@/components/ui/textarea";
 import { usePatient } from "@/lib/PatientContext";
-import { LAB_REFERENCE_DATA, ALL_TESTS, LabTest } from "@/data/labReferenceData";
-import { generateContentWithRetry } from "../utils/gemini";
+import { LAB_REFERENCE_DATA, ALL_TESTS, LAB_TEMPLATES, LabTest, LabTemplate } from "@/data/labReferenceData";
+import { generateContentWithRetry, parseJsonResponse } from "../utils/gemini";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import SignatureCanvas from 'react-signature-canvas';
 import { motion, AnimatePresence } from "motion/react";
@@ -23,25 +23,25 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
 const categories = [
-  { id: 'hematology', name: 'Hematology', icon: Droplet },
-  { id: 'renal', name: 'Kidney Function', icon: Box },
-  { id: 'hepatic', name: 'Liver Function', icon: LifeBuoy },
-  { id: 'lipids', name: 'Lipid Profile', icon: PieChart },
-  { id: 'electrolytes', name: 'Electrolytes', icon: Zap },
-  { id: 'pancreatic', name: 'Pancreatic Function', icon: Database },
-  { id: 'metabolic', name: 'General Biochemistry', icon: Activity },
-  { id: 'microbiology', name: 'Microbiology', icon: Filter },
-  { id: 'serology', name: 'Serology & Immunology', icon: Shield },
-  { id: 'urine', name: 'Urinalysis', icon: FlaskConical },
-  { id: 'imaging', name: 'Diagnostic Imaging', icon: ImageIcon },
-  { id: 'cardiology', name: 'Cardiology', icon: Heart },
-  { id: 'endocrinology', name: 'Endocrinology', icon: Layers },
-  { id: 'toxicology', name: 'Toxicology & Drugs', icon: AlertTriangle },
-  { id: 'tumor-markers', name: 'Tumor Markers', icon: Target },
-  { id: 'special-chemistry', name: 'Special Chemistry', icon: Thermometer },
-  { id: 'stool-analysis', name: 'Stool Analysis', icon: Wind },
-  { id: 'body-fluids', name: 'CSF & Body Fluids', icon: Droplet },
-  { id: 'molecular', name: 'Molecular / DNA', icon: Cpu },
+  { id: 'hematology', name: 'Hematology', icon: Droplet, emoji: '🩸', description: 'Blood cells, anemia, coagulation' },
+  { id: 'renal', name: 'Kidney Function (Renal)', icon: Box, emoji: '🧪', description: 'Filtration & renal status' },
+  { id: 'hepatic', name: 'Liver Function (LFTs)', icon: LifeBuoy, emoji: '🧫', description: 'Hepatic integrity' },
+  { id: 'lipids', name: 'Lipid Profile', icon: PieChart, emoji: '❤️', description: 'Cardiovascular risk' },
+  { id: 'electrolytes', name: 'Electrolytes', icon: Zap, emoji: '⚡', description: 'Fluid & acid-base balance' },
+  { id: 'pancreatic', name: 'Pancreatic Function', icon: Database, emoji: '🍬', description: 'Diabetes + pancreatic injury' },
+  { id: 'metabolic', name: 'General Biochemistry', icon: Activity, emoji: '🧪', description: 'Broad metabolic panel' },
+  { id: 'microbiology', name: 'Microbiology', icon: Filter, emoji: '🦠', description: 'Infectious organisms' },
+  { id: 'serology', name: 'Serology & Immunology', icon: Shield, emoji: '🧬', description: 'Immune + autoimmune' },
+  { id: 'urine', name: 'Urinalysis', icon: FlaskConical, emoji: '🚻', description: 'Kidney + metabolic + infection' },
+  { id: 'imaging', name: 'Diagnostic Imaging', icon: ImageIcon, emoji: '🩻', description: 'Structural visualization' },
+  { id: 'cardiology', name: 'Cardiology', icon: Heart, emoji: '🫀', description: 'Cardiac injury & function' },
+  { id: 'endocrinology', name: 'Endocrinology', icon: Layers, emoji: '🧠', description: 'Hormonal system' },
+  { id: 'toxicology', name: 'Toxicology & Drugs', icon: AlertTriangle, emoji: '💊', description: 'Drug monitoring & poisoning' },
+  { id: 'tumor-markers', name: 'Tumor Markers', icon: Target, emoji: '🎗️', description: 'Oncology support' },
+  { id: 'special-chemistry', name: 'Special Chemistry', icon: Thermometer, emoji: '🧪', description: 'Advanced / less common' },
+  { id: 'stool-analysis', name: 'Stool Analysis', icon: Wind, emoji: '💩', description: 'GI evaluation' },
+  { id: 'body-fluids', name: 'CSF & Body Fluids', icon: Droplet, emoji: '🧠', description: 'Critical diagnostics' },
+  { id: 'molecular', name: 'Molecular / DNA', icon: Cpu, emoji: '🧬', description: 'Precision medicine' },
 ];
 
 interface SelectedTest extends LabTest {
@@ -169,13 +169,35 @@ export function LabRequests() {
         contents: prompt,
         config: { responseMimeType: "application/json" }
       });
-      const suggestions = JSON.parse(response.text || "[]");
+      const suggestions = parseJsonResponse(response.text, []);
       setAiSuggestions(suggestions);
     } catch (err) {
       console.error("AI Suggestions failed:", err);
     } finally {
       setIsSuggesting(false);
     }
+  };
+
+  const validateResult = (value: string, range: string) => {
+    if (!range || !value || isNaN(parseFloat(value))) return 'normal';
+    
+    // Handle ranges like "4.5-11.0" or "<500" or ">60"
+    const val = parseFloat(value);
+    
+    if (range.includes('-')) {
+      const [min, max] = range.split('-').map(v => parseFloat(v.trim()));
+      if (!isNaN(min) && !isNaN(max)) {
+        return (val >= min && val <= max) ? 'normal' : 'abnormal';
+      }
+    } else if (range.startsWith('<')) {
+      const max = parseFloat(range.substring(1).trim());
+      if (!isNaN(max)) return val < max ? 'normal' : 'abnormal';
+    } else if (range.startsWith('>')) {
+      const min = parseFloat(range.substring(1).trim());
+      if (!isNaN(min)) return val > min ? 'normal' : 'abnormal';
+    }
+    
+    return 'normal';
   };
 
   const handleSaveResults = async () => {
@@ -203,6 +225,33 @@ export function LabRequests() {
     };
     reader.readAsDataURL(file);
   };
+
+  const applyPredefinedTemplate = (template: LabTemplate) => {
+    const testsToAdd: SelectedTest[] = [];
+    template.tests.forEach(testName => {
+      const foundTest = ALL_TESTS.find(t => t.name === testName);
+      if (foundTest) {
+        testsToAdd.push({
+          ...foundTest,
+          instructions: "",
+          preparation: foundTest.name.includes("Glucose") || foundTest.name.includes("Lipid") ? "Fasting for 8-12 hours required." : "No special preparation required.",
+          collectionGuide: foundTest.category === 'hematology' ? "Lavender top tube (EDTA). Invert 8 times." : "Gold/Red top tube (Serum). Allow to clot for 30 mins."
+        });
+      }
+    });
+
+    setSelectedTests(prev => {
+      const newTests = [...prev];
+      testsToAdd.forEach(t => {
+        if (!newTests.some(existing => existing.name === t.name)) {
+          newTests.push(t);
+        }
+      });
+      return newTests;
+    });
+    toast.success(`${template.name} loaded successfully.`);
+  };
+
   const clearSignature = () => sigCanvas.current?.clear();
   const saveSignature = () => {
     if (sigCanvas.current) {
@@ -486,25 +535,29 @@ export function LabRequests() {
                           setSearchQuery("");
                         }}
                         className={cn(
-                          "flex flex-col items-center justify-center p-4 border rounded-xl transition-all text-center group",
+                          "flex flex-col items-center justify-center p-3 border rounded-xl transition-all text-center group min-h-[120px]",
                           selectedCategory === cat.id 
                             ? "border-indigo-600 bg-indigo-50 shadow-sm" 
                             : "border-slate-200 hover:border-indigo-300 hover:bg-slate-50"
                         )}
                       >
-                        <div className={cn(
-                          "w-10 h-10 rounded-full flex items-center justify-center mb-2 transition-colors",
-                          selectedCategory === cat.id ? "bg-indigo-100" : "bg-slate-100 group-hover:bg-indigo-50"
-                        )}>
-                          <cat.icon className={cn(
-                            "w-5 h-5 transition-colors",
-                            selectedCategory === cat.id ? "text-indigo-600" : "text-slate-600 group-hover:text-indigo-500"
-                          )} />
+                        <div className="flex justify-center items-center gap-2 mb-2">
+                          <span className="text-xl">{(cat as any).emoji}</span>
+                          <div className={cn(
+                            "w-8 h-8 rounded-full flex items-center justify-center transition-colors",
+                            selectedCategory === cat.id ? "bg-indigo-100" : "bg-slate-100 group-hover:bg-indigo-50"
+                          )}>
+                            <cat.icon className={cn(
+                              "w-4 h-4 transition-colors",
+                              selectedCategory === cat.id ? "text-indigo-600" : "text-slate-600 group-hover:text-indigo-500"
+                            )} />
+                          </div>
                         </div>
                         <span className={cn(
-                          "text-[11px] font-medium transition-colors",
+                          "text-[11px] font-bold transition-colors block mb-1",
                           selectedCategory === cat.id ? "text-indigo-700" : "text-slate-700 group-hover:text-indigo-600"
                         )}>{cat.name}</span>
+                        <p className="text-[9px] text-slate-400 line-clamp-2 leading-tight group-hover:text-slate-500">{(cat as any).description}</p>
                       </button>
                     ))}
                   </div>
@@ -725,6 +778,28 @@ export function LabRequests() {
 
               {/* Side Panel: Test Selection & Safety */}
               <div className="space-y-6">
+                {/* Quick Templates */}
+                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm p-4 space-y-3">
+                  <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                    <Sparkles className="w-3 h-3 text-amber-500" /> Quick Templates
+                  </h4>
+                  <div className="grid grid-cols-1 gap-2">
+                    {LAB_TEMPLATES.map((template) => (
+                      <button
+                        key={template.name}
+                        onClick={() => applyPredefinedTemplate(template)}
+                        className="flex flex-col items-start p-3 text-left bg-slate-50 hover:bg-indigo-50 border border-slate-100 hover:border-indigo-200 rounded-lg transition-all group"
+                      >
+                        <span className="text-sm font-medium text-slate-700 group-hover:text-indigo-700">
+                          {template.name}
+                        </span>
+                        <span className="text-[10px] text-slate-500 line-clamp-1">
+                          {template.description}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 {/* Test Selection Modal-like Panel */}
                 {(selectedCategory || searchQuery.length >= 2) && (
                   <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden animate-in slide-in-from-right-4 duration-300">
@@ -869,13 +944,33 @@ export function LabRequests() {
                           <button 
                             onClick={() => {
                               setSelectedRequest(req);
-                              setResultsInput(req.tests.map(t => ({ 
-                                test: t.name, 
-                                value: '', 
-                                unit: t.unit || '', 
-                                range: t.referenceRange || '', 
-                                status: 'normal' 
-                              })));
+                              const expandedResults: any[] = [];
+                              
+                              req.tests.forEach((t: SelectedTest) => {
+                                if (t.components && t.components.length > 0) {
+                                  t.components.forEach(comp => {
+                                    expandedResults.push({ 
+                                      test: comp.name, 
+                                      parentTest: t.name,
+                                      value: '', 
+                                      unit: comp.unit || '', 
+                                      range: comp.referenceRange || '', 
+                                      status: 'normal',
+                                      isComponent: true
+                                    });
+                                  });
+                                } else {
+                                  expandedResults.push({ 
+                                    test: t.name, 
+                                    value: '', 
+                                    unit: t.unit || '', 
+                                    range: t.referenceRange || '', 
+                                    status: 'normal' 
+                                  });
+                                }
+                              });
+                              
+                              setResultsInput(expandedResults);
                               setIsResultsModalOpen(true);
                             }}
                             className="text-indigo-600 font-medium hover:underline flex items-center gap-1"
@@ -1036,48 +1131,104 @@ export function LabRequests() {
       </div>
       {/* Results Modal */}
       <Dialog open={isResultsModalOpen} onOpenChange={setIsResultsModalOpen}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-[600px] max-h-[90vh] flex flex-col">
           <DialogHeader>
-            <DialogTitle>Enter Lab Results</DialogTitle>
-            <DialogDescription>Enter the results for the requested tests.</DialogDescription>
+            <DialogTitle className="flex items-center gap-2">
+              <FlaskConical className="w-5 h-5 text-indigo-600" />
+              Enter Lab Results
+            </DialogTitle>
+            <DialogDescription>
+              Record results for {selectedRequest?.patientName}'s requested tests.
+            </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            {resultsInput.map((res, idx) => (
-              <div key={idx} className="grid grid-cols-3 gap-2">
-                <div className="col-span-3 font-medium text-sm">{res.test}</div>
-                <Input 
-                  placeholder="Value"
-                  value={res.value}
-                  onChange={(e) => {
-                    const newResults = [...resultsInput];
-                    newResults[idx].value = e.target.value;
-                    setResultsInput(newResults);
-                  }}
-                />
-                <Input 
-                  placeholder="Unit"
-                  value={res.unit}
-                  onChange={(e) => {
-                    const newResults = [...resultsInput];
-                    newResults[idx].unit = e.target.value;
-                    setResultsInput(newResults);
-                  }}
-                />
-                <Input 
-                  placeholder="Range"
-                  value={res.range}
-                  onChange={(e) => {
-                    const newResults = [...resultsInput];
-                    newResults[idx].range = e.target.value;
-                    setResultsInput(newResults);
-                  }}
-                />
-              </div>
-            ))}
+          
+          <div className="flex-1 overflow-y-auto py-4 space-y-6">
+            {resultsInput.map((res, idx) => {
+              const status = validateResult(res.value, res.range);
+              const showParentHeader = res.parentTest && (idx === 0 || resultsInput[idx-1].parentTest !== res.parentTest);
+              
+              return (
+                <div key={idx} className="space-y-4">
+                  {showParentHeader && (
+                    <div className="flex items-center gap-2 px-2 py-1 bg-indigo-50 border-l-4 border-indigo-600 rounded-r-md">
+                      <span className="text-[10px] font-black text-indigo-700 uppercase tracking-widest">{res.parentTest} - Panel Components</span>
+                    </div>
+                  )}
+                  
+                  <div className={cn(
+                    "p-4 rounded-xl border border-slate-100 bg-slate-50/50 space-y-3",
+                    res.isComponent ? "ml-4 border-l-2 border-l-indigo-200" : ""
+                  )}>
+                    <div className="flex justify-between items-start">
+                      <div className="font-semibold text-slate-900 flex items-center gap-2">
+                        {res.test}
+                        {res.isComponent && <ArrowRight className="w-3 h-3 text-slate-400" />}
+                      </div>
+                      {res.value && (
+                        <span className={cn(
+                          "text-[10px] font-bold px-2 py-0.5 rounded-full uppercase",
+                          status === 'normal' ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700 animate-pulse"
+                        )}>
+                          {status}
+                        </span>
+                      )}
+                    </div>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase">Value</label>
+                      <Input 
+                        placeholder="Result value..."
+                        value={res.value}
+                        className={cn(
+                          "bg-white h-9 text-sm",
+                          res.value && status === 'abnormal' && "border-red-300 focus-visible:ring-red-500"
+                        )}
+                        onChange={(e) => {
+                          const newResults = [...resultsInput];
+                          newResults[idx].value = e.target.value;
+                          newResults[idx].status = validateResult(e.target.value, res.range);
+                          setResultsInput(newResults);
+                        }}
+                      />
+                    </div>
+                    
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase">Unit</label>
+                      <div className="h-9 px-3 flex items-center bg-white border border-slate-200 rounded-md text-sm text-slate-600">
+                        {res.unit || '--'}
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase">Ref. Range</label>
+                      <div className="h-9 px-3 flex items-center bg-white border border-slate-200 rounded-md text-sm text-slate-500 italic">
+                        {res.range || 'N/A'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {res.test.toLowerCase().includes('microbiology') || res.test.toLowerCase().includes('smear') || res.test.toLowerCase().includes('routine') ? (
+                    <div className="mt-2 text-[10px] text-indigo-600 flex items-center gap-1">
+                      <Info className="w-3 h-3" />
+                      <span>Note: Qualitative results are acceptable for this test type.</span>
+                    </div>
+                  ) : null}
+                  </div>
+                </div>
+              );
+            })}
           </div>
-          <DialogFooter>
+
+          <DialogFooter className="pt-4 border-t border-slate-100">
             <Button variant="outline" onClick={() => setIsResultsModalOpen(false)}>Cancel</Button>
-            <Button onClick={handleSaveResults}>Save Results</Button>
+            <Button 
+              className="bg-indigo-600 hover:bg-indigo-700"
+              onClick={handleSaveResults}
+              disabled={resultsInput.some(r => !r.value)}
+            >
+              Finalize & Sign Results
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
