@@ -235,30 +235,6 @@ export function EncounterNote() {
 
       {/* NavigationDrawer (Right Sidebar) - Using fixed to position it correctly relative to the viewport */}
       <aside className="fixed right-0 top-16 h-[calc(100vh-4rem)] w-80 bg-white border-l border-slate-100 flex flex-col shadow-2xl z-40 no-print">
-        {/* Top section: Clinical Alerts */}
-        <div className="p-6 border-b border-slate-100">
-          <div className="flex items-center justify-between mb-4">
-            <h4 className="font-headline font-bold text-sm text-slate-900 flex items-center gap-2">
-              <span className="material-symbols-outlined text-tertiary-container">campaign</span> Clinical Alerts
-            </h4>
-            <span className="bg-tertiary-fixed text-on-tertiary-fixed-variant text-[10px] font-bold px-2 py-0.5 rounded-full">2 NEW</span>
-          </div>
-          <div className="space-y-3">
-            <div className="p-3 bg-tertiary-fixed/30 rounded-xl border border-tertiary-fixed/50">
-              <p className="text-xs font-bold text-tertiary flex items-center gap-1 mb-1">
-                <span className="material-symbols-outlined text-[14px]">warning</span> High Potassium
-              </p>
-              <p className="text-[11px] text-tertiary/80 leading-snug">Last Lab: 5.4 mEq/L (02/24/2024). Monitor closely with Lisinopril titration.</p>
-            </div>
-            <div className="p-3 bg-blue-50 rounded-xl border border-blue-100">
-              <p className="text-xs font-bold text-blue-800 flex items-center gap-1 mb-1">
-                <span className="material-symbols-outlined text-[14px]">info</span> GAP in Care
-              </p>
-              <p className="text-[11px] text-blue-700/80 leading-snug">Annual Wellness Visit overdue. Mammogram screening pending.</p>
-            </div>
-          </div>
-        </div>
-
         {/* Bottom section: Order Basket */}
         <div className="flex-1 flex flex-col overflow-hidden">
           <div className="p-6 bg-slate-50/50">

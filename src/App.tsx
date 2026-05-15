@@ -11,6 +11,7 @@ import { PhysicalExam } from "./pages/PhysicalExam";
 import { LabRequests } from "./pages/LabRequests";
 import { FinalDiagnosis } from "./pages/FinalDiagnosis";
 import { Prescriptions } from "./pages/Prescriptions";
+import { ClinicalAudit } from "./pages/ClinicalAudit";
 import { Pharmacies } from "./pages/Pharmacies";
 import { MedicalRecords } from "./pages/MedicalRecords";
 import { Knowledge } from "./pages/Knowledge";
@@ -39,9 +40,11 @@ import { Notifications } from "./pages/Notifications";
 import { StaffCommunication } from "./pages/StaffCommunication";
 import { EncounterNote } from "./pages/EncounterNote";
 import { ClinicalOverview } from "./pages/ClinicalOverview";
+import { PatientReport } from "./pages/PatientReport";
 import { SOAPNotePage } from "./pages/SOAPNotePage";
 import { PatientProvider } from "./lib/PatientContext";
 import { SymptomProvider } from "./lib/SymptomContext";
+import { AuditDashboard } from "./pages/AuditDashboard";
 import { UserProvider } from "./lib/UserContext";
 import { ThemeProvider } from "./lib/ThemeContext";
 import { SettingsProvider } from "./lib/SettingsContext";
@@ -57,7 +60,7 @@ import { PharmacyPatients } from "./pages/pharmacy-system/PharmacyPatients";
 import { PharmacyReports } from "./pages/pharmacy-system/PharmacyReports";
 
 import { Toaster } from "sonner";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { startSyncEngine, syncAll } from "./lib/sync";
 import { checkAndPerformAutoBackup } from "./services/backupService";
 import { checkAndSendAppointmentReminders } from "./services/notificationService";
@@ -89,11 +92,15 @@ function StorageGuard() {
 
 function BackupInitializer() {
   const { autoBackup, appointmentReminders } = useSettings();
+  const backupAttemptedRef = useRef(false);
   
   useEffect(() => {
-    checkAndPerformAutoBackup(autoBackup);
+    if (autoBackup && !backupAttemptedRef.current) {
+      backupAttemptedRef.current = true;
+      checkAndPerformAutoBackup(true);
+    }
     checkAndSendAppointmentReminders(appointmentReminders);
-  }, [autoBackup, appointmentReminders]);
+  }, [appointmentReminders]);
 
   return null;
 }
@@ -163,6 +170,7 @@ export default function App() {
                           <Route path="lab-requests" element={<LabRequests />} />
                           <Route path="final-diagnosis" element={<FinalDiagnosis />} />
                           <Route path="prescriptions" element={<Prescriptions />} />
+                          <Route path="clinical-audit" element={<ClinicalAudit />} />
                           <Route path="pharmacies" element={<Pharmacies />} />
                           <Route path="medical-records" element={<MedicalRecords />} />
                           <Route path="knowledge" element={<Knowledge />} />
@@ -175,7 +183,9 @@ export default function App() {
                           <Route path="staff-communication" element={<StaffCommunication />} />
                           <Route path="encounter-note" element={<EncounterNote />} />
                           <Route path="clinical-overview" element={<ClinicalOverview />} />
+                          <Route path="patient-report" element={<PatientReport />} />
                           <Route path="soap-editor" element={<SOAPNotePage />} />
+                          <Route path="audit-dashboard" element={<AuditDashboard />} />
                           <Route path="*" element={<div className="p-6 text-slate-500">Page under construction</div>} />
                         </Route>
 

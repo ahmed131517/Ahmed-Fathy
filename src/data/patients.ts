@@ -43,4 +43,5 @@ export interface Patient {
   familyHistory?: string[];
   familyHistoryNotes?: string;
   otherConditions?: string;
+  labResults?: { labName: string; value: number; unit: string; range: 'Normal' | 'High' | 'Low' }[];
 }

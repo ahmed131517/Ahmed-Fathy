@@ -2,21 +2,26 @@ import { Folder, Clock, RefreshCw, FileText, Zap, Printer, MousePointer, FlaskCo
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { generateContentWithRetry } from "../utils/gemini";
 import { cn } from "@/lib/utils";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { ChartContainer } from '@/components/ui/ChartContainer';
 import { PatientTimeline, TimelineEvent } from "@/components/PatientTimeline";
 import { usePatient } from "@/lib/PatientContext";
 import { db } from "@/lib/db";
 import { useLiveQuery } from "dexie-react-hooks";
 import { PatientHistoryService } from "@/services/PatientHistoryService";
-import { CDSSAlertsWidget } from "@/components/dashboard/CDSSAlertsWidget";
+import { RecordDetailsPanel } from "@/components/RecordDetailsPanel";
+
 import { MentalHealthAssessments } from "@/components/specialized/MentalHealthAssessments";
 import { ObstetricCalculator } from "@/components/specialized/ObstetricCalculator";
 import { PediatricGrowthChart } from "@/components/specialized/PediatricGrowthChart";
 
 
+import { clinicalAIRequest } from "../services/aiWorkflowService";
+import { useAISettings } from "../lib/AISettingsContext";
+
 export function MedicalRecords() {
+  const { settings: aiSettings } = useAISettings();
   const navigate = useNavigate();
   const { selectedPatient } = usePatient();
   const [selectedRecord, setSelectedRecord] = useState<any | null>(null);
@@ -130,11 +135,11 @@ export function MedicalRecords() {
     setIsSummarizing(true);
     try {
       const prompt = `Synthesize the following medical record: ${JSON.stringify(record)}. Provide a concise clinical summary and key takeaways.`;
-      const response = await generateContentWithRetry({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-      });
-      setRecordSummary(response.text || "Summary generation failed.");
+      const responseText = await clinicalAIRequest(
+        [{ role: "user", content: prompt }],
+        aiSettings
+      );
+      setRecordSummary(responseText || "Summary generation failed.");
     } catch (error) {
       console.error("Summary generation failed:", error);
     } finally {
@@ -156,16 +161,33 @@ export function MedicalRecords() {
       
       Format as a professional clinical note.`;
       
-      const response = await generateContentWithRetry({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-      });
-      setLabInterpretation(response.text || "Interpretation failed.");
+      const responseText = await clinicalAIRequest(
+        [{ role: "user", content: prompt }],
+        aiSettings
+      );
+      setLabInterpretation(responseText || "Interpretation failed.");
     } catch (error) {
       console.error("Interpretation failed:", error);
       toast.error("AI Interpretation failed.");
     } finally {
       setIsInterpreting(false);
+    }
+  };
+
+  const handleAiQuery = async () => {
+    if (!aiQuery.trim()) return;
+    setIsQuerying(true);
+    try {
+      const prompt = `Based on these medical records: ${JSON.stringify(records)}, answer this question: ${aiQuery}`;
+      const responseText = await clinicalAIRequest(
+        [{ role: "user", content: prompt }],
+        aiSettings
+      );
+      setAiResponse(responseText || "No answer found.");
+    } catch (error) {
+      setAiResponse("Error querying records.");
+    } finally {
+      setIsQuerying(false);
     }
   };
 
@@ -232,13 +254,6 @@ export function MedicalRecords() {
         </div>
         </div>
       </div>
-
-      {selectedPatient && (
-        <div className="mb-4">
-          <CDSSAlertsWidget patientId={selectedPatient.id} />
-        </div>
-      )}
-
       {viewMode === 'timeline' && (
         <div className="flex flex-col lg:flex-row gap-6 h-full min-h-0">
           <div className={cn(
@@ -254,189 +269,24 @@ export function MedicalRecords() {
             "h-full min-h-0 flex-col",
             selectedRecord ? "flex w-full lg:w-2/3" : "hidden lg:flex lg:w-2/3"
           )}>
-             {/* Record Details Panel */}
-             <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden h-full">
-              <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
-                <h3 className="font-semibold text-slate-800 flex items-center gap-2">
-                  <button onClick={() => setSelectedRecord(null)} className="lg:hidden p-1 -ml-1 text-slate-500 hover:text-slate-700">
-                    <ChevronRight className="w-5 h-5 rotate-180" />
-                  </button>
-                  <FileText className="w-4 h-4 text-indigo-500" /> Record Details
-                </h3>
-                <div className="flex gap-2">
-                  <button 
-                    onClick={() => generateRecordSummary(selectedRecord)}
-                    disabled={isSummarizing || !selectedRecord}
-                    className="px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-md text-sm font-medium flex items-center gap-1.5 transition-colors disabled:opacity-50"
-                  >
-                    {isSummarizing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5 text-indigo-500" />}
-                    {isSummarizing ? 'Summarizing...' : 'AI Summary'}
-                  </button>
-                </div>
-              </div>
-              
-              <div className="flex-1 overflow-y-auto bg-slate-50/30">
-                {!selectedRecord ? (
-                  <div className="h-full flex items-center justify-center text-center p-6">
-                    <div className="max-w-xs">
-                      <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-sm border border-slate-100 mx-auto mb-4">
-                        <MousePointer className="w-8 h-8 text-slate-300" />
-                      </div>
-                      <p className="font-medium text-slate-600 text-lg">No record selected</p>
-                      <p className="text-sm text-slate-500 mt-1">Select a record from the timeline to view full clinical details.</p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="p-6 animate-in fade-in duration-300">
-                    <div className="mb-6 pb-6 border-b border-slate-200">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className={cn(
-                          "text-xs font-bold uppercase px-2 py-0.5 rounded-full",
-                          selectedRecord.type === 'Lab Result' ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"
-                        )}>{selectedRecord.type}</span>
-                        <span className="text-sm text-slate-500 font-medium">{selectedRecord.date}</span>
-                      </div>
-                      <h2 className="text-2xl font-bold text-slate-900 mb-2">{selectedRecord.title}</h2>
-                      <div className="flex flex-wrap gap-4 text-sm text-slate-600">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-semibold text-slate-700">Provider:</span> {selectedRecord.provider}
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-semibold text-slate-700">Department:</span> {selectedRecord.department}
-                        </div>
-                      </div>
-                    </div>
-
-                    {(selectedRecord.type === 'Encounter' || selectedRecord.type === 'Diagnosis') && (
-                      <div className="space-y-4">
-                        {recordSummary && (
-                          <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 shadow-sm text-indigo-900 leading-relaxed mb-4">
-                            <h4 className="text-xs font-bold text-indigo-700 uppercase tracking-wider mb-2 flex items-center gap-1">
-                              <Sparkles className="w-3 h-3" /> AI Clinical Summary
-                            </h4>
-                            {recordSummary}
-                          </div>
-                        )}
-                        <div>
-                          <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-2">Clinical Summary</h4>
-                          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm text-slate-700 leading-relaxed">
-                            {selectedRecord.summary}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {selectedRecord.type === 'Prescription' && selectedRecord.items && (
-                      <div className="space-y-4">
-                        <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider">Prescribed Medications</h4>
-                        <div className="space-y-3">
-                          {selectedRecord.items.map((item: any, idx: number) => (
-                            <div key={idx} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                              <div className="flex justify-between items-start mb-2">
-                                <h5 className="font-bold text-slate-900">{item.medicationName}</h5>
-                                <span className="text-xs font-medium px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-full">{item.form}</span>
-                              </div>
-                              <div className="grid grid-cols-2 gap-4 text-sm">
-                                <div>
-                                  <span className="text-slate-500">Dosage:</span> <span className="font-medium">{item.dosage}</span>
-                                </div>
-                                <div>
-                                  <span className="text-slate-500">Frequency:</span> <span className="font-medium">{item.frequency}</span>
-                                </div>
-                                <div>
-                                  <span className="text-slate-500">Duration:</span> <span className="font-medium">{item.duration}</span>
-                                </div>
-                              </div>
-                              {item.instructions && (
-                                <div className="mt-2 pt-2 border-t border-slate-100 text-xs text-slate-600">
-                                  <span className="font-semibold">Instructions:</span> {item.instructions}
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {selectedRecord.type === 'Lab Result' && selectedRecord.results && (
-                      <div className="space-y-4">
-                        <div className="flex justify-between items-center">
-                          <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider">Laboratory Results</h4>
-                          <div className="flex gap-2">
-                            <button 
-                              onClick={() => interpretLabResults(selectedRecord)}
-                              disabled={isInterpreting}
-                              className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-bold hover:bg-indigo-100 flex items-center gap-1.5 transition-all disabled:opacity-50"
-                            >
-                              {isInterpreting ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-                              {isInterpreting ? 'Interpreting...' : 'AI Interpret'}
-                            </button>
-                            <div className="flex gap-3 text-xs font-medium items-center ml-2">
-                              <span className="flex items-center gap-1 text-emerald-600"><CheckCircle2 className="w-3.5 h-3.5" /> Normal</span>
-                              <span className="flex items-center gap-1 text-red-600"><AlertTriangle className="w-3.5 h-3.5" /> Abnormal</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {labInterpretation && (
-                          <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 shadow-sm text-indigo-900 leading-relaxed mb-4">
-                            <div className="flex justify-between items-start mb-2">
-                              <h4 className="text-xs font-bold text-indigo-700 uppercase tracking-wider flex items-center gap-1">
-                                <Sparkles className="w-3 h-3" /> AI Clinical Interpretation
-                              </h4>
-                              <button onClick={() => setLabInterpretation("")} className="text-indigo-400 hover:text-indigo-600">
-                                <X className="w-3 h-3" />
-                              </button>
-                            </div>
-                            <div className="prose prose-sm prose-indigo max-w-none">
-                              {labInterpretation}
-                            </div>
-                          </div>
-                        )}
-                        
-                        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-                          <table className="w-full text-sm text-left">
-                            <thead className="bg-slate-50 text-slate-500 border-b border-slate-200">
-                              <tr>
-                                <th className="px-4 py-3 font-semibold">Test Name</th>
-                                <th className="px-4 py-3 font-semibold">Result</th>
-                                <th className="px-4 py-3 font-semibold">Reference Range</th>
-                                <th className="px-4 py-3 font-semibold text-center">Flag</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                              {selectedRecord.results.map((result: any, idx: number) => {
-                                const isAbnormal = result.status !== 'normal';
-                                return (
-                                  <tr key={idx} className={cn("hover:bg-slate-50 transition-colors", isAbnormal && "bg-red-50/30 hover:bg-red-50/50")}>
-                                    <td className="px-4 py-3 font-medium text-slate-800">{result.test}</td>
-                                    <td className="px-4 py-3">
-                                      <span className={cn("font-semibold", isAbnormal ? "text-red-600" : "text-slate-700")}>
-                                        {result.value} {result.unit}
-                                      </span>
-                                    </td>
-                                    <td className="px-4 py-3 text-slate-500">{result.range} {result.unit}</td>
-                                    <td className="px-4 py-3 text-center">
-                                      {isAbnormal ? (
-                                        <span className="inline-flex items-center justify-center px-2 py-1 rounded-md bg-red-100 text-red-700 text-xs font-bold uppercase">
-                                          {result.status}
-                                        </span>
-                                      ) : (
-                                        <span className="text-slate-300">-</span>
-                                      )}
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
+             <RecordDetailsPanel 
+                selectedRecord={selectedRecord}
+                isSummarizing={isSummarizing}
+                generateRecordSummary={generateRecordSummary}
+                isInterpreting={isInterpreting}
+                interpretLabResults={interpretLabResults}
+                recordSummary={recordSummary}
+                labInterpretation={labInterpretation}
+                setLabInterpretation={setLabInterpretation}
+                aiQuery={aiQuery}
+                setAiQuery={setAiQuery}
+                aiResponse={aiResponse}
+                setAiResponse={setAiResponse}
+                isQuerying={isQuerying}
+                onAiQuery={handleAiQuery}
+                onClose={() => setSelectedRecord(null)}
+                isTimelineMode={true}
+             />
           </div>
         </div>
       )}
@@ -497,8 +347,8 @@ export function MedicalRecords() {
               </div>
             </div>
 
-            <div className="h-[400px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
+            <div className="w-full min-w-0 h-[400px] w-full">                <ChartContainer>
+<ResponsiveContainer width="100%" height="100%">
                 <LineChart data={getTrendData(selectedTrendMetric)}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                   <XAxis 
@@ -537,6 +387,7 @@ export function MedicalRecords() {
                   )}
                 </LineChart>
               </ResponsiveContainer>
+</ChartContainer>
             </div>
           </div>
           
@@ -566,307 +417,129 @@ export function MedicalRecords() {
           <PediatricGrowthChart />
         </div>
       ) : (
-        <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 min-h-[500px]">
-          {/* Timeline Panel */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
-            <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
-              <h3 className="font-semibold text-slate-800 flex items-center gap-2">
-                <Clock className="w-4 h-4 text-indigo-500" /> Timeline
-              </h3>
-              <div className="flex gap-2">
-                {selectedToCompare.length > 1 && (
+        <div className="flex-1 flex flex-col lg:flex-row gap-6 min-h-0 overflow-hidden">
+          {/* List Panel */}
+          <div className={cn(
+            "h-full min-h-0 flex-col",
+            selectedRecord ? "hidden lg:flex lg:w-1/3" : "flex w-full"
+          )}>
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden h-full">
+              <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+                <h3 className="font-semibold text-slate-800 flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-indigo-500" /> {viewMode === 'critical' ? 'Critical Findings' : 'Patient History'}
+                </h3>
+                <div className="flex gap-2">
+                  {selectedToCompare.length > 1 && (
+                    <button 
+                      onClick={() => setShowComparison(true)}
+                      className="px-2 py-1 bg-indigo-600 text-white rounded-md text-xs font-medium hover:bg-indigo-700"
+                    >
+                      Compare ({selectedToCompare.length})
+                    </button>
+                  )}
                   <button 
-                    onClick={() => setShowComparison(true)}
-                    className="px-2 py-1 bg-indigo-600 text-white rounded-md text-xs font-medium hover:bg-indigo-700"
+                    onClick={() => window.location.reload()}
+                    className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors"
                   >
-                    Compare ({selectedToCompare.length})
+                    <RefreshCw className="w-4 h-4" />
                   </button>
-                )}
-                <button 
-                  onClick={() => window.location.reload()}
-                  className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                </button>
+                </div>
               </div>
-            </div>
-            <div className="p-3 border-b border-slate-100 bg-slate-50/50">
-              <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Patient History Timeline</span>
-            </div>
-            <div className="flex-1 p-4 overflow-y-auto bg-slate-50/30">
-              <div className="space-y-4 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-200 before:to-transparent">
-                {viewMode === 'critical' 
-                  ? (records as any[]).filter(record => record.type === 'Lab Result' && record.results?.some((r: any) => r.status !== 'normal')).map((record) => (
-                    <div 
-                      key={record.id} 
-                      onClick={() => setSelectedRecord(record)}
-                      className={cn(
-                        "relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active cursor-pointer p-3 rounded-xl border transition-all",
-                        selectedRecord?.id === record.id 
-                          ? "border-indigo-500 bg-indigo-50/50 shadow-sm" 
-                          : "border-slate-200 bg-white hover:border-indigo-300 hover:shadow-sm"
-                      )}
-                    >
-                      <div className="flex items-center justify-center w-10 h-10 rounded-full border border-white bg-red-100 text-red-600 shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 z-10 transition-colors">
-                        <AlertTriangle className="w-4 h-4" />
-                      </div>
-                      <input 
-                        type="checkbox"
-                        className="absolute top-2 left-2 z-20"
-                        checked={selectedToCompare.includes(record.id)}
-                        onChange={(e) => {
-                          e.stopPropagation();
-                          if (e.target.checked) {
-                            setSelectedToCompare([...selectedToCompare, record.id]);
-                          } else {
-                            setSelectedToCompare(selectedToCompare.filter(id => id !== record.id));
-                          }
-                        }}
-                      />
-                      <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] flex flex-col">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-bold uppercase px-2 py-0.5 rounded-full bg-red-100 text-red-700">Critical</span>
-                          <time className="text-xs font-medium text-slate-500">{record.date}</time>
+              <div className="p-3 border-b border-slate-100 bg-slate-50/50">
+                <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">{viewMode === 'critical' ? 'Alerts' : 'Records'}</span>
+              </div>
+              <div className="flex-1 p-4 overflow-y-auto bg-slate-50/30">
+                <div className="space-y-4">
+                  {viewMode === 'critical' 
+                    ? (records as any[]).filter(record => record.type === 'Lab Result' && record.results?.some((r: any) => r.status !== 'normal')).map((record) => (
+                      <div 
+                        key={record.id} 
+                        onClick={() => setSelectedRecord(record)}
+                        className={cn(
+                          "relative flex items-center gap-3 cursor-pointer p-4 rounded-xl border transition-all",
+                          selectedRecord?.id === record.id 
+                            ? "border-red-500 bg-red-50 shadow-sm" 
+                            : "border-slate-200 bg-white hover:border-red-300 hover:shadow-sm"
+                        )}
+                      >
+                        <div className="flex items-center justify-center w-10 h-10 rounded-full bg-red-100 text-red-600 shadow-sm shrink-0">
+                          <AlertTriangle className="w-4 h-4" />
                         </div>
-                        <h4 className="font-semibold text-slate-800 text-sm truncate">{record.title}</h4>
-                        <p className="text-xs text-slate-500 truncate">{record.provider}</p>
-                      </div>
-                    </div>
-                  ))
-                  : (records as any[])
-                    .filter((record: any) => {
-                      const matchesSearch = record.title?.toLowerCase().includes(searchQuery?.toLowerCase() || '') || 
-                                            (record.summary && record.summary?.toLowerCase().includes(searchQuery?.toLowerCase() || ''));
-                      const matchesType = filterType === 'All' || record.type === filterType;
-                      return matchesSearch && matchesType;
-                    })
-                    .map((record: any) => (
-                    <div 
-                      key={record.id} 
-                      onClick={() => setSelectedRecord(record)}
-                      className={cn(
-                        "relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active cursor-pointer p-3 rounded-xl border transition-all",
-                        selectedRecord?.id === record.id 
-                          ? "border-indigo-500 bg-indigo-50/50 shadow-sm" 
-                          : "border-slate-200 bg-white hover:border-indigo-300 hover:shadow-sm"
-                      )}
-                    >
-                      <div className="flex items-center justify-center w-10 h-10 rounded-full border border-white bg-slate-100 group-hover:bg-indigo-100 text-slate-500 group-hover:text-indigo-600 shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 z-10 transition-colors">
-                        {record.type === 'Lab Result' ? <FlaskConical className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
-                      </div>
-                      {record.type === 'Lab Result' && (
-                        <input 
-                          type="checkbox"
-                          className="absolute top-2 left-2 z-20"
-                          checked={selectedToCompare.includes(record.id)}
-                          onChange={(e) => {
-                            e.stopPropagation();
-                            if (e.target.checked) {
-                              setSelectedToCompare([...selectedToCompare, record.id]);
-                            } else {
-                              setSelectedToCompare(selectedToCompare.filter(id => id !== record.id));
-                            }
-                          }}
-                        />
-                      )}
-                      <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] flex flex-col">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className={cn(
-                            "text-xs font-bold uppercase px-2 py-0.5 rounded-full",
-                            record.type === 'Lab Result' ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"
-                          )}>{record.type}</span>
-                          <time className="text-xs font-medium text-slate-500">{record.date}</time>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-red-100 text-red-700">Abnormal</span>
+                            <time className="text-[10px] font-medium text-slate-500">{record.date}</time>
+                          </div>
+                          <h4 className="font-bold text-slate-800 text-sm truncate">{record.title}</h4>
+                          <p className="text-xs text-slate-500 truncate">{record.provider}</p>
                         </div>
-                        <h4 className="font-semibold text-slate-800 text-sm truncate">{record.title}</h4>
-                        <p className="text-xs text-slate-500 truncate">{record.provider}</p>
                       </div>
-                    </div>
-                  ))
-                }
+                    ))
+                    : (records as any[])
+                      .filter((record: any) => {
+                        const matchesSearch = record.title?.toLowerCase().includes(searchQuery?.toLowerCase() || '') || 
+                                              (record.summary && record.summary?.toLowerCase().includes(searchQuery?.toLowerCase() || ''));
+                        const matchesType = filterType === 'All' || record.type === filterType;
+                        return matchesSearch && matchesType;
+                      })
+                      .map((record: any) => (
+                      <div 
+                        key={record.id} 
+                        onClick={() => setSelectedRecord(record)}
+                        className={cn(
+                          "relative flex items-center gap-3 cursor-pointer p-4 rounded-xl border transition-all",
+                          selectedRecord?.id === record.id 
+                            ? "border-indigo-500 bg-indigo-50 shadow-sm" 
+                            : "border-slate-200 bg-white hover:border-indigo-300 hover:shadow-sm"
+                        )}
+                      >
+                        <div className={cn(
+                          "flex items-center justify-center w-10 h-10 rounded-full shadow-sm shrink-0",
+                          record.type === 'Lab Result' ? "bg-purple-100 text-purple-600" : "bg-blue-100 text-blue-600"
+                        )}>
+                          {record.type === 'Lab Result' ? <FlaskConical className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className={cn(
+                              "text-[10px] font-bold uppercase px-2 py-0.5 rounded-full",
+                              record.type === 'Lab Result' ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"
+                            )}>{record.type}</span>
+                            <time className="text-[10px] font-medium text-slate-500">{record.date}</time>
+                          </div>
+                          <h4 className="font-bold text-slate-800 text-sm truncate">{record.title}</h4>
+                          <p className="text-xs text-slate-500 truncate">{record.provider}</p>
+                        </div>
+                      </div>
+                    ))
+                  }
+                </div>
               </div>
             </div>
           </div>
 
-          {/* Record Details Panel */}
-          <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
-            <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
-              <h3 className="font-semibold text-slate-800 flex items-center gap-2">
-                <FileText className="w-4 h-4 text-indigo-500" /> Record Details
-              </h3>
-              <div className="flex gap-2">
-                <button 
-                  onClick={() => generateRecordSummary(selectedRecord)}
-                  disabled={isSummarizing}
-                  className="px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-md text-sm font-medium flex items-center gap-1.5 transition-colors disabled:opacity-50"
-                >
-                  {isSummarizing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5 text-indigo-500" />}
-                  {isSummarizing ? 'Summarizing...' : 'AI Summary'}
-                </button>
-              </div>
-            </div>
-            
-            <div className="flex-1 overflow-y-auto bg-slate-50/30">
-              {/* AI Query Section */}
-              <div className="p-4 border-b border-slate-200 bg-white">
-                <div className="flex gap-2">
-                  <input 
-                    type="text" 
-                    placeholder="Ask AI about patient history..." 
-                    value={aiQuery}
-                    onChange={(e) => setAiQuery(e.target.value)}
-                    className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                  />
-                  <button 
-                    onClick={async () => {
-                      setIsQuerying(true);
-                      try {
-                        const prompt = `Based on these medical records: ${JSON.stringify(records)}, answer this question: ${aiQuery}`;
-                        const response = await generateContentWithRetry({
-                          model: "gemini-3-flash-preview",
-                          contents: prompt,
-                        });
-                        setAiResponse(response.text || "No answer found.");
-                      } catch (error) {
-                        setAiResponse("Error querying records.");
-                      } finally {
-                        setIsQuerying(false);
-                      }
-                    }}
-                    disabled={isQuerying}
-                    className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50"
-                  >
-                    {isQuerying ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Ask'}
-                  </button>
-                </div>
-                {aiResponse && (
-                  <div className="mt-3 p-3 bg-indigo-50 rounded-lg text-sm text-indigo-900">
-                    {aiResponse}
-                  </div>
-                )}
-              </div>
-              {!selectedRecord ? (
-                <div className="h-full flex items-center justify-center text-center p-6">
-                  <div className="max-w-xs">
-                    <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-sm border border-slate-100 mx-auto mb-4">
-                      <MousePointer className="w-8 h-8 text-slate-300" />
-                    </div>
-                    <p className="font-medium text-slate-600 text-lg">No record selected</p>
-                    <p className="text-sm text-slate-500 mt-1">Select a record from the timeline to view full clinical details.</p>
-                  </div>
-                </div>
-              ) : (
-                <div className="p-6 animate-in fade-in duration-300">
-                  <div className="mb-6 pb-6 border-b border-slate-200">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className={cn(
-                        "text-xs font-bold uppercase px-2 py-0.5 rounded-full",
-                        selectedRecord.type === 'Lab Result' ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"
-                      )}>{selectedRecord.type}</span>
-                      <span className="text-sm text-slate-500 font-medium">{selectedRecord.date}</span>
-                    </div>
-                    <h2 className="text-2xl font-bold text-slate-900 mb-2">{selectedRecord.title}</h2>
-                    <div className="flex flex-wrap gap-4 text-sm text-slate-600">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-semibold text-slate-700">Provider:</span> {selectedRecord.provider}
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-semibold text-slate-700">Department:</span> {selectedRecord.department}
-                      </div>
-                    </div>
-                  </div>
-
-                  {selectedRecord.type === 'Encounter' && (
-                    <div className="space-y-4">
-                      {recordSummary && (
-                        <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 shadow-sm text-indigo-900 leading-relaxed mb-4">
-                          <h4 className="text-xs font-bold text-indigo-700 uppercase tracking-wider mb-2 flex items-center gap-1">
-                            <Sparkles className="w-3 h-3" /> AI Clinical Summary
-                          </h4>
-                          {recordSummary}
-                        </div>
-                      )}
-                      <div>
-                        <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-2">Clinical Summary</h4>
-                        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm text-slate-700 leading-relaxed">
-                          {selectedRecord.summary}
-                        </div>
-                      </div>
-                      
-                      <div className="flex gap-2 pt-2">
-                        <button 
-                          onClick={() => {
-                            toast.info("Navigating to Lab Requests...");
-                            navigate("/lab-requests");
-                          }}
-                          className="px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors"
-                        >
-                          <FlaskConical className="w-3.5 h-3.5 text-indigo-500" /> View Related Labs
-                        </button>
-                        <button 
-                          onClick={() => {
-                            toast.info("Navigating to Prescriptions...");
-                            navigate("/prescriptions");
-                          }}
-                          className="px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors"
-                        >
-                          <Pill className="w-3.5 h-3.5 text-indigo-500" /> View Prescriptions
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {selectedRecord.type === 'Lab Result' && selectedRecord.results && (
-                    <div className="space-y-4">
-                      <div className="flex justify-between items-center">
-                        <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider">Laboratory Results</h4>
-                        <div className="flex gap-3 text-xs font-medium">
-                          <span className="flex items-center gap-1 text-emerald-600"><CheckCircle2 className="w-3.5 h-3.5" /> Normal</span>
-                          <span className="flex items-center gap-1 text-red-600"><AlertTriangle className="w-3.5 h-3.5" /> Abnormal</span>
-                        </div>
-                      </div>
-                      
-                      <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-                        <table className="w-full text-sm text-left">
-                          <thead className="bg-slate-50 text-slate-500 border-b border-slate-200">
-                            <tr>
-                              <th className="px-4 py-3 font-semibold">Test Name</th>
-                              <th className="px-4 py-3 font-semibold">Result</th>
-                              <th className="px-4 py-3 font-semibold">Reference Range</th>
-                              <th className="px-4 py-3 font-semibold text-center">Flag</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100">
-                            {selectedRecord.results.map((result: any, idx: number) => {
-                              const isAbnormal = result.status !== 'normal';
-                              return (
-                                <tr key={idx} className={cn("hover:bg-slate-50 transition-colors", isAbnormal && "bg-red-50/30 hover:bg-red-50/50")}>
-                                  <td className="px-4 py-3 font-medium text-slate-800">{result.test}</td>
-                                  <td className="px-4 py-3">
-                                    <span className={cn("font-semibold", isAbnormal ? "text-red-600" : "text-slate-700")}>
-                                      {result.value} {result.unit}
-                                    </span>
-                                  </td>
-                                  <td className="px-4 py-3 text-slate-500">{result.range} {result.unit}</td>
-                                  <td className="px-4 py-3 text-center">
-                                    {isAbnormal ? (
-                                      <span className="inline-flex items-center justify-center px-2 py-1 rounded-md bg-red-100 text-red-700 text-xs font-bold uppercase">
-                                        {result.status}
-                                      </span>
-                                    ) : (
-                                      <span className="text-slate-300">-</span>
-                                    )}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+          <div className={cn(
+            "h-full min-h-0 flex-col",
+            selectedRecord ? "flex w-full lg:w-2/3" : "hidden lg:flex lg:w-2/3"
+          )}>
+             <RecordDetailsPanel 
+                selectedRecord={selectedRecord}
+                isSummarizing={isSummarizing}
+                generateRecordSummary={generateRecordSummary}
+                isInterpreting={isInterpreting}
+                interpretLabResults={interpretLabResults}
+                recordSummary={recordSummary}
+                labInterpretation={labInterpretation}
+                setLabInterpretation={setLabInterpretation}
+                aiQuery={aiQuery}
+                setAiQuery={setAiQuery}
+                aiResponse={aiResponse}
+                setAiResponse={setAiResponse}
+                isQuerying={isQuerying}
+                onAiQuery={handleAiQuery}
+                onClose={() => setSelectedRecord(null)}
+                isTimelineMode={false}
+             />
           </div>
         </div>
       )}

@@ -3,7 +3,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, FlaskConical, Stethoscope, ArrowRight, ClipboardCheck, Loader2, Brain } from "lucide-react";
-import { generateContentWithRetry, parseJsonResponse } from "../utils/gemini";
+import { useAISettings } from "@/lib/AISettingsContext";
+import { clinicalAIRequest } from "@/services/aiWorkflowService";
+import { parseJsonResponse } from "../utils/gemini";
 import { toast } from "sonner";
 
 interface SelectedSymptom {
@@ -58,6 +60,7 @@ const ScrollArea = ({ children, className }: { children: React.ReactNode, classN
 const Separator = () => <div className="h-px bg-slate-200 dark:bg-slate-800 my-4" />;
 
 export const WhatsNextModal = ({ open, onOpenChange, symptoms, patientData }: WhatsNextModalProps) => {
+  const { settings: aiSettings } = useAISettings();
   const [loading, setLoading] = useState(false);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [clinicalReasoning, setClinicalReasoning] = useState("");
@@ -95,13 +98,12 @@ export const WhatsNextModal = ({ open, onOpenChange, symptoms, patientData }: Wh
     `;
 
     try {
-      const response = await generateContentWithRetry({
-        model: "gemini-3-flash-preview",
-        contents: [{ parts: [{ text: prompt }] }],
-        config: { responseMimeType: "application/json" }
-      });
+      const responseText = await clinicalAIRequest(
+        [{ role: 'user', content: prompt }],
+        aiSettings
+      );
 
-      const data = parseJsonResponse<any>(response.text, { recommendations: [], clinicalReasoning: "" });
+      const data = parseJsonResponse<any>(responseText, { recommendations: [], clinicalReasoning: "" });
       
       setRecommendations(data?.recommendations || []);
       setClinicalReasoning(data?.clinicalReasoning || "");

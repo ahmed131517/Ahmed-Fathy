@@ -1,5 +1,6 @@
 import React from 'react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
+import { ChartContainer } from '@/components/ui/ChartContainer';
 import { Patient } from '@/data/patients';
 
 interface PatientTrendsProps {
@@ -12,8 +13,9 @@ export const PatientTrends: React.FC<PatientTrendsProps> = ({ patient }) => {
   }
 
   return (
-    <div className="h-64 w-full">
-      <ResponsiveContainer width="100%" height="100%">
+    <div className="w-full">
+      <ChartContainer>
+        <ResponsiveContainer width="100%" height="100%">
         <LineChart data={patient.vitalsHistory} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" />
           <XAxis dataKey="date" tick={{fontSize: 10}} />
@@ -25,6 +27,7 @@ export const PatientTrends: React.FC<PatientTrendsProps> = ({ patient }) => {
           <Line yAxisId="right" type="monotone" dataKey="weight" stroke="#82ca9d" name="Weight" />
         </LineChart>
       </ResponsiveContainer>
+      </ChartContainer>
     </div>
   );
 };

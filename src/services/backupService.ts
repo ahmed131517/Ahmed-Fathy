@@ -17,17 +17,20 @@ export async function checkAndPerformAutoBackup(enabled: boolean = true) {
     const now = Date.now();
 
     if (!lastBackup || (now - lastBackup.timestamp) >= BACKUP_INTERVAL) {
-      console.log('Performing auto-backup...');
+      console.log('--- Starting auto-backup process ---');
       
-      // Export database
+      // Export database with explicit table filtering to reduce memory/stack pressure
       const blob = await exportDB(db, {
-        prettyJson: false
+        prettyJson: false,
+        filter: (tableName) => !['audit_logs', 'sync_events'].includes(tableName)
       });
+      console.log('Database exported, size:', blob.size);
       
       const reader = new FileReader();
       reader.readAsDataURL(blob);
       
       reader.onloadend = async () => {
+        console.log('FileReader onloadend triggered.');
         try {
           const base64data = reader.result as string;
           
@@ -35,6 +38,7 @@ export async function checkAndPerformAutoBackup(enabled: boolean = true) {
           const masterKey = await getOrGenerateMasterKey();
           const encryptedPayload = await encryptData(base64data, masterKey);
           
+          console.log('Saving backup record...');
           await db.backups.add({
             timestamp: now,
             data: encryptedPayload,
@@ -50,6 +54,7 @@ export async function checkAndPerformAutoBackup(enabled: boolean = true) {
           }
 
           console.log('Auto-backup completed successfully.');
+          
           toast.success('Database auto-backup completed locally.', {
             description: `We recommend saving a copy to your computer. Backup size: ${(blob.size / 1024).toFixed(2)} KB`,
             duration: 10000,
@@ -60,29 +65,7 @@ export async function checkAndPerformAutoBackup(enabled: boolean = true) {
           });
         } catch (error) {
           if (error instanceof Error && error.name === 'QuotaExceededError') {
-            console.warn('Quota exceeded during auto-backup. Attempting to clear old backups...');
-            // Delete all but the latest backup if we hit quota
-            const allBackups = await db.backups.orderBy('timestamp').toArray();
-            if (allBackups.length > 0) {
-              await db.backups.clear();
-              // Try one more time with just this backup
-              try {
-                const base64data = reader.result as string;
-                
-                const masterKey = await getOrGenerateMasterKey();
-                const encryptedPayload = await encryptData(base64data, masterKey);
-                
-                await db.backups.add({
-                  timestamp: now,
-                  data: encryptedPayload,
-                  size: blob.size,
-                  isEncrypted: 1
-                } as any);
-                console.log('Auto-backup recovered after clearing space.');
-              } catch (retryError) {
-                console.error('Auto-backup failed even after clearing space:', retryError);
-              }
-            }
+            console.warn('Quota exceeded during auto-backup. Auto-backup failed.');
           } else {
             console.error('Auto-backup failed during save:', error);
           }

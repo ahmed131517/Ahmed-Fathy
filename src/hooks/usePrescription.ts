@@ -6,7 +6,9 @@ import { checkInteractions } from "@/services/interactionService";
 import { InteractionResult } from "@/services/ddiService";
 import { toast } from "sonner";
 import { getGeneratePrescriptionPrompt, getAlternativeMedicationPrompt } from "@/services/aiConfig";
-import { generateContentWithRetry } from "../utils/gemini";
+import { parseJsonResponse } from "../utils/gemini";
+import { clinicalAIRequest } from "@/services/aiWorkflowService";
+import { useAISettings } from "@/lib/AISettingsContext";
 import { PatientHistoryService } from "@/services/PatientHistoryService";
 
 export function usePrescriptionData(selectedPatientId: string | undefined, confirmedDiagnosis: string | undefined, setConfirmedDiagnosis: (d: string) => void) {
@@ -245,6 +247,7 @@ export function usePrescriptionModals() {
 }
 
 export function usePrescriptionAI(selectedPatient: any, confirmedDiagnosis: string, patientMedications: any[]) {
+  const { settings: aiSettings } = useAISettings();
   const [aiSuggestions, setAiSuggestions] = useState<any[]>([]);
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [selectedSuggestions, setSelectedSuggestions] = useState<number[]>([]);
@@ -287,13 +290,12 @@ export function usePrescriptionAI(selectedPatient: any, confirmedDiagnosis: stri
         existingMedications: patientMedications.map(m => m.name).join(", ")
       });
 
-      const response = await generateContentWithRetry({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-        config: { responseMimeType: "application/json" }
-      });
+      const responseText = await clinicalAIRequest(
+        [{ role: 'user', content: prompt }],
+        aiSettings
+      );
 
-      const data = JSON.parse(response.text || "[]");
+      const data = parseJsonResponse(responseText, []);
       setAiSuggestions(data);
     } catch (error) {
       console.error("AI Suggestion failed:", error);
@@ -330,14 +332,13 @@ export function usePrescriptionAI(selectedPatient: any, confirmedDiagnosis: stri
         allergies: allergiesStr
       });
       
-      const response = await generateContentWithRetry({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-        config: { responseMimeType: "application/json" }
-      });
+      const responseText = await clinicalAIRequest(
+        [{ role: 'user', content: prompt }],
+        aiSettings
+      );
 
-      const alternative = JSON.parse(response.text || "{}");
-      if (alternative.medication) {
+      const alternative = parseJsonResponse<any>(responseText, {});
+      if (alternative && alternative.medication) {
         const newSuggestions = [...aiSuggestions];
         newSuggestions[idx] = alternative;
         setAiSuggestions(newSuggestions);

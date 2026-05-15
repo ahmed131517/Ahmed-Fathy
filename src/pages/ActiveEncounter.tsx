@@ -1,12 +1,13 @@
 import { useState } from "react";
-import { User, Activity, FlaskConical, Pill, Stethoscope, AlertCircle, FileText, ChevronRight } from "lucide-react";
+import { User, Activity, FlaskConical, Pill, Stethoscope, AlertCircle, FileText, ChevronRight, Search } from "lucide-react";
+import { ClinicalIntelligencePanel } from "@/components/ClinicalIntelligencePanel";
 import { usePatient } from "@/lib/PatientContext";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { cn } from "@/lib/utils";
 
 export function ActiveEncounter() {
-  const { selectedPatient } = usePatient();
+  const { selectedPatient, patients, setSelectedPatient } = usePatient();
   const [activeTab, setActiveTab] = useState('summary');
 
   // Need to fetch patient-specific data efficiently here.
@@ -28,24 +29,48 @@ export function ActiveEncounter() {
     [patientId]
   ) || [];
 
-  if (!selectedPatient) {
-    return <div className="p-8 text-center text-slate-500">Please select a patient to start an encounter.</div>;
-  }
-
   return (
     <div className="space-y-6 h-full p-6 bg-slate-50 dark:bg-slate-950">
       <div className="flex justify-between items-start">
         <div>
-          <h2 className="text-3xl font-bold text-slate-900 dark:text-white">{selectedPatient.name}</h2>
-          <p className="text-slate-500 dark:text-slate-400">MRN: {selectedPatient.mrn} • Age: {selectedPatient.age} • Blood Type: {selectedPatient.bloodType}</p>
+          {selectedPatient ? (
+            <>
+              <h2 className="text-3xl font-bold text-slate-900 dark:text-white">{selectedPatient.name}</h2>
+              <p className="text-slate-500 dark:text-slate-400">MRN: {selectedPatient.mrn} • Age: {selectedPatient.age} • Blood Type: {selectedPatient.bloodType}</p>
+            </>
+          ) : (
+            <>
+              <h2 className="text-3xl font-bold text-slate-900 dark:text-white">Active Encounter</h2>
+              <p className="text-slate-500 dark:text-slate-400">Select a patient to begin</p>
+            </>
+          )}
         </div>
-        <div className="flex gap-2">
-            <button className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700">New Note</button>
-            <button className="px-4 py-2 border border-slate-300 rounded-lg text-sm bg-white dark:bg-slate-800">Finalize</button>
+        <div className="flex gap-2 items-center">
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+              <select 
+                className="pl-9 pr-4 py-2 border border-slate-300 rounded-lg text-sm bg-white dark:bg-slate-800 appearance-none min-w-[200px]"
+                onChange={(e) => {
+                  const patient = patients.find(p => p.id === e.target.value);
+                  if (patient) setSelectedPatient(patient);
+                }}
+                value={selectedPatient?.id || ""}
+              >
+                <option value="" disabled>Select patient...</option>
+                {patients.map(p => <option key={p.id} value={p.id}>{p.name} ({p.mrn})</option>)}
+              </select>
+            </div>
+            <button className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700" disabled={!selectedPatient}>New Note</button>
+            <button className="px-4 py-2 border border-slate-300 rounded-lg text-sm bg-white dark:bg-slate-800" disabled={!selectedPatient}>Finalize</button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {!selectedPatient ? (
+        <div className="p-12 text-center text-slate-500 bg-white dark:bg-slate-900 rounded-xl border border-dashed border-slate-300 dark:border-slate-800">
+           Please select a patient from the dropdown above to start an encounter.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column: Vitals grid */}
         <div className="lg:col-span-2 space-y-6">
           <div className="card-panel p-6">
@@ -103,12 +128,15 @@ export function ActiveEncounter() {
                   <Pill className="w-5 h-5 text-purple-600" />
                   <h3 className="font-bold text-lg">Active Medications</h3>
                </div>
-               {selectedPatient.medications.map((m: any, i:number) => (
-                 <div key={i} className="text-sm p-2 bg-purple-50 dark:bg-purple-900/10 rounded mb-2">{m}</div>
-               ))}
+               {Array.isArray(selectedPatient?.medications) && selectedPatient.medications.map((m: any, i:number) => {
+                 const label = typeof m === 'string' ? m : `${m.name || 'Unknown'} ${m.dosage ? '- ' + m.dosage : ''} ${m.frequency || ''}`.trim();
+                 return <div key={i} className="text-sm p-2 bg-purple-50 dark:bg-purple-900/10 rounded mb-2">{label}</div>
+               })}
             </div>
+            <ClinicalIntelligencePanel patient={selectedPatient} latestVitals={vitals[0]} />
          </div>
       </div>
+      )}
     </div>
   );
 }

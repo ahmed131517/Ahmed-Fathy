@@ -5,6 +5,20 @@ export interface RedFlag {
   urgencyLevel: 1 | 2 | 3; // 1: Immediate/Resuscitation, 2: Emergent, 3: Urgent
 }
 
+export interface LikelihoodRatio {
+  symptomId: string;
+  lrPositive: number; // LR+ > 1 increases probability
+  lrNegative: number; // LR- < 1 decreases probability
+  isPathognomonic?: boolean; // If true and present, weight is extremely high
+}
+
+export interface PrevalenceContext {
+  ageRange?: [number, number];
+  sex?: 'Male' | 'Female';
+  chronicConditions?: string[];
+  weight: number; // multiplier for prevalenceScore
+}
+
 export interface Diagnosis {
   id: string;
   name: string;
@@ -14,7 +28,12 @@ export interface Diagnosis {
   description: string;
   inheritsSymptomsFrom?: string[];
   commonSymptoms: string[]; 
-  redFlagsStructured?: RedFlag[]; // New structure
+  redFlagsStructured?: RedFlag[]; 
+  
+  // Clinical Logic & Accuracy Fields
+  likelihoodRatios?: LikelihoodRatio[];
+  demographicPrevalence?: PrevalenceContext[];
+  distinguishingFeatures?: string[]; // Features that rule out or strongly rule in
   
   // Existing structure (maintained for compatibility)
   category: string;
@@ -25,6 +44,11 @@ export interface Diagnosis {
   diagnosticTests?: string[];
   firstLineTreatments?: string[];
   prognosis?: string;
+  matchPercentage?: number;
+  
+  // Association Mapping & Temporal Trending
+  associatedLabs?: { labName: string; range: 'High' | 'Low' | 'Normal'; weight?: number }[];
+  chronicity?: 'Acute' | 'Chronic' | 'Both';
 }
 
 // ... (SYSTEM_BASES remains)
@@ -49,9 +73,22 @@ export const COMMON_DIAGNOSES: Diagnosis[] = [
     icd10: "I50.9",
     prevalenceScore: 8,
     triagePriority: 2,
+    likelihoodRatios: [
+      { symptomId: 'orthopnea', lrPositive: 2.2, lrNegative: 0.65 },
+      { symptomId: 'leg_swelling_heart', lrPositive: 1.5, lrNegative: 0.8 }
+    ],
+    demographicPrevalence: [
+      { ageRange: [65, 120], weight: 1.5 },
+      { chronicConditions: ['Hypertension', 'Coronary artery disease'], weight: 1.3 }
+    ],
+    distinguishingFeatures: ["Echocardiogram showing reduced LVEF", "Elevated BNP levels"],
     diagnosticTests: ["Echocardiogram", "BNP blood test", "Chest X-ray"],
     firstLineTreatments: ["ACE inhibitors", "Beta-blockers", "Diuretics"],
-    prognosis: "Chronic, requires lifelong management."
+    prognosis: "Chronic, requires lifelong management.",
+    chronicity: 'Chronic',
+    associatedLabs: [
+      { labName: 'BNP', range: 'High', weight: 3.0 }
+    ]
   },
   {
     id: "angina_pectoris",
@@ -600,7 +637,11 @@ export const COMMON_DIAGNOSES: Diagnosis[] = [
     triagePriority: 3,
     diagnosticTests: ["Chest X-ray", "Sputum culture", "CBC"],
     firstLineTreatments: ["Empiric antibiotics", "Rest/Hydration"],
-    prognosis: "Favorable in healthy adults; guarded in elderly/immunocompromised."
+    prognosis: "Favorable in healthy adults; guarded in elderly/immunocompromised.",
+    chronicity: 'Acute',
+    associatedLabs: [
+      { labName: 'WBC', range: 'High', weight: 2.5 }
+    ]
   },
   {
     id: "bronchitis",
@@ -705,7 +746,19 @@ export const COMMON_DIAGNOSES: Diagnosis[] = [
     ],
     icd10: "K35.80",
     prevalenceScore: 5,
-    triagePriority: 1
+    triagePriority: 1,
+    likelihoodRatios: [
+      { symptomId: 'app_rlq', lrPositive: 8.0, lrNegative: 0.1, isPathognomonic: true },
+      { symptomId: 'nausea', lrPositive: 1.2, lrNegative: 0.5 }
+    ],
+    demographicPrevalence: [
+      { ageRange: [10, 30], weight: 2.0 }
+    ],
+    distinguishingFeatures: ["RLQ pain followed by vomiting", "Positive McBurney's sign"],
+    associatedLabs: [
+      { labName: 'WBC', range: 'High' }
+    ],
+    chronicity: 'Acute'
   },
   {
     id: "peptic_ulcer_disease",
@@ -762,7 +815,13 @@ export const COMMON_DIAGNOSES: Diagnosis[] = [
     ],
     icd10: "K81.9",
     prevalenceScore: 7,
-    triagePriority: 2
+    triagePriority: 2,
+    associatedLabs: [
+      { labName: 'WBC', range: 'High' },
+      { labName: 'ALT', range: 'High' },
+      { labName: 'AST', range: 'High' }
+    ],
+    chronicity: 'Acute'
   },
   {
     id: "pancreatitis",
@@ -799,7 +858,13 @@ export const COMMON_DIAGNOSES: Diagnosis[] = [
     ],
     icd10: "K57.92",
     prevalenceScore: 7,
-    triagePriority: 3
+    triagePriority: 3,
+    likelihoodRatios: [
+      { symptomId: 'div_llq', lrPositive: 3.5, lrNegative: 0.4 }
+    ],
+    demographicPrevalence: [
+      { ageRange: [60, 120], weight: 1.8 }
+    ],
   },
   {
     id: "ibd",
@@ -1344,7 +1409,12 @@ export const COMMON_DIAGNOSES: Diagnosis[] = [
     ],
     icd10: "E11.9",
     prevalenceScore: 10,
-    triagePriority: 4
+    triagePriority: 4,
+    associatedLabs: [
+      { labName: 'HbA1c', range: 'High' },
+      { labName: 'Glucose', range: 'High' }
+    ],
+    chronicity: 'Chronic'
   },
   {
     id: "hypothyroidism",
@@ -1496,7 +1566,12 @@ export const COMMON_DIAGNOSES: Diagnosis[] = [
     ],
     icd10: "N18.9",
     prevalenceScore: 7,
-    triagePriority: 3
+    triagePriority: 3,
+    associatedLabs: [
+      { labName: 'Creatinine', range: 'High' },
+      { labName: 'GFR', range: 'Low' }
+    ],
+    chronicity: 'Chronic'
   },
   {
     id: "uti",

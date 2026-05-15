@@ -1,4 +1,5 @@
-import { generateContentWithRetry } from '@/utils/gemini';
+import { AISettings } from '@/lib/AISettingsContext';
+import { clinicalAIRequest } from '@/services/aiWorkflowService';
 import { Patient } from '@/data/patients';
 import { Diagnosis } from '@/data/diagnosisMappings';
 
@@ -13,7 +14,8 @@ export async function generateSoapNote(
   patient: Patient,
   symptoms: string[],
   diagnosis: Diagnosis,
-  redFlags: string[]
+  redFlags: string[],
+  aiSettings: AISettings
 ): Promise<string> {
   const prompt = `
     Generate a professional SOAP note for the following patient encounter:
@@ -35,10 +37,10 @@ export async function generateSoapNote(
     Keep it concise and professional.
   `;
 
-  const response = await generateContentWithRetry({
-    model: 'gemini-1.5-flash',
-    contents: [{ role: 'user', parts: [{ text: prompt }] }],
-  });
+  const responseText = await clinicalAIRequest(
+    [{ role: 'user', content: prompt }],
+    aiSettings
+  );
 
-  return response.text || "Failed to generate SOAP note.";
+  return responseText || "Failed to generate SOAP note.";
 }

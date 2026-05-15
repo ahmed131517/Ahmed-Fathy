@@ -23,7 +23,10 @@ export const MedicationReconciliation: React.FC<MedicationReconciliationProps> =
       {medications.map((med, index) => (
         <div key={med.medicationId || `med-${index}`} className="p-3 border border-slate-200 rounded-lg flex items-center justify-between">
           <div>
-            <p className="font-medium text-slate-900">{med.name} <span className="text-xs text-slate-500">{med.dosage} {med.route}</span></p>
+            <p className="font-medium text-slate-900">
+              {typeof med.name === 'object' ? ((med.name as any)?.name || (med.name as any)?.generic_name || "Unknown") : med.name}
+              <span className="text-xs text-slate-500 ml-1">{med.dosage} {med.route}</span>
+            </p>
             <p className="text-xs text-slate-600">{frequencyMap[med.frequency] || med.frequency}</p>
             <p className="text-[10px] text-slate-400">Status: {med.status}</p>
           </div>

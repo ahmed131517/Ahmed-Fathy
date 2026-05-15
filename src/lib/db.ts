@@ -45,6 +45,7 @@ export interface PatientRecord {
   lastModified: number;
   isDeleted: number;
   isSynced: number;
+  labResults?: any; // Native array of lab results
 }
 
 export interface Appointment {

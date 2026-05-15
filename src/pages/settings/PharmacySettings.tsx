@@ -29,15 +29,53 @@ export function PharmacySettings() {
     reader.onload = async (e) => {
       try {
         const content = e.target?.result as string;
-        const data = JSON.parse(content);
         
-        const success = await medicationService.bulkImport(data);
-        if (success) {
-          toast.success("Medication database expanded successfully!");
+        if (file.name.endsWith('.csv')) {
+          const lines = content.split('\n');
+          if (lines.length < 2) throw new Error("CSV must have a header row and data");
+          
+          const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/^"|"$/g, ''));
+          let importedCount = 0;
+          
+          for (let i = 1; i < lines.length; i++) {
+            if (!lines[i].trim()) continue;
+            // Split by comma, ignoring commas inside quotes
+            const currentline = lines[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+            const row: any = {};
+            
+            for (let j = 0; j < headers.length; j++) {
+              let val = currentline[j] ? currentline[j].trim() : "";
+              val = val.replace(/^"|"$/g, '');
+              row[headers[j]] = val;
+            }
+            
+            const generic_name = row.generic_name || row.genericname || row.name;
+            if (generic_name) {
+              const brands = row.brands || row.brand_name || row.brandname || "";
+              const sideEffects = row.side_effects || row.sideeffects || "";
+
+              await medicationService.discoverAndAddDrug({
+                generic_name: generic_name,
+                drug_class: row.drug_class || row.drugclass || 'Unknown',
+                atc_code: row.atc_code || row.atccode || 'Unknown',
+                brands: brands ? brands.split(';').map((b: string) => b.trim()).filter(Boolean) : [],
+                side_effects: sideEffects ? sideEffects.split(';').map((s: string) => s.trim()).filter(Boolean) : []
+              });
+              importedCount++;
+            }
+          }
+          toast.success(`Successfully imported ${importedCount} medications from CSV!`);
+        } else {
+          // JSON handling
+          const data = JSON.parse(content);
+          const success = await medicationService.bulkImport(data);
+          if (success) {
+            toast.success("Medication database expanded successfully!");
+          }
         }
       } catch (error) {
         console.error("Import error:", error);
-        toast.error("Invalid JSON file format.");
+        toast.error("Invalid file format. Please check the structure.");
       } finally {
         setIsImporting(false);
         if (fileInputRef.current) fileInputRef.current.value = "";
@@ -148,13 +186,13 @@ export function PharmacySettings() {
               <div className="flex-1">
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-1">Bulk Import Medications</h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
-                  Upload a JSON file containing drugs, brands, and interactions to expand your clinical database.
+                  Upload a JSON or CSV file containing drugs, brands, and interactions to expand your clinical database.
                 </p>
                 <input 
                   type="file" 
                   ref={fileInputRef}
                   onChange={handleFileUpload}
-                  accept=".json"
+                  accept=".json,.csv"
                   className="hidden" 
                 />
                 <button 
@@ -167,7 +205,7 @@ export function PharmacySettings() {
                   ) : (
                     <Upload className="w-3.5 h-3.5" />
                   )}
-                  {isImporting ? "Importing..." : "Upload JSON File"}
+                  {isImporting ? "Importing..." : "Upload JSON/CSV File"}
                 </button>
               </div>
             </div>

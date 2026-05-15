@@ -149,22 +149,40 @@ export function AISettings() {
                 <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro (Advanced)</option>
               </select>
 
-              {/* OpenRouter Integration */}
+              {/* AI Provider Integration */}
               <div className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
                     <Globe className="w-4 h-4 text-indigo-500" />
-                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">Use OpenRouter</h4>
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">AI Backend Provider</h4>
                   </div>
-                  <button 
-                    onClick={() => updateAISettings({ useOpenRouter: !aiSettings.useOpenRouter })}
-                    className={`w-11 h-6 rounded-full relative cursor-pointer transition-colors ${aiSettings.useOpenRouter ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'}`}
-                  >
-                    <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 shadow-sm transition-transform ${aiSettings.useOpenRouter ? 'right-0.5 translate-x-0' : 'left-0.5 dark:bg-slate-400'}`}></div>
-                  </button>
+                  <div className="flex bg-slate-200 dark:bg-slate-800 p-1 rounded-lg">
+                    <button 
+                      onClick={() => updateAISettings({ aiProvider: 'gemini' })}
+                      className={cn(
+                        "px-3 py-1 text-xs font-bold rounded-md transition-all",
+                        aiSettings.aiProvider === 'gemini' 
+                          ? "bg-white dark:bg-slate-700 text-indigo-600 shadow-sm" 
+                          : "text-slate-500"
+                      )}
+                    >
+                      Gemini
+                    </button>
+                    <button 
+                      onClick={() => updateAISettings({ aiProvider: 'openrouter' })}
+                      className={cn(
+                        "px-3 py-1 text-xs font-bold rounded-md transition-all",
+                        aiSettings.aiProvider === 'openrouter' 
+                          ? "bg-white dark:bg-slate-700 text-indigo-600 shadow-sm" 
+                          : "text-slate-500"
+                      )}
+                    >
+                      OpenRouter
+                    </button>
+                  </div>
                 </div>
 
-                {aiSettings.useOpenRouter && (
+                {aiSettings.aiProvider === 'openrouter' && (
                   <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
                     <div>
                       <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
@@ -188,6 +206,7 @@ export function AISettings() {
                         className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 dark:text-white outline-none"
                       >
                         <option value="openai/gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                        <option value="openai/gpt-4o-mini">GPT-4o Mini</option>
                         <option value="openai/gpt-4-turbo">GPT-4 Turbo</option>
                         <option value="anthropic/claude-3-opus">Claude 3 Opus</option>
                         <option value="anthropic/claude-3-sonnet">Claude 3 Sonnet</option>

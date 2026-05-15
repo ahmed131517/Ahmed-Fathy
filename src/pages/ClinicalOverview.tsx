@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { usePatient } from '../lib/PatientContext';
 import { cn } from '../lib/utils';
 import { Sparkles, RefreshCw, AlertTriangle, TrendingUp, FlaskConical, Pill, Calendar, ArrowLeft } from 'lucide-react';
-import { generateContentWithRetry } from "../utils/gemini";
 import { db } from "../lib/db";
 import { useLiveQuery } from "dexie-react-hooks";
 import { PatientHistoryService } from "../services/PatientHistoryService";
@@ -11,7 +10,11 @@ import { Link } from 'react-router-dom';
 
 import { ClinicalTrends } from '../components/ClinicalTrends';
 
+import { clinicalAIRequest } from "../services/aiWorkflowService";
+import { useAISettings } from "../lib/AISettingsContext";
+
 export function ClinicalOverview() {
+  const { settings: aiSettings } = useAISettings();
   const { selectedPatient } = usePatient();
   const [isGenerating, setIsGenerating] = useState(false);
   const [summary, setSummary] = useState("");
@@ -42,11 +45,11 @@ export function ClinicalOverview() {
       
       Format the response with professional clinical headings and bullet points. Use markdown bolding for key terms.`;
       
-      const response = await generateContentWithRetry({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-      });
-      setSummary(response.text || "Failed to generate summary.");
+      const responseText = await clinicalAIRequest(
+        [{ role: "user", content: prompt }],
+        aiSettings
+      );
+      setSummary(responseText || "Failed to generate summary.");
     } catch (error) {
       setSummary("Error generating summary. Please try again.");
     } finally {
@@ -130,6 +133,12 @@ export function ClinicalOverview() {
             <button className="px-6 py-2 text-xs font-bold text-white bg-primary rounded-lg shadow-md hover:bg-primary-container transition-colors">
               Print Report
             </button>
+            <Link 
+                to="/patient-report"
+                className="px-6 py-2 text-xs font-bold text-white bg-secondary rounded-lg shadow-md hover:bg-secondary-container transition-colors"
+              >
+                Detailed Report
+              </Link>
           </div>
         </div>
 

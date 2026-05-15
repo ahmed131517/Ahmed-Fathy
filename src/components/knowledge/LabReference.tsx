@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Search, FileText, Info, AlertCircle, ArrowUp, ArrowDown, Loader2, BookOpen } from 'lucide-react';
 import { cn } from "@/lib/utils";
-import { generateContentWithRetry } from "@/utils/gemini";
-import { Type } from "@google/genai";
+import { parseJsonResponse } from "@/utils/gemini";
+import { useAISettings } from '@/lib/AISettingsContext';
+import { clinicalAIRequest } from '@/services/aiWorkflowService';
 import { auth, googleProvider } from '@/lib/firebase';
 import { signInWithPopup, onAuthStateChanged } from 'firebase/auth';
 import { SavedKnowledgeService } from '@/lib/SavedKnowledgeService';
@@ -39,6 +40,7 @@ const commonLabTests: LabTest[] = [
 ];
 
 export function LabReference() {
+  const { settings: aiSettings } = useAISettings();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTest, setSelectedTest] = useState<LabTest | null>(null);
   const [analysis, setAnalysis] = useState<LabAnalysis | null>(null);
@@ -111,53 +113,52 @@ export function LabReference() {
     }
 
     try {
-      const response = await generateContentWithRetry({
-        model: "gemini-3-flash-preview",
-        contents: `Provide a clinical analysis for the lab test: ${test.name}. Include clinical significance, common causes for high values, common causes for low values, and general clinical recommendations.`,
-        config: {
-          systemInstruction: "You are a clinical pathologist. Provide accurate, evidence-based information about laboratory tests. Return the response as a JSON object.",
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              testName: { type: Type.STRING },
-              clinicalSignificance: { type: Type.STRING },
-              highCauses: { type: Type.ARRAY, items: { type: Type.STRING } },
-              lowCauses: { type: Type.ARRAY, items: { type: Type.STRING } },
-              recommendations: { type: Type.STRING }
-            },
-            required: ["testName", "clinicalSignificance", "highCauses", "lowCauses", "recommendations"]
-          }
-        }
-      });
+      const prompt = `Provide a clinical analysis for the lab test: ${test.name}. Include clinical significance, common causes for high values, common causes for low values, and general clinical recommendations.
+      
+      Return as a JSON object:
+      {
+        "testName": "string",
+        "clinicalSignificance": "string",
+        "highCauses": ["string"],
+        "lowCauses": ["string"],
+        "recommendations": "string"
+      }`;
 
-      if (response.text) {
-        const parsed = JSON.parse(response.text);
-        setAnalysis(parsed);
-        
-        // Save to Dexie cache (or update existing basic info)
-        const existing = await db.knowledge_labs.where('name').equalsIgnoreCase(test.name).first();
-        if (existing) {
-          await db.knowledge_labs.update(existing.id!, {
-            clinicalSignificance: parsed.clinicalSignificance,
-            highCauses: parsed.highCauses,
-            lowCauses: parsed.lowCauses,
-            recommendations: parsed.recommendations,
-            lastUpdated: Date.now()
-          });
-        } else {
-          await db.knowledge_labs.add({
-            name: test.name,
-            category: test.category,
-            normalRange: test.normalRange,
-            unit: test.unit,
-            description: test.description,
-            clinicalSignificance: parsed.clinicalSignificance,
-            highCauses: parsed.highCauses,
-            lowCauses: parsed.lowCauses,
-            recommendations: parsed.recommendations,
-            lastUpdated: Date.now()
-          });
+      const responseText = await clinicalAIRequest(
+        [{ role: 'user', content: prompt }],
+        aiSettings,
+        "You are a clinical pathologist. Provide accurate, evidence-based information about laboratory tests. Return the response as a JSON object."
+      );
+
+      if (responseText) {
+        const parsed = parseJsonResponse(responseText, null as any);
+        if (parsed) {
+          setAnalysis(parsed);
+          
+          // Save to Dexie cache (or update existing basic info)
+          const existing = await db.knowledge_labs.where('name').equalsIgnoreCase(test.name).first();
+          if (existing) {
+            await db.knowledge_labs.update(existing.id!, {
+              clinicalSignificance: parsed.clinicalSignificance,
+              highCauses: parsed.highCauses,
+              lowCauses: parsed.lowCauses,
+              recommendations: parsed.recommendations,
+              lastUpdated: Date.now()
+            });
+          } else {
+            await db.knowledge_labs.add({
+              name: test.name,
+              category: test.category,
+              normalRange: test.normalRange,
+              unit: test.unit,
+              description: test.description,
+              clinicalSignificance: parsed.clinicalSignificance,
+              highCauses: parsed.highCauses,
+              lowCauses: parsed.lowCauses,
+              recommendations: parsed.recommendations,
+              lastUpdated: Date.now()
+            });
+          }
         }
       }
     } catch (error) {

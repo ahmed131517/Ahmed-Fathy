@@ -7,8 +7,7 @@ import { db } from "@/lib/db";
 import { User, Headphones, Eye, MessageCircle, Shield, Wind, Heart, Target, Droplets, Layers, X, Activity, HelpCircle, AlertTriangle, CheckCircle2, RefreshCw, ClipboardList, Sparkles, Edit2, ChevronDown, ChevronUp, Loader2, Bone, Brain, TrendingUp, BookOpen, ExternalLink, Info, FileText, FlaskConical, Stethoscope, ArrowRightLeft, Zap, Search, Mars, Venus, Thermometer, Droplet, Smile, ShieldAlert, Baby, Hourglass } from "lucide-react";
 import { ALL_MODELS, SymptomModel } from "@/data/symptomModels";
 import { cn } from "@/lib/utils";
-import { GoogleGenAI, Modality, Type } from "@google/genai";
-import { generateContentWithRetry, parseJsonResponse } from "../utils/gemini";
+import { parseJsonResponse } from "../utils/gemini";
 import { SOAPNoteModal } from "@/components/SOAPNoteModal";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
@@ -18,6 +17,8 @@ import { CLINICAL_PATHWAYS, ClinicalPathwayRule } from "@/data/clinicalPathways"
 import { ClinicalGuardrails } from "@/components/ClinicalGuardrails";
 import { usePatient } from "@/lib/PatientContext";
 import { WhatsNextModal } from "@/components/WhatsNextModal";
+import { useAISettings } from "@/lib/AISettingsContext";
+import { clinicalAIRequest } from "@/services/aiWorkflowService";
 
 const ALL_CATEGORIES = [
   { id: 'general', name: 'General / Systemic', icon: Activity },
@@ -59,6 +60,7 @@ export function SymptomAnalysis() {
   const navigate = useNavigate();
   const { symptoms: contextSymptoms, setSymptoms: setContextSymptoms } = useSymptom();
   const { selectedPatient } = usePatient();
+  const { settings: aiSettings } = useAISettings();
   const latestVitals = useLiveQuery(
     () => selectedPatient ? db.vitals.where('patientId').equals(selectedPatient.id).reverse().first() : null,
     [selectedPatient?.id]
@@ -321,31 +323,12 @@ export function SymptomAnalysis() {
         Only use values from the provided dimensions list if possible. If not mentioned, leave empty.
       `;
 
-      const response = await generateContentWithRetry({
-        model: "gemini-3-flash-preview",
-        contents: [{ parts: [{ text: prompt }] }],
-        config: { 
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              analysisData: { 
-                type: Type.OBJECT,
-                description: "Dynamic findings keyed by dimension name",
-                properties: {
-                  // Using a dummy property to avoid empty object issues, 
-                  // but the model will still populate it with actual findings.
-                  findings: { type: Type.ARRAY, items: { type: Type.STRING } }
-                }
-              },
-              redFlags: { type: Type.ARRAY, items: { type: Type.STRING } },
-              reviewNotes: { type: Type.STRING }
-            }
-          }
-        }
-      });
+      const responseText = await clinicalAIRequest(
+        [{ role: "user", content: prompt }],
+        aiSettings
+      );
 
-      const result = parseJsonResponse(response.text, {} as any);
+      const result = parseJsonResponse(responseText, {} as any);
       const hasRedFlag = result.redFlags && result.redFlags.length > 0;
       
       setSelectedSymptoms(prev => prev.map(s => 
@@ -378,12 +361,15 @@ export function SymptomAnalysis() {
     
     // Call AI
     try {
-      const response = await generateContentWithRetry({
-        model: "gemini-3-flash-preview",
-        contents: [...conversation, userMessage].map(m => m.content).join('\n'),
-      });
+      const responseText = await clinicalAIRequest(
+        [...conversation, userMessage].map(m => ({
+          role: m.role === 'ai' ? 'assistant' : 'user',
+          content: m.content
+        })),
+        aiSettings
+      );
       
-      setConversation(prev => [...prev, { role: 'ai' as const, content: response.text || "No response." }]);
+      setConversation(prev => [...prev, { role: 'ai' as const, content: responseText || "No response." }]);
     } catch (err) {
       console.error("AI chat failed:", err);
       toast.error("Failed to get AI response. Please try again later.");
@@ -410,15 +396,12 @@ export function SymptomAnalysis() {
       
       Return a JSON array of objects with: name, likelihood (percentage), severity, code (ICD-10), description, rationale, isRedFlag (boolean), and grounding (array of {title, url}), labs (array of {name, reason}), imaging (array of {name, reason}), and comparison (object with matches array and mismatches array).`;
       
-      const response = await generateContentWithRetry({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-        },
-      });
+      const responseText = await clinicalAIRequest(
+        [{ role: "user", content: prompt }],
+        aiSettings
+      );
       
-      const diagnoses = parseJsonResponse(response.text, []);
+      const diagnoses = parseJsonResponse(responseText, []);
       // Add IDs to diagnoses
       const diagnosesWithIds = diagnoses.map((d: any, index: number) => ({ ...d, id: `diag_${index}` }));
       setGeneratedDiagnoses(diagnosesWithIds);
@@ -442,11 +425,11 @@ export function SymptomAnalysis() {
       Assessment: (Diagnosis and Clinical Reasoning)
       Plan: (Treatment, Medications, Recommendations)`;
       
-      const response = await generateContentWithRetry({
-        model: "gemini-3-flash-preview",
-        contents: [{ parts: [{ text: prompt }] }]
-      });
-      const generatedNote = response.text || "Failed to generate note.";
+      const responseText = await clinicalAIRequest(
+        [{ role: "user", content: prompt }],
+        aiSettings
+      );
+      const generatedNote = responseText || "Failed to generate note.";
       sessionStorage.setItem('draft_soap_note', generatedNote);
       toast.success("SOAP note generated successfully");
       navigate('/soap-editor');
@@ -455,6 +438,102 @@ export function SymptomAnalysis() {
       toast.error("Failed to generate SOAP note");
     } finally {
       setIsGeneratingSOAP(false);
+    }
+  };
+
+  const handleFinalizeSymptoms = async () => {
+    if (selectedSymptoms.length === 0) {
+      toast.error("Please select at least one symptom.");
+      return;
+    }
+
+    if (!selectedPatient) {
+      toast.error("No patient selected.");
+      return;
+    }
+
+    try {
+      const timestamp = Date.now();
+      const date = new Date().toISOString().split('T')[0];
+
+      // Find existing draft or create new one
+      const existingDraft = await db.physical_exams
+        .where('patientId')
+        .equals(selectedPatient.id)
+        .and(exam => exam.status === 'draft')
+        .first();
+
+      const newSymptoms = selectedSymptoms.map(s => s.label);
+
+      if (existingDraft) {
+        const updatedData = {
+          ...existingDraft.data,
+          symptoms: newSymptoms,
+          // Try to preserve vitals if they exist in the draft, 
+          // or use latest vitals if they don't
+          vitals: existingDraft.data?.vitals || (latestVitals ? {
+            temperature: latestVitals.temp?.toString() || '',
+            bpSystolic: latestVitals.bp_systolic?.toString() || '',
+            bpDiastolic: latestVitals.bp_diastolic?.toString() || '',
+            pulse: latestVitals.hr?.toString() || '',
+            respiratoryRate: latestVitals.rr?.toString() || '',
+            oxygenSaturation: latestVitals.spo2?.toString() || '',
+            weight: latestVitals.weight?.toString() || '',
+            height: latestVitals.height?.toString() || '',
+            bmi: latestVitals.bmi?.toString() || ''
+          } : undefined)
+        };
+
+        await db.physical_exams.update(existingDraft.localId!, {
+          data: updatedData,
+          lastModified: timestamp
+        });
+      } else {
+        const examData = {
+          vitals: latestVitals ? {
+            temperature: latestVitals.temp?.toString() || '',
+            bpSystolic: latestVitals.bp_systolic?.toString() || '',
+            bpDiastolic: latestVitals.bp_diastolic?.toString() || '',
+            pulse: latestVitals.hr?.toString() || '',
+            respiratoryRate: latestVitals.rr?.toString() || '',
+            oxygenSaturation: latestVitals.spo2?.toString() || '',
+            weight: latestVitals.weight?.toString() || '',
+            height: latestVitals.height?.toString() || '',
+            bmi: latestVitals.bmi?.toString() || ''
+          } : undefined,
+          symptoms: newSymptoms,
+          generalFindings: { appearance: '', mentalStatus: '', notes: '', status: 'untouched', detailed: {} },
+          heentFindings: { heentState: {}, pupilSize: [3], notes: '', status: 'untouched' },
+          sseFindings: { fundoscopy: [], otoscopy: [], notes: '', status: 'untouched' },
+          respiratoryFindings: { lungs: [], regionalFindings: {}, notes: '', status: 'untouched' },
+          cardiovascularFindings: { heart: [], notes: '', status: 'untouched' },
+          gastrointestinalFindings: { abdomen: [], notes: '', status: 'untouched' },
+          musculoskeletalFindings: { jointExams: [], notes: '', status: 'untouched' },
+          neurologicalFindings: { notes: '', status: 'untouched' },
+          skinFindings: { lesions: [], notes: '', status: 'untouched' },
+          psychiatricFindings: { notes: '', status: 'untouched' },
+          geriatricFindings: { notes: '', status: 'untouched' }
+        };
+
+        await db.physical_exams.add({
+          id: crypto.randomUUID(),
+          patientId: selectedPatient.id,
+          data: examData,
+          status: 'draft',
+          date: date,
+          lastModified: timestamp,
+          isDeleted: 0,
+          isSynced: 0
+        });
+      }
+
+      toast.success("Symptoms saved to patient record.");
+      navigate('/final-diagnosis');
+    } catch (error) {
+      console.error("Failed to save symptoms:", error);
+      toast.error("Failed to persist symptom data.");
+      // Navigate anyway as we have context
+      navigate('/final-diagnosis');
     }
   };
 
@@ -483,27 +562,8 @@ export function SymptomAnalysis() {
             )} />
             <span className="text-xs uppercase tracking-wider">Triage: {triageLevel} Risk</span>
           </div>
-          {selectedPatient ? (
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 border border-indigo-100 rounded-full text-xs font-medium text-indigo-700">
-              <User className="w-3 h-3" />
-              Patient: {selectedPatient.name} ({selectedPatient.age}y {selectedPatient.gender})
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 border border-amber-100 rounded-full text-xs font-medium text-amber-700">
-              <AlertTriangle className="w-3 h-3" />
-              No Patient Selected (Using Default)
-            </div>
-          )}
         </div>
         <div className="flex gap-3">
-          <button 
-            onClick={generateSOAPNote}
-            disabled={selectedSymptoms.length === 0 || isGeneratingSOAP}
-            className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-2 disabled:opacity-50"
-          >
-            {isGeneratingSOAP ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
-            Generate SOAP Note
-          </button>
           <button 
             onClick={() => setSelectedSymptoms([])}
             className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-2"
@@ -527,7 +587,7 @@ export function SymptomAnalysis() {
             Show Possible Causes
           </button>
           <button 
-            onClick={() => navigate('/final-diagnosis')}
+            onClick={handleFinalizeSymptoms}
             disabled={selectedSymptoms.length === 0}
             className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors flex items-center gap-2 disabled:opacity-50"
           >
@@ -1079,6 +1139,7 @@ const GLOBAL_DIMENSIONS = {
 };
 
 function AnalysisModal({ symptom, onClose, onSave }: { symptom: SelectedSymptom, onClose: () => void, onSave: (data: any, timeline?: any) => void }) {
+  const { settings: aiSettings } = useAISettings();
   const model = ALL_MODELS[symptom.category]?.find(m => m.id === symptom.id);
   
   const combinedDimensions = useMemo(() => {
@@ -1108,18 +1169,12 @@ function AnalysisModal({ symptom, onClose, onSave }: { symptom: SelectedSymptom,
   const generateFollowUpQuestions = async () => {
     setIsGeneratingQuestions(true);
     try {
-      const response = await generateContentWithRetry({
-        model: "gemini-3-flash-preview",
-        contents: [{ parts: [{ text: `Generate 3 clinical follow-up questions for a patient presenting with ${model.label}. Focus on ruling out differential diagnoses.` }] }],
-        config: { 
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.ARRAY,
-            items: { type: Type.STRING }
-          }
-        }
-      });
-      setFollowUpQuestions(parseJsonResponse(response.text, []));
+      const responseText = await clinicalAIRequest(
+        [{ role: "user", content: `Generate 3 clinical follow-up questions for a patient presenting with ${model!.label}. Focus on ruling out differential diagnoses. Return ONLY the questions as a JSON array of strings.` }],
+        aiSettings
+      );
+      
+      setFollowUpQuestions(parseJsonResponse(responseText, []));
     } catch (err) {
       console.error("Failed to generate questions:", err);
       toast.error("Failed to generate follow-up questions");

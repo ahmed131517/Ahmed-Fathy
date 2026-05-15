@@ -2,8 +2,8 @@ import { DRUG_INTERACTIONS } from '@/data/drugInteractions';
 import { Patient } from '@/data/patients';
 
 export interface SafetyAlert {
-  type: 'Interaction' | 'Contraindication' | 'Allergy';
-  severity: 'Minor' | 'Moderate' | 'Severe';
+  type: 'Interaction' | 'Contraindication' | 'Allergy' | 'Renal' | 'Hepatic';
+  severity: 'Minor' | 'Moderate' | 'Severe' | 'Major';
   message: string;
 }
 
@@ -30,12 +30,54 @@ export function checkSafetyAlerts(patient: Patient, diagnosis: any): SafetyAlert
     }
   }
 
-  // Check contraindications (simplified example)
-  if (patient.medications && diagnosis.name === 'Heart Failure' && patient.medications.some(m => m.name === 'NSAIDs')) {
-    alerts.push({
-      type: 'Contraindication',
-      severity: 'Severe',
-      message: 'NSAIDs can worsen Heart Failure.'
+  // Check contraindications
+  const contraindicationRules = [
+    { 
+      condition: /heart failure|chf/i, 
+      meds: ['NSAIDs', 'Ibuprofen', 'Naproxen', 'Diclofenac'], 
+      message: 'NSAIDs can cause fluid retention and worsen heart failure symptoms.' 
+    },
+    { 
+      condition: /asthma|copd/i, 
+      meds: ['Propranolol', 'Atenolol', 'Metoprolol', 'Beta Blockers'], 
+      message: 'Non-selective beta-blockers can trigger bronchospasm in patients with asthma/COPD.' 
+    },
+    { 
+      condition: /diabetes|hyperglycemia/i, 
+      meds: ['Prednisone', 'Dexamethasone', 'Steroids'], 
+      message: 'Corticosteroids can significantly increase blood glucose levels.' 
+    },
+    { 
+      condition: /peptic ulcer|gastritis|gastro/i, 
+      meds: ['NSAIDs', 'Aspirin', 'Ibuprofen'], 
+      message: 'NSAIDs increase the risk of gastric perforation and GI bleeding.' 
+    },
+    { 
+      condition: /pregnancy|pregnant/i, 
+      meds: ['Lisinopril', 'Enalapril', 'Losartan', 'Valsartan', 'Statins', 'Warfarin'], 
+      message: 'Teratogenic risk: This medication is contraindicated or should be used with extreme caution in pregnancy.' 
+    }
+  ];
+
+  if (patient.medications && diagnosis.name) {
+    const combinedConditions = [
+      diagnosis.name,
+      ...(patient.chronicConditions || [])
+    ];
+
+    contraindicationRules.forEach(rule => {
+      const hasCondition = combinedConditions.some(c => rule.condition.test(c));
+      const hasMed = patient.medications!.some(m => 
+        rule.meds.some(pattern => m.name.toLowerCase().includes(pattern.toLowerCase()))
+      );
+
+      if (hasCondition && hasMed) {
+        alerts.push({
+          type: 'Contraindication',
+          severity: 'Severe',
+          message: rule.message
+        });
+      }
     });
   }
 

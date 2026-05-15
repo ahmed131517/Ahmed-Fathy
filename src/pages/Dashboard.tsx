@@ -1,5 +1,6 @@
-import { Users, FileText, MessageSquare, Calendar, Activity, TrendingUp, Clock, AlertCircle, ArrowUpRight, Plus, FlaskConical, Pill, X, UserPlus, FilePlus } from "lucide-react";
+import { Users, FileText, MessageSquare, Calendar, Activity, TrendingUp, Clock, AlertCircle, ArrowUpRight, Plus, FlaskConical, Pill, X, UserPlus, FilePlus, Shield, Stethoscope, ClipboardList } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ChartContainer } from '@/components/ui/ChartContainer';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { useState, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -9,21 +10,22 @@ import { toast } from "sonner";
 import { db } from "@/lib/db";
 import { useLiveQuery } from "dexie-react-hooks";
 import { usePatient } from "@/lib/PatientContext";
-import { CDSSAlertsWidget } from "@/components/dashboard/CDSSAlertsWidget";
+import { useUser } from "@/lib/UserContext";
+
 import { VitalsTrendingWidget } from "@/components/dashboard/VitalsTrendingWidget";
-
-const activities: any[] = [];
-
-const initialAlerts: any[] = [];
+import { AuditDashboard } from "@/pages/AuditDashboard";
 
 export function Dashboard() {
   const navigate = useNavigate();
   const { compactMode } = useSettings();
   const { t, isRTL } = useTranslation();
   const { patients, isLoading } = usePatient();
+  const { profile, updateProfile } = useUser();
   const [timeRange, setTimeRange] = useState('week');
-  const [alerts, setAlerts] = useState<any[]>(initialAlerts);
   const [chartType, setChartType] = useState<'department' | 'condition'>('department');
+  const [alerts, setAlerts] = useState<any[]>([]);
+
+  const role = profile.role;
 
   const todayStr = new Date().toISOString().split('T')[0];
   const todayAppointmentsCount = useLiveQuery(
@@ -101,10 +103,24 @@ export function Dashboard() {
     <div className="space-y-6 h-full flex flex-col">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">{t('dashboard')}</h2>
+          <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
+            {role === 'doctor' && <Stethoscope className="inline-block mr-2 w-6 h-6 text-indigo-500" />}
+            {role === 'nurse' && <Activity className="inline-block mr-2 w-6 h-6 text-emerald-500" />}
+            {role === 'admin' && <Shield className="inline-block mr-2 w-6 h-6 text-slate-500" />}
+            {t('dashboard')} - {role.toUpperCase()}
+          </h2>
           <p className="text-slate-500 dark:text-slate-400">{t('dashboardOverview')}</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex gap-3 items-center">
+          <select 
+            value={role}
+            onChange={(e) => updateProfile({ role: e.target.value as any })}
+            className="text-xs border border-slate-200 rounded-md px-2 py-1 bg-white hover:border-indigo-500 transition-colors"
+          >
+            <option value="doctor">Doctor View</option>
+            <option value="nurse">Nurse View</option>
+            <option value="admin">Admin View</option>
+          </select>
           <button 
             onClick={() => {
               toast.info("Navigating to Schedule...");
@@ -117,7 +133,32 @@ export function Dashboard() {
         </div>
       </div>
 
-      <CDSSAlertsWidget />
+      {/* Role Specific Top Bar */}
+      {role === 'doctor' && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-2">
+            <div className="bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-xl border border-indigo-100 dark:border-indigo-800 flex items-center gap-4">
+                <div className="bg-white dark:bg-slate-800 p-2 rounded-lg shadow-sm"><ClipboardList className="w-5 h-5 text-indigo-600" /></div>
+                <div>
+                    <h4 className="text-xs font-bold text-indigo-900 dark:text-indigo-200 uppercase tracking-wider">Unsigned Notes</h4>
+                    <p className="text-xl font-bold text-indigo-700 dark:text-indigo-400">4 Pending</p>
+                </div>
+            </div>
+            <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-xl border border-amber-100 dark:border-amber-800 flex items-center gap-4">
+                <div className="bg-white dark:bg-slate-800 p-2 rounded-lg shadow-sm"><AlertCircle className="w-5 h-5 text-amber-600" /></div>
+                <div>
+                    <h4 className="text-xs font-bold text-amber-900 dark:text-amber-200 uppercase tracking-wider">Critical Labs</h4>
+                    <p className="text-xl font-bold text-amber-700 dark:text-amber-400">2 Critical</p>
+                </div>
+            </div>
+            <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-xl border border-emerald-100 dark:border-emerald-800 flex items-center gap-4">
+                <div className="bg-white dark:bg-slate-800 p-2 rounded-lg shadow-sm"><MessageSquare className="w-5 h-5 text-emerald-600" /></div>
+                <div>
+                    <h4 className="text-xs font-bold text-emerald-900 dark:text-emerald-200 uppercase tracking-wider">Consultations</h4>
+                    <p className="text-xl font-bold text-emerald-700 dark:text-emerald-400">1 New</p>
+                </div>
+            </div>
+        </div>
+      )}
 
       {/* Bento Grid */}
       <div className={cn("grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4", compactMode ? "gap-4" : "gap-6")}>
@@ -171,8 +212,9 @@ export function Dashboard() {
           compactMode ? "p-4" : "p-6"
         )}>
           <h3 className="font-bold text-slate-900 dark:text-white text-lg mb-4 mono-label">{t('appointments')} ({t('last7Days')})</h3>
-          <div className="h-[300px]">
-             <ResponsiveContainer width="100%" height="100%">
+          <div className="w-full min-w-0 h-[300px]">
+             <ChartContainer>
+              <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData.patientData}>
                 <defs>
                   <linearGradient id="colorPatients" x1="0" y1="0" x2="0" y2="1">
@@ -191,6 +233,7 @@ export function Dashboard() {
                 <Area type="monotone" dataKey="patients" stroke="#6366f1" strokeWidth={3} fillOpacity={1} fill="url(#colorPatients)" />
               </AreaChart>
             </ResponsiveContainer>
+</ChartContainer>
           </div>
         </div>
 
@@ -210,8 +253,9 @@ export function Dashboard() {
               <option value="condition" className="dark:bg-slate-900">{t('byPatientStatus')}</option>
             </select>
           </div>
-          <div className="h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="w-full min-w-0 h-[300px]">
+            <ChartContainer>
+              <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
                   data={pieData}
@@ -233,6 +277,7 @@ export function Dashboard() {
                 <Legend verticalAlign="bottom" height={36} iconType="circle" />
               </PieChart>
             </ResponsiveContainer>
+</ChartContainer>
           </div>
         </div>
 
@@ -240,6 +285,13 @@ export function Dashboard() {
         <div className="md:col-span-2 lg:col-span-2">
           <VitalsTrendingWidget />
         </div>
+        
+        {/* Audit Dashboard Embedding - Admin Only */}
+        {role === 'admin' && (
+          <div className="md:col-span-2 lg:col-span-4">
+            <AuditDashboard embedded={true} />
+          </div>
+        )}
       </div>
     </div>
   );

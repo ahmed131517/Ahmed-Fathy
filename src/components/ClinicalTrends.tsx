@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { LineChart, Line, ResponsiveContainer, Tooltip, YAxis, XAxis } from 'recharts';
+import { ChartContainer } from '@/components/ui/ChartContainer';
 import { format, parseISO } from 'date-fns';
 import { TrendingUp, TrendingDown, Minus, Activity, Droplets, Thermometer, Heart } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -111,8 +112,9 @@ export function ClinicalTrends({ events }: ClinicalTrendsProps) {
           <span className="text-xs font-medium text-slate-400">{unit}</span>
         </div>
 
-        <div className="h-16 w-full -mx-2">
-          <ResponsiveContainer width="100%" height="100%">
+        <div className="w-full min-w-0 h-16 w-full -mx-2">
+          <ChartContainer>
+<ResponsiveContainer width="100%" height="100%">
             <LineChart data={data}>
               <Line 
                 type="monotone" 
@@ -137,6 +139,7 @@ export function ClinicalTrends({ events }: ClinicalTrendsProps) {
               <YAxis hide domain={['dataMin - 10', 'dataMax + 10']} />
             </LineChart>
           </ResponsiveContainer>
+</ChartContainer>
         </div>
       </div>
     );

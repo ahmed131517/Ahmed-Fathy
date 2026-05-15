@@ -58,16 +58,7 @@ export function PrescriptionBuilder({
 
       <div className="flex-1 p-6 flex flex-col overflow-y-auto bg-white dark:bg-slate-900">
         <div className="flex-1 mb-6">
-          {interactionAlerts.length > 0 && (
-            <div className="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 p-4 rounded-xl mb-6">
-              <h4 className="text-red-800 dark:text-red-400 font-semibold flex items-center gap-2 mb-2">
-                <AlertCircle className="w-5 h-5" /> Potential Drug Interactions
-              </h4>
-              <ul className="list-disc list-inside text-sm text-red-700 dark:text-red-300 space-y-1">
-                {interactionAlerts.map((alert, i) => <li key={i}>{alert}</li>)}
-              </ul>
-            </div>
-          )}
+
           {currentPrescription.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-xl text-slate-400 p-8 text-center bg-slate-50/50 dark:bg-slate-900/50">
               <ShoppingCart className="w-12 h-12 text-slate-300 dark:text-slate-700 mb-4" />

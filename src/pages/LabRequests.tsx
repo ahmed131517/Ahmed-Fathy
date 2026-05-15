@@ -11,8 +11,11 @@ import { cn } from "@/lib/utils";
 import { Textarea } from "@/components/ui/textarea";
 import { usePatient } from "@/lib/PatientContext";
 import { LAB_REFERENCE_DATA, ALL_TESTS, LAB_TEMPLATES, LabTest, LabTemplate } from "@/data/labReferenceData";
-import { generateContentWithRetry, parseJsonResponse } from "../utils/gemini";
+import { useAISettings } from '../lib/AISettingsContext';
+import { clinicalAIRequest } from '@/services/aiWorkflowService';
+import { parseJsonResponse } from "../utils/gemini";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { ChartContainer } from '@/components/ui/ChartContainer';
 import SignatureCanvas from 'react-signature-canvas';
 import { motion, AnimatePresence } from "motion/react";
 import { db } from "@/lib/db";
@@ -73,6 +76,7 @@ interface LabRequest {
 }
 
 export function LabRequests() {
+  const { settings: aiSettings } = useAISettings();
   const { selectedPatient } = usePatient();
   const [activeTab, setActiveTab] = useState('new');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -164,13 +168,14 @@ export function LabRequests() {
     setIsSuggesting(true);
     try {
       const prompt = `Based on this clinical information: "${clinicalInfo}", suggest 3-5 most relevant lab tests. Return only a JSON array of test names.`;
-      const response = await generateContentWithRetry({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-        config: { responseMimeType: "application/json" }
-      });
-      const suggestions = parseJsonResponse(response.text, []);
-      setAiSuggestions(suggestions);
+      
+      const responseText = await clinicalAIRequest(
+        [{ role: "user", content: prompt }],
+        aiSettings
+      );
+      
+      const suggestions = parseJsonResponse(responseText, []);
+      setAiSuggestions(Array.isArray(suggestions) ? suggestions : []);
     } catch (err) {
       console.error("AI Suggestions failed:", err);
     } finally {
@@ -361,11 +366,10 @@ export function LabRequests() {
         Keep it concise and clinical.
       `;
 
-      const response = await generateContentWithRetry({
-        model: "gemini-3-flash-preview",
-        contents: prompt
-      });
-      const text = response.text;
+      const text = await clinicalAIRequest(
+        [{ role: "user", content: prompt }],
+        aiSettings
+      );
       
       await db.lab_requests.update(request.localId!, { aiAnalysis: text });
     } catch (error) {
@@ -452,20 +456,6 @@ export function LabRequests() {
         <div>
           <h2 className="text-2xl font-bold text-slate-900">Lab Requests</h2>
           <p className="text-slate-500">Order and track laboratory tests</p>
-        </div>
-        <div className="flex gap-3">
-          <button 
-            onClick={() => setIsLoadTemplateModalOpen(true)}
-            className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors"
-          >
-            <FolderOpen className="w-4 h-4" /> Load Template
-          </button>
-          <button 
-            onClick={() => setIsTemplateModalOpen(true)}
-            className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors"
-          >
-            <Copy className="w-4 h-4" /> Save as Template
-          </button>
         </div>
       </div>
 
@@ -1059,7 +1049,8 @@ export function LabRequests() {
                         </div>
 
                         {showTrendId === req.id ? (
-                          <div className="h-64 w-full bg-slate-50 rounded-xl border border-slate-200 p-4 animate-in zoom-in-95 duration-300">
+                          <div className="w-full min-w-0 h-64 w-full bg-slate-50 rounded-xl border border-slate-200 p-4 animate-in zoom-in-95 duration-300">
+                            <ChartContainer>
                             <ResponsiveContainer width="100%" height="100%">
                               <LineChart data={trendData}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
@@ -1073,6 +1064,7 @@ export function LabRequests() {
                                 ))}
                               </LineChart>
                             </ResponsiveContainer>
+                          </ChartContainer>
                           </div>
                         ) : (
                           <div className="space-y-3">

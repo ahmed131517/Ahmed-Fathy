@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Book, Info, Loader2, AlertCircle, ChevronRight, BookOpen, Heart, Activity, Stethoscope, Microscope } from 'lucide-react';
 import { cn } from "@/lib/utils";
-import { generateContentWithRetry } from "@/utils/gemini";
-import { Type } from "@google/genai";
+import { parseJsonResponse } from "@/utils/gemini";
+import { useAISettings } from '@/lib/AISettingsContext';
+import { clinicalAIRequest } from '@/services/aiWorkflowService';
 import { SavedKnowledgeService } from '@/lib/SavedKnowledgeService';
 import { Bookmark, Check } from 'lucide-react';
 import { auth, googleProvider } from '@/lib/firebase';
@@ -68,6 +69,7 @@ const commonTerms = [
 ];
 
 export function Encyclopedia() {
+  const { settings: aiSettings } = useAISettings();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTerm, setSelectedTerm] = useState<string | null>(null);
   const [entry, setEntry] = useState<EncyclopediaEntry | null>(null);
@@ -155,36 +157,35 @@ export function Encyclopedia() {
     }
 
     try {
-      const response = await generateContentWithRetry({
-        model: "gemini-3-flash-preview",
-        contents: `Provide a comprehensive medical encyclopedia entry for: ${term}. Include a clear definition, common symptoms, primary causes, standard treatments, and prevention strategies.`,
-        config: {
-          systemInstruction: "You are a medical educator. Provide clear, accurate, and easy-to-understand medical information for a professional encyclopedia. Return the response as a JSON object.",
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              term: { type: Type.STRING },
-              definition: { type: Type.STRING },
-              symptoms: { type: Type.ARRAY, items: { type: Type.STRING } },
-              causes: { type: Type.ARRAY, items: { type: Type.STRING } },
-              treatments: { type: Type.ARRAY, items: { type: Type.STRING } },
-              prevention: { type: Type.ARRAY, items: { type: Type.STRING } }
-            },
-            required: ["term", "definition", "symptoms", "causes", "treatments", "prevention"]
-          }
-        }
-      });
+      const prompt = `Provide a comprehensive medical encyclopedia entry for: ${term}. Include a clear definition, common symptoms, primary causes, standard treatments, and prevention strategies.
+      
+      Return as a JSON object:
+      {
+        "term": "string",
+        "definition": "string",
+        "symptoms": ["string"],
+        "causes": ["string"],
+        "treatments": ["string"],
+        "prevention": ["string"]
+      }`;
 
-      if (response.text) {
-        const parsed = JSON.parse(response.text);
-        setEntry(parsed);
-        
-        // Save to Dexie cache
-        await db.knowledge_encyclopedia.add({
-          ...parsed,
-          lastUpdated: Date.now()
-        });
+      const responseText = await clinicalAIRequest(
+        [{ role: 'user', content: prompt }],
+        aiSettings,
+        "You are a medical educator. Provide clear, accurate, and easy-to-understand medical information for a professional encyclopedia. Return the response as a JSON object."
+      );
+
+      if (responseText) {
+        const parsed = parseJsonResponse(responseText, null as any);
+        if (parsed) {
+          setEntry(parsed);
+          
+          // Save to Dexie cache
+          await db.knowledge_encyclopedia.add({
+            ...parsed,
+            lastUpdated: Date.now()
+          });
+        }
       } else {
         throw new Error("No content received from AI");
       }

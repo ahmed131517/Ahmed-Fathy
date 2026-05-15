@@ -35,14 +35,19 @@ function CheckListItem({ className }: { className?: string }) {
     </svg>
   );
 }
-import { generateContentWithRetry, parseJsonResponse } from "../utils/gemini";
+import { useAISettings } from '../lib/AISettingsContext';
+import { clinicalAIRequest } from '@/services/aiWorkflowService';
+import { parseJsonResponse } from "../utils/gemini";
 import { db } from "../lib/db";
 import { useLiveQuery } from "dexie-react-hooks";
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link, useNavigate } from 'react-router-dom';
+import { ClinicalService, ClinicalInteraction, SuggestedTask } from "../services/clinical.service";
+import { ShieldCheck, ShieldAlert } from 'lucide-react';
 
 export function SOAPNotePage() {
+  const { settings: aiSettings } = useAISettings();
   const { selectedPatient } = usePatient();
   const navigate = useNavigate();
   const [content, setContent] = useState("");
@@ -64,13 +69,14 @@ export function SOAPNotePage() {
   const [isSaving, setIsSaving] = useState(false);
 
   // CDSS States
-  const [interactions, setInteractions] = useState<{ severity: 'Minor' | 'Moderate' | 'Major'; description: string }[]>([]);
+  const [interactions, setInteractions] = useState<ClinicalInteraction[]>([]);
   const [isCheckingInteractions, setIsCheckingInteractions] = useState(false);
 
   // Task Extraction States
-  const [suggestedTasks, setSuggestedTasks] = useState<{ title: string; type: any; priority: any }[]>([]);
+  const [suggestedTasks, setSuggestedTasks] = useState<SuggestedTask[]>([]);
   const [isExtractingTasks, setIsExtractingTasks] = useState(false);
   const [committedTasks, setCommittedTasks] = useState<string[]>([]);
+  const [isPlanVerified, setIsPlanVerified] = useState(false);
 
   // Initialize content from drafts or session storage
   useEffect(() => {
@@ -160,32 +166,10 @@ export function SOAPNotePage() {
 
     setIsCheckingInteractions(true);
     try {
-      const prompt = `Act as a clinical decision support system. Analyze the following patient medications and the proposed plan. 
-      Identify ANY potential drug-drug interactions between the patient's existing medications and the new treatments mentioned in the plan.
-      
-      Patient Existing Medications: ${JSON.stringify(selectedPatient.medications)}
-      Proposed Treatment Plan:
-      ${sections.plan}
-      
-      Return a JSON array of objects with the following structure:
-      [
-        {
-          "severity": "Minor" | "Moderate" | "Major",
-          "description": "Short explanation of the interaction..."
-        }
-      ]
-      If no interactions are found, return exactly []. 
-      Only include active interactions.`;
-
-      const response = await generateContentWithRetry({
-        model: "gemini-3-flash-preview",
-        contents: [{ parts: [{ text: prompt }] }],
-        config: { 
-          responseMimeType: "application/json"
-        }
-      });
-
-      const results = parseJsonResponse(response.text, []);
+      const results = await ClinicalService.checkMedicationInteractions(
+        sections.plan, 
+        selectedPatient.medications
+      );
       setInteractions(results);
     } catch (err) {
       console.error("DDI Check failed:", err);
@@ -202,29 +186,7 @@ export function SOAPNotePage() {
 
     setIsExtractingTasks(true);
     try {
-      const prompt = `Analyze the following clinical treatment plan and extract actionable tasks for the medical staff (nurses, receptionists, or the doctor). 
-      Identify things like laboratory orders, follow-up scheduling, referrals, or specific patient outreach.
-      
-      Plan:
-      ${sections.plan}
-      
-      Return a JSON array of objects with the following structure:
-      [
-        {
-          "title": "Short descriptive title (e.g., Order CBC/Diff)",
-          "type": "follow-up" | "lab-review" | "outreach" | "other",
-          "priority": "high" | "medium" | "low"
-        }
-      ]
-      If no actionable tasks are found, return exactly [].`;
-
-      const response = await generateContentWithRetry({
-        model: "gemini-3-flash-preview",
-        contents: [{ parts: [{ text: prompt }] }],
-        config: { responseMimeType: "application/json" }
-      });
-
-      const results = parseJsonResponse(response.text, []);
+      const results = await ClinicalService.extractTasksFromPlan(sections.plan);
       setSuggestedTasks(results);
     } catch (err) {
       console.error("Task extraction failed:", err);
@@ -233,23 +195,12 @@ export function SOAPNotePage() {
     }
   };
 
-  const commitTask = async (task: any) => {
+  const commitTask = async (task: SuggestedTask) => {
     if (!selectedPatient) return;
     
     try {
-      await db.tasks.add({
-        title: task.title,
-        status: 'pending',
-        type: task.type,
-        priority: task.priority,
-        patientId: selectedPatient.id,
-        patientName: selectedPatient.name,
-        dueDate: new Date().toISOString(),
-        createdAt: Date.now(),
-        lastModified: Date.now(),
-        isDeleted: 0,
-        isSynced: 0
-      });
+      const patientId = selectedPatient.id || "unknown";
+      await ClinicalService.commitTask(task, patientId, selectedPatient.name);
       setCommittedTasks(prev => [...prev, task.title]);
       toast.success(`Task assigned: ${task.title}`);
     } catch (err) {
@@ -300,12 +251,12 @@ export function SOAPNotePage() {
       
       Return ONLY the refined SOAP note text.`;
       
-      const response = await generateContentWithRetry({
-        model: "gemini-3-flash-preview",
-        contents: [{ parts: [{ text: prompt }] }]
-      });
+      const responseText = await clinicalAIRequest(
+        [{ role: "user", content: prompt }],
+        aiSettings
+      );
       
-      const refinedText = response.text || textToProcess;
+      const refinedText = responseText || textToProcess;
       setContent(refinedText);
       setSections(parseSOAP(refinedText));
       if (!initialText) toast.success("Note professionally formatted");
@@ -556,13 +507,42 @@ export function SOAPNotePage() {
                         />
                         
                         {section.id === 'plan' && (
-                          <div className="mt-4 flex flex-col gap-2">
+                          <div className="mt-4 flex flex-col gap-4">
                              {isCheckingInteractions && (
                                <div className="flex items-center gap-2 text-[10px] text-slate-400 font-bold animate-pulse px-2">
                                  <RefreshCw className="w-3 h-3 animate-spin" />
                                  Scanning for Drug Interactions...
                                </div>
                              )}
+                             
+                             {/* Safety Verification Checkbox */}
+                             <div className={cn(
+                               "px-4 py-3 rounded-xl border transition-all cursor-pointer flex items-center gap-3",
+                               isPlanVerified 
+                                ? "bg-emerald-50 border-emerald-100 text-emerald-700 shadow-sm" 
+                                : "bg-slate-50 border-slate-100 text-slate-500 hover:bg-slate-100"
+                             )} onClick={() => setIsPlanVerified(!isPlanVerified)}>
+                               <div className={cn(
+                                 "w-5 h-5 rounded-md flex items-center justify-center border-2 transition-all",
+                                 isPlanVerified ? "bg-emerald-600 border-emerald-600" : "border-slate-300"
+                               )}>
+                                 {isPlanVerified && <ShieldCheck className="w-4 h-4 text-white" />}
+                               </div>
+                               <div>
+                                 <p className="text-xs font-bold leading-none">Clinical Verification Required</p>
+                                 <p className="text-[10px] mt-1 opacity-70">I have clinically verified this treatment plan and drug safety.</p>
+                               </div>
+                             </div>
+
+                             {!isPlanVerified && sections.plan.trim() && (
+                               <div className="bg-amber-50 border border-amber-100 p-3 rounded-xl flex items-start gap-2 text-amber-800">
+                                 <ShieldAlert className="w-4 h-4 mt-0.5" />
+                                 <p className="text-[10px] font-medium leading-relaxed">
+                                   <span className="font-bold">Medical Safety Notice:</span> You must verify the plan and drug interactions before finalizing this encounter.
+                                 </p>
+                               </div>
+                             )}
+
                              <AnimatePresence>
                                {interactions.map((alert, idx) => (
                                  <motion.div

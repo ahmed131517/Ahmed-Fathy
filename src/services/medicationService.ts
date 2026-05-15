@@ -189,13 +189,34 @@ export const medicationService = {
     ]);
   },
 
-  async searchDrugs(query: string): Promise<Drug[]> {
+  async searchDrugs(query: string, searchType: 'generic' | 'trade' | 'all' = 'all'): Promise<Drug[]> {
     await this.seedDrugsIfEmpty();
     const lowerQuery = query.toLowerCase();
-    const results = await db.drugs
-      .filter(d => d.generic_name.toLowerCase().includes(lowerQuery))
-      .limit(20)
-      .toArray();
+    
+    let genericMatches: any[] = [];
+    let brandDrugMatches: any[] = [];
+    
+    if (searchType === 'generic' || searchType === 'all') {
+      genericMatches = await db.drugs
+        .filter(d => d.generic_name.toLowerCase().includes(lowerQuery))
+        .toArray();
+    }
+    
+    if (searchType === 'trade' || searchType === 'all') {
+      const brandMatches = await db.drug_brands
+        .filter(b => b.brand_name.toLowerCase().includes(lowerQuery))
+        .toArray();
+        
+      const brandDrugIds = [...new Set(brandMatches.map(b => b.drug_id))];
+      const genericMatchIds = new Set(genericMatches.map(d => d.id));
+      const uniqueBrandDrugIds = brandDrugIds.filter(id => !genericMatchIds.has(id));
+      
+      if (uniqueBrandDrugIds.length > 0) {
+        brandDrugMatches = await db.drugs.where('id').anyOf(uniqueBrandDrugIds).toArray();
+      }
+    }
+    
+    const results = [...genericMatches, ...brandDrugMatches].slice(0, 20);
     return results as Drug[];
   },
 

@@ -5,8 +5,8 @@ import { FileDown, Share2, Smartphone, Mail, X, CheckCircle2, AlertTriangle, Clo
 import Markdown from 'react-markdown';
 import { jsPDF } from 'jspdf';
 import { toast } from 'sonner';
-import { generateContentWithRetry } from "@/utils/gemini";
-import { getTranslationPrompt } from "@/services/aiConfig";
+import { useAISettings } from '@/lib/AISettingsContext';
+import { clinicalAIRequest } from '@/services/aiWorkflowService';
 import { cn } from "@/lib/utils";
 
 interface PatientSummaryModalProps {
@@ -26,6 +26,7 @@ export function PatientSummaryModal({
   planText,
   diagnosis 
 }: PatientSummaryModalProps) {
+  const { settings: aiSettings } = useAISettings();
   const contentRef = useRef<HTMLDivElement>(null);
   const [targetLanguage, setTargetLanguage] = useState('English');
   const [isTranslating, setIsTranslating] = useState(false);
@@ -83,13 +84,12 @@ export function PatientSummaryModal({
       Plan: ${planText || "N/A"}
       `;
 
-      const response = await generateContentWithRetry({
-        model: "gemini-3-flash-preview",
-        contents: [{ parts: [{ text: prompt }] }],
-        config: { responseMimeType: "application/json" }
-      });
+      const responseText = await clinicalAIRequest(
+        [{ role: "user", content: prompt }],
+        aiSettings
+      );
 
-      const result = JSON.parse(response.text);
+      const result = JSON.parse(responseText);
       setTranslations(result);
       toast.success(`Translated to ${lang}`);
     } catch (err) {

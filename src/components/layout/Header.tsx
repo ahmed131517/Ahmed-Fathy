@@ -1,10 +1,11 @@
 import { Search, Bell, Mic, Menu, User, Calendar, FileText, ChevronDown, Settings, LogOut, Book, Pill, ClipboardList } from "lucide-react";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { useNavigate } from "react-router-dom";
 import { useUser } from "../../lib/UserContext";
 import { useNotifications } from "../../lib/NotificationContext";
 import { useSettings } from "../../lib/SettingsContext";
+import { usePatient } from "../../lib/PatientContext";
 import { useTranslation } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
 import { toast } from "sonner";
@@ -46,6 +47,7 @@ export function Header() {
   const navigate = useNavigate();
   const { profile } = useUser();
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
+  const { patients, setSelectedPatient } = usePatient();
   const { language, updateSettings } = useSettings();
   const { t, isRTL } = useTranslation();
 
@@ -100,10 +102,26 @@ export function Header() {
   };
 
   // Filter patients and clinical data based on search query
-  const patientResults = mockPatients.filter(patient => 
-    patient.name?.toLowerCase().includes(searchQuery?.toLowerCase() || '') || 
-    patient.id?.toLowerCase().includes(searchQuery?.toLowerCase() || '')
-  );
+  const patientResults = useMemo(() => {
+    const query = searchQuery.toLowerCase();
+    const dbPatients = patients.filter(p => 
+      p.name.toLowerCase().includes(query) || 
+      p.id.toLowerCase().includes(query)
+    ).map(p => ({
+      id: p.id,
+      name: p.name,
+      dob: p.dob || 'Unknown',
+      lastVisit: p.lastVisit || 'Never',
+      raw: p
+    }));
+
+    const staticResults = mockPatients.filter(p => 
+      p.name.toLowerCase().includes(query) || 
+      p.id.toLowerCase().includes(query)
+    ).filter(p => !dbPatients.some(dbP => dbP.id === p.id));
+
+    return [...dbPatients, ...staticResults];
+  }, [searchQuery, patients]);
 
   const clinicalResults = allClinicalData.filter(item => 
     item.title?.toLowerCase().includes(searchQuery?.toLowerCase() || '')
@@ -194,7 +212,12 @@ export function Header() {
                         onClick={() => {
                           setSearchQuery(patient.name);
                           setIsSearchOpen(false);
-                          // In a real app, this would navigate to the patient's record
+                          if ((patient as any).raw) {
+                            setSelectedPatient((patient as any).raw);
+                            toast.success(`Selected Patient: ${patient.name}`);
+                          } else {
+                            toast.info(`Selected mock patient: ${patient.name}`);
+                          }
                         }}
                       >
                         <div className="h-10 w-10 rounded-full bg-indigo-100 dark:bg-indigo-500/20 flex items-center justify-center flex-shrink-0">

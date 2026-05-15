@@ -3,6 +3,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { usePatient } from "@/lib/PatientContext";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, ComposedChart, Legend } from 'recharts';
+import { ChartContainer } from '@/components/ui/ChartContainer';
 import { Baby, TrendingUp, Ruler, Scale, Info, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -126,8 +127,9 @@ export function PediatricGrowthChart() {
             <Scale className="w-4 h-4 text-slate-400" />
             <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300">Weight-for-age</h4>
           </div>
-          <div className="h-[250px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="w-full min-w-0">
+            <ChartContainer>
+              <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={weightChartData}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                 <XAxis dataKey="month" label={{ value: 'Months', position: 'insideBottom', offset: -5, fontSize: 10 }} axisLine={false} tickLine={false} tick={{fontSize: 10}} />
@@ -140,6 +142,7 @@ export function PediatricGrowthChart() {
                 <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', paddingTop: '10px' }} />
               </ComposedChart>
             </ResponsiveContainer>
+            </ChartContainer>
           </div>
         </div>
 
@@ -149,8 +152,9 @@ export function PediatricGrowthChart() {
             <Ruler className="w-4 h-4 text-slate-400" />
             <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300">Height-for-age</h4>
           </div>
-          <div className="h-[250px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="w-full min-w-0">
+            <ChartContainer>
+              <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={heightChartData}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                 <XAxis dataKey="month" label={{ value: 'Months', position: 'insideBottom', offset: -5, fontSize: 10 }} axisLine={false} tickLine={false} tick={{fontSize: 10}} />
@@ -163,6 +167,7 @@ export function PediatricGrowthChart() {
                 <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', paddingTop: '10px' }} />
               </ComposedChart>
             </ResponsiveContainer>
+            </ChartContainer>
           </div>
         </div>
       </div>

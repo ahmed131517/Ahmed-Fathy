@@ -3,8 +3,9 @@ import { Search, Database, Pill, Info, ExternalLink, Loader2, AlertCircle, X, Al
 import { RxNavService } from '@/services/RxNavService';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
-import { generateContentWithRetry } from '@/utils/gemini';
-import { Type } from '@google/genai';
+import { parseJsonResponse } from '@/utils/gemini';
+import { useAISettings } from '@/lib/AISettingsContext';
+import { clinicalAIRequest } from '@/services/aiWorkflowService';
 import { auth, googleProvider } from '@/lib/firebase';
 import { signInWithPopup, onAuthStateChanged } from 'firebase/auth';
 import { SavedKnowledgeService } from '@/lib/SavedKnowledgeService';
@@ -22,6 +23,7 @@ interface DrugDetail {
 }
 
 export function DrugDatabase() {
+  const { settings: aiSettings } = useAISettings();
   const [searchTerm, setSearchTerm] = useState('');
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [selectedDrug, setSelectedDrug] = useState<string | null>(null);
@@ -127,54 +129,43 @@ export function DrugDatabase() {
         }
       }
 
-      // Fetch clinical summary from Gemini
-      const aiResponse = await generateContentWithRetry({
-        model: "gemini-3-flash-preview",
-        contents: `Provide a clinical summary for the drug: ${name}. Include common side effects, major contraindications, and significant drug-drug interactions.`,
-        config: {
-          systemInstruction: "You are a clinical pharmacist. Provide accurate, concise medical information about drugs. Return the response as a JSON object.",
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              sideEffects: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-                description: "List of common side effects."
-              },
-              contraindications: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-                description: "List of major contraindications."
-              },
-              interactions: {
-                type: Type.STRING,
-                description: "Summary of significant drug-drug interactions."
-              }
-            },
-            required: ["sideEffects", "contraindications", "interactions"]
-          }
-        }
-      });
+      // Fetch clinical summary from AI
+      const prompt = `Provide a clinical summary for the drug: ${name}. Include common side effects, major contraindications, and significant drug-drug interactions.
+      
+      Return as a JSON object:
+      {
+        "sideEffects": ["string"],
+        "contraindications": ["string"],
+        "interactions": "string"
+      }`;
 
-      if (aiResponse.text) {
-        drugDetails.summary = JSON.parse(aiResponse.text);
-        
-        // Save to Dexie cache
-        const existing = await db.drugs.where('generic_name').equalsIgnoreCase(name).first();
-        if (existing) {
-          await db.drugs.update(existing.id!, {
-            // @ts-ignore
-            summary: drugDetails.summary
-          });
-        } else {
-          await db.drugs.add({
-            generic_name: name,
-            drug_class: drugDetails.classes[0]?.className || 'Unknown',
-            atc_code: '',
-            // @ts-ignore
-            summary: drugDetails.summary
-          });
+      const responseText = await clinicalAIRequest(
+        [{ role: 'user', content: prompt }],
+        aiSettings,
+        "You are a clinical pharmacist. Provide accurate, concise medical information about drugs. Return the response as a JSON object."
+      );
+
+      if (responseText) {
+        const parsed = parseJsonResponse(responseText, null as any);
+        if (parsed) {
+          drugDetails.summary = parsed;
+          
+          // Save to Dexie cache
+          const existing = await db.drugs.where('generic_name').equalsIgnoreCase(name).first();
+          if (existing) {
+            await db.drugs.update(existing.id!, {
+              // @ts-ignore
+              summary: drugDetails.summary
+            });
+          } else {
+            await db.drugs.add({
+              generic_name: name,
+              drug_class: drugDetails.classes[0]?.className || 'Unknown',
+              atc_code: '',
+              // @ts-ignore
+              summary: drugDetails.summary
+            });
+          }
         }
       }
 

@@ -38,6 +38,7 @@ interface SettingsState {
   };
   
   // Appearance
+  designAesthetic: string;
   fontSize: 'small' | 'medium' | 'large';
   fontFamily: string;
   fontColor: string;
@@ -130,6 +131,7 @@ const defaultSettings: SettingsState = {
     consultation: "Consultation note format...",
   },
   
+  designAesthetic: 'default',
   fontSize: 'medium',
   fontFamily: 'inter',
   fontColor: 'slate',
@@ -199,6 +201,14 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     
     const root = document.documentElement;
     
+    // Set Design Aesthetic data attribute
+    root.setAttribute('data-aesthetic', settings.designAesthetic || 'default');
+    
+    if (settings.designAesthetic === 'sophisticated-dark') {
+      root.classList.add('dark');
+    }
+    // Clean minimalist often pairs better without dark mode, but we leave classList alone and let ThemeContext handle standard light/dark unless overridden.
+
     // Font size
     const sizeMap = {
       small: '14px',

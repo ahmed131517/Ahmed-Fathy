@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase, supabaseEnabled } from './supabase';
 import { db, type Notification } from './db';
 
 const SYNC_INTERVAL = 30000; // 30 seconds
@@ -19,6 +19,7 @@ async function addNotification(title: string, message: string, type: 'info' | 's
 }
 
 export async function pushLocalEvents() {
+  if (!supabaseEnabled) return;
   if (!db.isOpen()) {
     await db.open();
   }
@@ -63,6 +64,7 @@ export async function pushLocalChanges() {
 }
 
 export async function pullRemoteChanges() {
+  if (!supabaseEnabled) return;
   if (!db.isOpen()) {
     await db.open();
   }
@@ -79,6 +81,7 @@ export async function pullRemoteChanges() {
   const lastDiagnosisPull = lastLocalDiagnosis?.lastModified || 0;
   const lastLabResultPull = lastLocalLabResult?.lastModified || 0;
   const lastVitalsPull = lastLocalVitals?.lastModified || 0;
+  const lastTaskPull = (await db.tasks.orderBy('lastModified').last())?.lastModified || 0;
 
   const { data: remotePatients, error: patientError } = await supabase
     .from('patients')
@@ -269,6 +272,34 @@ export async function pullRemoteChanges() {
       }
     }
   }
+
+  const { data: remoteTasks, error: taskError } = await supabase
+    .from('tasks')
+    .select('*')
+    .gt('last_modified', lastTaskPull);
+
+  if (!taskError && remoteTasks) {
+    for (const remote of remoteTasks) {
+      const local = await db.tasks.where('id').equals(remote.id).first();
+      if (!local || remote.last_modified > local.lastModified) {
+        await db.tasks.put({
+          id: remote.id,
+          patientId: remote.patient_id,
+          patientName: remote.patient_name,
+          title: remote.title,
+          description: remote.description,
+          priority: remote.priority,
+          type: remote.type,
+          dueDate: remote.due_date,
+          status: remote.status,
+          createdAt: remote.created_at ? new Date(remote.created_at).getTime() : Date.now(),
+          lastModified: remote.last_modified,
+          isDeleted: remote.is_deleted ? 1 : 0,
+          isSynced: 1
+        });
+      }
+    }
+  }
 }
 
 export async function syncAll() {
@@ -281,6 +312,7 @@ export async function syncAll() {
 }
 
 export function startRealtimeSync() {
+  if (!supabaseEnabled) return () => {};
   const channel = supabase
     .channel('schema-db-changes')
     .on(

@@ -44,7 +44,14 @@ export async function encryptData(plaintext: string, base64Key: string): Promise
   const combined = new Uint8Array(iv.length + ciphertext.byteLength);
   combined.set(iv, 0);
   combined.set(new Uint8Array(ciphertext), iv.length);
-  return btoa(String.fromCharCode(...combined));
+
+  // Convert Uint8Array to base64 in chunks to prevent 'Maximum call stack size exceeded'
+  const CHUNK_SIZE = 0x8000;
+  let binary = "";
+  for (let i = 0; i < combined.length; i += CHUNK_SIZE) {
+    binary += String.fromCharCode.apply(null, Array.from(combined.slice(i, i + CHUNK_SIZE)));
+  }
+  return btoa(binary);
 }
 
 // Decrypt a base64 payload payload with the AES-GCM master key

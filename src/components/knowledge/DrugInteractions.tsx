@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { Plus, X, Search, AlertTriangle, CheckCircle, Loader2, Database, BrainCircuit, ShieldCheck } from 'lucide-react';
 import { cn } from "@/lib/utils";
-import { generateContentWithRetry } from "@/utils/gemini";
-import { Type } from "@google/genai";
+import { parseJsonResponse } from "@/utils/gemini";
+import { useAISettings } from '@/lib/AISettingsContext';
+import { clinicalAIRequest } from '@/services/aiWorkflowService';
 import { medicationService } from "@/services/medicationService";
 import { db } from "@/lib/db";
 import { ddiService, InteractionResult as VerifiedInteraction } from "@/services/ddiService";
@@ -23,6 +24,7 @@ interface DbInteraction {
 }
 
 export function DrugInteractions() {
+  const { settings: aiSettings } = useAISettings();
   const [medications, setMedications] = useState<string[]>([]);
   const [input, setInput] = useState('');
   const [results, setResults] = useState<InteractionResult[] | null>(null);
@@ -110,48 +112,27 @@ export function DrugInteractions() {
       }
     })();
 
-    // 2. Gemini AI Check
-    const geminiPromise = (async () => {
+    // 2. AI Check
+    const aiPromise = (async () => {
       try {
-        const response = await generateContentWithRetry({
-          model: "gemini-3-flash-preview",
-          contents: `Check for potential drug interactions between the following medications: ${medications.join(', ')}.`,
-          config: {
-            systemInstruction: "You are a clinical pharmacist. Analyze the provided list of medications for potential drug-drug interactions. Provide a detailed analysis including severity levels (severe, moderate, mild, or none), descriptions of the interactions, and clinical recommendations. Return the response as a JSON array of interaction objects.",
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  meds: {
-                    type: Type.ARRAY,
-                    items: { type: Type.STRING },
-                    description: "The pair of medications involved in the interaction."
-                  },
-                  severity: {
-                    type: Type.STRING,
-                    enum: ["severe", "moderate", "mild", "none"],
-                    description: "The clinical severity of the interaction."
-                  },
-                  description: {
-                    type: Type.STRING,
-                    description: "A detailed description of the interaction mechanism and effects."
-                  },
-                  recommendation: {
-                    type: Type.STRING,
-                    description: "Clinical recommendation for managing the interaction."
-                  }
-                },
-                required: ["meds", "severity", "description", "recommendation"]
-              }
-            }
-          }
-        });
+        const prompt = `Check for potential drug interactions between the following medications: ${medications.join(', ')}.
+        
+        Return as a JSON array of interaction objects:
+        [{
+          "meds": ["string"],
+          "severity": "severe" | "moderate" | "mild" | "none",
+          "description": "string",
+          "recommendation": "string"
+        }]`;
 
-        const text = response.text;
-        if (text) {
-          const parsedResults = JSON.parse(text);
+        const responseText = await clinicalAIRequest(
+          [{ role: 'user', content: prompt }],
+          aiSettings,
+          "You are a clinical pharmacist. Analyze the provided list of medications for potential drug-drug interactions. Provide a detailed analysis including severity levels (severe, moderate, mild, or none), descriptions of the interactions, and clinical recommendations. Return the response as a JSON array of interaction objects."
+        );
+
+        if (responseText) {
+          const parsedResults = parseJsonResponse<InteractionResult[]>(responseText, []);
           setResults(parsedResults);
         } else {
           throw new Error("No response from AI");
@@ -164,7 +145,7 @@ export function DrugInteractions() {
       }
     })();
 
-    await Promise.all([dbPromise, geminiPromise]);
+    await Promise.all([dbPromise, aiPromise]);
   };
 
   return (

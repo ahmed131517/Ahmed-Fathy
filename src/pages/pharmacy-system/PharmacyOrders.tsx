@@ -135,6 +135,23 @@ export function PharmacyOrders() {
             lastModified: timestamp
           });
 
+          // If moving to Ready, notify clinician
+          if (overContainer === "Ready" && prescription.doctorId) {
+            await db.notifications.add({
+              id: crypto.randomUUID(),
+              title: 'Prescription Ready',
+              message: `Prescription for ${activeOrder.patient} is ready for pickup.`,
+              type: 'success',
+              category: 'prescription',
+              isRead: 0,
+              link: '/clinical-overview',
+              createdAt: timestamp,
+              lastModified: timestamp,
+              isDeleted: 0,
+              isSynced: 0
+            });
+          }
+
           // If moving to Completed, deduct from inventory
           if (overContainer === "Completed") {
             const items = dbItems.filter(i => i.prescriptionId === prescription.id);

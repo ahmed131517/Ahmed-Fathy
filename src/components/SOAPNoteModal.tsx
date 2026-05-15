@@ -18,8 +18,8 @@ import { useUser } from '@/lib/UserContext';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
-
-import { generateContentWithRetry } from '@/utils/gemini';
+import { useAISettings } from '@/lib/AISettingsContext';
+import { clinicalAIRequest } from '@/services/aiWorkflowService';
 
 interface SOAPNoteModalProps {
   isOpen: boolean;
@@ -31,6 +31,7 @@ interface SOAPNoteModalProps {
 
 export function SOAPNoteModal({ isOpen, onClose, initialContent, onSave, patientName }: SOAPNoteModalProps) {
   const { profile: currentUser } = useUser();
+  const { settings: aiSettings } = useAISettings();
   const [content, setContent] = useState(initialContent);
   const [isSavingTemplate, setIsSavingTemplate] = useState(false);
   const [templateName, setTemplateName] = useState("");
@@ -112,12 +113,12 @@ export function SOAPNoteModal({ isOpen, onClose, initialContent, onSave, patient
       
       Return ONLY the refined SOAP note text.`;
       
-      const response = await generateContentWithRetry({
-        model: "gemini-3-flash-preview",
-        contents: [{ parts: [{ text: prompt }] }]
-      });
+      const responseText = await clinicalAIRequest(
+        [{ role: 'user', content: prompt }],
+        aiSettings
+      );
       
-      const refinedText = response.text || content;
+      const refinedText = responseText || content;
       setContent(refinedText);
       setSections(parseSOAP(refinedText));
       toast.success("Note professionally formatted");

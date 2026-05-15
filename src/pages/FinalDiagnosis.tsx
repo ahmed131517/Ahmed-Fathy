@@ -22,7 +22,9 @@ import { motion } from "motion/react";
 import { toast } from "sonner";
 import { useLiveQuery } from "dexie-react-hooks";
 import { getDifferentialDiagnosisPrompt, getSoapNotePrompt, getPatientEducationPrompt } from "@/services/aiConfig";
-import { generateContentWithRetry, parseJsonResponse } from "../utils/gemini";
+import { useAISettings } from "../lib/AISettingsContext";
+import { clinicalAIRequest } from "@/services/aiWorkflowService";
+import { parseJsonResponse } from "../utils/gemini";
 import { SOAPNoteModal } from "@/components/SOAPNoteModal";
 import { PatientSummaryModal } from "@/components/PatientSummaryModal";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
@@ -73,6 +75,7 @@ export function FinalDiagnosis() {
   const navigate = useNavigate();
   const { selectedPatient, setConfirmedDiagnosis } = usePatient();
   const { symptoms } = useSymptom();
+  const { settings: aiSettings } = useAISettings();
   
   const patientData = useMemo(() => {
     if (selectedPatient) {
@@ -133,7 +136,7 @@ export function FinalDiagnosis() {
   );
 
   const liveExam = useLiveQuery(
-    () => selectedPatient ? db.physical_exams.where('patientId').equals(selectedPatient.id).and(exam => exam.status === 'finalized').reverse().first() : null,
+    () => selectedPatient ? db.physical_exams.where('patientId').equals(selectedPatient.id).reverse().first() : null,
     [selectedPatient?.id]
   );
 
@@ -173,44 +176,165 @@ export function FinalDiagnosis() {
     const findings: string[] = [];
     if (!data) return findings;
 
-    const addSection = (title: string, sectionData: any) => {
-      if (!sectionData) return;
-      
-      const sectionFindings: string[] = [];
-      
-      // Handle checkbox states
-      const stateKey = `${title.toLowerCase()}State`;
-      if (sectionData[stateKey]) {
-        Object.entries(sectionData[stateKey]).forEach(([key, val]: [string, any]) => {
-          if (val === true) sectionFindings.push(key.replace(/-/g, ' '));
-          else if (typeof val === 'object' && val.value) sectionFindings.push(`${key.replace(/-/g, ' ')}: ${val.value}`);
-        });
+    const parseValue = (val: any): string => {
+      if (val === null || val === undefined || val === '') return '';
+      if (Array.isArray(val)) return val.join(', ');
+      if (typeof val === 'object') {
+        return Object.entries(val)
+          .filter(([_, v]) => v === true || (typeof v === 'object' && (v as any).value))
+          .map(([k, v]) => (typeof v === 'object' ? `${k}: ${(v as any).value}` : k))
+          .join(', ');
       }
-
-      // Handle specific fields
-      if (sectionData.breathSounds) sectionFindings.push(`Breath Sounds: ${sectionData.breathSounds}`);
-      if (sectionData.heartSounds) sectionFindings.push(`Heart Sounds: ${sectionData.heartSounds}`);
-      if (sectionData.bowelSounds) sectionFindings.push(`Bowel Sounds: ${sectionData.bowelSounds}`);
-      
-      // Handle notes
-      if (sectionData.notes) sectionFindings.push(`Notes: ${sectionData.notes}`);
-
-      if (sectionFindings.length > 0) {
-        findings.push(`${title}: ${sectionFindings.join('; ')}`);
-      }
+      return String(val);
     };
 
-    addSection('General', data.generalFindings);
-    addSection('HEENT', data.heentFindings);
-    addSection('SSE', data.sseFindings);
-    addSection('Respiratory', data.respiratoryFindings);
-    addSection('Cardiovascular', data.cardiovascularFindings);
-    addSection('Gastrointestinal', data.gastrointestinalFindings);
-    addSection('Musculoskeletal', data.musculoskeletalFindings);
-    addSection('Neurological', data.neurologicalFindings);
-    addSection('Skin', data.skinFindings);
-    addSection('Psychiatric', data.psychiatricFindings);
-    addSection('Geriatric', data.geriatricFindings);
+    // General
+    if (data.generalFindings) {
+      const gf = data.generalFindings;
+      const general = [];
+      if (gf.appearance) general.push(`Appearance: ${gf.appearance}`);
+      if (gf.mentalStatus) general.push(`Mental Status: ${gf.mentalStatus}`);
+      if (gf.detailed) {
+        Object.entries(gf.detailed).forEach(([key, val]) => {
+          const parsed = parseValue(val);
+          if (parsed) general.push(`${key}: ${parsed}`);
+        });
+      }
+      if (gf.notes) general.push(`Notes: ${gf.notes}`);
+      if (general.length > 0) findings.push(`General: ${general.join('; ')}`);
+    }
+
+    // HEENT
+    if (data.heentFindings) {
+      const hf = data.heentFindings;
+      const heent = [];
+      if (hf.heentState) {
+        const state = parseValue(hf.heentState);
+        if (state) heent.push(state);
+      }
+      if (hf.pupilSize) heent.push(`Pupil Size: ${hf.pupilSize}mm`);
+      if (hf.notes) heent.push(`Notes: ${hf.notes}`);
+      if (heent.length > 0) findings.push(`HEENT: ${heent.join('; ')}`);
+    }
+
+    // SSE
+    if (data.sseFindings) {
+      const sse = data.sseFindings;
+      const findingsList = [];
+      if (sse.visualAcuityR) findingsList.push(`VA Right: ${sse.visualAcuityR}`);
+      if (sse.visualAcuityL) findingsList.push(`VA Left: ${sse.visualAcuityL}`);
+      if (sse.fundoscopy?.length) findingsList.push(`Fundoscopy: ${sse.fundoscopy.join(', ')}`);
+      if (sse.otoscopy?.length) findingsList.push(`Otoscopy: ${sse.otoscopy.join(', ')}`);
+      if (sse.weber) findingsList.push(`Weber: ${sse.weber}`);
+      if (sse.rinneR) findingsList.push(`Rinne Right: ${sse.rinneR}`);
+      if (sse.rinneL) findingsList.push(`Rinne Left: ${sse.rinneL}`);
+      if (sse.notes) findingsList.push(`Notes: ${sse.notes}`);
+      if (findingsList.length > 0) findings.push(`SSE: ${findingsList.join('; ')}`);
+    }
+
+    // Respiratory
+    if (data.respiratoryFindings) {
+      const rf = data.respiratoryFindings;
+      const resp = [];
+      if (rf.lungs?.length) resp.push(`Lungs: ${rf.lungs.join(', ')}`);
+      if (rf.regionalFindings) {
+        Object.entries(rf.regionalFindings).forEach(([region, vals]: [string, any]) => {
+          const regionFindings = [];
+          if (vals.inspection?.length) regionFindings.push(`Inspection: ${vals.inspection.join(', ')}`);
+          if (vals.palpationPercussion?.length) regionFindings.push(`Palpation/Percussion: ${vals.palpationPercussion.join(', ')}`);
+          if (vals.auscultation?.length) regionFindings.push(`Auscultation: ${vals.auscultation.join(', ')}`);
+          if (vals.description) regionFindings.push(`Desc: ${vals.description}`);
+          if (regionFindings.length > 0) resp.push(`${region}: ${regionFindings.join(' | ')}`);
+        });
+      }
+      if (rf.notes) resp.push(`Notes: ${rf.notes}`);
+      if (resp.length > 0) findings.push(`Respiratory: ${resp.join('; ')}`);
+    }
+
+    // Cardiovascular
+    if (data.cardiovascularFindings) {
+      const cf = data.cardiovascularFindings;
+      const cv = [];
+      if (cf.heart?.length) cv.push(`Heart: ${cf.heart.join(', ')}`);
+      if (cf.pulses) cv.push(`Pulses: ${cf.pulses}`);
+      if (cf.notes) cv.push(`Notes: ${cf.notes}`);
+      if (cv.length > 0) findings.push(`Cardiovascular: ${cv.join('; ')}`);
+    }
+
+    // Gastrointestinal
+    if (data.gastrointestinalFindings) {
+      const gif = data.gastrointestinalFindings;
+      const gi = [];
+      if (gif.abdomen?.length) gi.push(`Abdomen: ${gif.abdomen.join(', ')}`);
+      if (gif.notes) gi.push(`Notes: ${gif.notes}`);
+      if (gi.length > 0) findings.push(`Gastrointestinal: ${gi.join('; ')}`);
+    }
+
+    // Musculoskeletal
+    if (data.musculoskeletalFindings) {
+      const mf = data.musculoskeletalFindings;
+      const msk = [];
+      if (mf.galsScreen) msk.push(`GALS: ${mf.galsScreen}`);
+      if (mf.gaitPosture?.length) msk.push(`Gait/Posture: ${mf.gaitPosture.join(', ')}`);
+      if (mf.mrcUpper) msk.push(`Upper Power: ${mf.mrcUpper}/5`);
+      if (mf.mrcLower) msk.push(`Lower Power: ${mf.mrcLower}/5`);
+      if (mf.nvStatus?.length) msk.push(`Neurovascular: ${mf.nvStatus.join(', ')}`);
+      if (mf.jointExams?.length) {
+        const joints = mf.jointExams.map((j: any) => `${j.joint} (${j.rom}, ${j.stability})`).join(', ');
+        msk.push(`Joints: ${joints}`);
+      }
+      if (mf.notes) msk.push(`Notes: ${mf.notes}`);
+      if (msk.length > 0) findings.push(`Musculoskeletal: ${msk.join('; ')}`);
+    }
+
+    // Neurological
+    if (data.neurologicalFindings) {
+      const nf = data.neurologicalFindings;
+      const neuro = [];
+      if (nf.mental?.length) neuro.push(`Mental: ${nf.mental.join(', ')}`);
+      if (nf.motorBulk) neuro.push(`Bulk: ${nf.motorBulk}`);
+      if (nf.motorTone) neuro.push(`Tone: ${nf.motorTone}`);
+      if (nf.plantarResponse) neuro.push(`Plantar: ${nf.plantarResponse}`);
+      if (nf.clonus) neuro.push(`Clonus: ${nf.clonus}`);
+      if (nf.notes) neuro.push(`Notes: ${nf.notes}`);
+      if (neuro.length > 0) findings.push(`Neurological: ${neuro.join('; ')}`);
+    }
+
+    // Skin
+    if (data.skinFindings) {
+      const sf = data.skinFindings;
+      const skin = [];
+      if (sf.color) skin.push(`Color: ${sf.color}`);
+      if (sf.temp) skin.push(`Temp: ${sf.temp}`);
+      if (sf.lesions?.length) skin.push(`Lesions: ${sf.lesions.length} noted`);
+      if (sf.notes) skin.push(`Notes: ${sf.notes}`);
+      if (skin.length > 0) findings.push(`Skin: ${skin.join('; ')}`);
+    }
+
+    // Psychiatric
+    if (data.psychiatricFindings) {
+      const pf = data.psychiatricFindings;
+      const psych = [];
+      if (pf.mood) psych.push(`Mood: ${pf.mood}`);
+      if (pf.affect) psych.push(`Affect: ${pf.affect}`);
+      if (pf.thoughtProcess) psych.push(`Thought Process: ${pf.thoughtProcess}`);
+      if (pf.insight) psych.push(`Insight: ${pf.insight}`);
+      if (pf.judgment) psych.push(`Judgment: ${pf.judgment}`);
+      if (pf.notes) psych.push(`Notes: ${pf.notes}`);
+      if (psych.length > 0) findings.push(`Psychiatric: ${psych.join('; ')}`);
+    }
+
+    // Geriatric
+    if (data.geriatricFindings) {
+      const gef = data.geriatricFindings;
+      const geri = [];
+      if (gef.moca) geri.push(`MoCA: ${gef.moca}`);
+      if (gef.mmse) geri.push(`MMSE: ${gef.mmse}`);
+      if (gef.frailty) geri.push(`Frailty: ${gef.frailty}`);
+      if (gef.gait) geri.push(`Gait: ${gef.gait}`);
+      if (gef.notes) geri.push(`Notes: ${gef.notes}`);
+      if (geri.length > 0) findings.push(`Geriatric: ${geri.join('; ')}`);
+    }
 
     return findings;
   }, []);
@@ -218,6 +342,46 @@ export function FinalDiagnosis() {
   const isInitializedRef = useRef(false);
   const isExamInitializedRef = useRef(false);
   const isLabsInitializedRef = useRef(false);
+
+  // Reset clinical data when patient changes
+  useEffect(() => {
+    if (selectedPatient?.id) {
+      isInitializedRef.current = false;
+      isExamInitializedRef.current = false;
+      isLabsInitializedRef.current = false;
+      
+      setClinicalData({
+        symptoms: [],
+        examFindings: [],
+        labResults: [],
+        currentMedications: [],
+        labTrends: "",
+        vitals: {
+          bp: "", hr: "", temp: "", rr: "", spo2: "",
+          oxygenType: "", oxygenDose: "", oxygenInvasive: "",
+          oxygenDeviceType: "", fio2: "", peep: "",
+          pressureSupport: "", flowRate: "", notes: "",
+          weight: "", height: "", bmi: ""
+        }
+      });
+    }
+  }, [selectedPatient?.id]);
+
+  useEffect(() => {
+    if (symptoms.length > 0 && !isInitializedRef.current) {
+      setClinicalData(prev => ({
+        ...prev,
+        symptoms: symptoms.map(s => s.label)
+      }));
+      isInitializedRef.current = true;
+    } else if (liveExam?.data?.symptoms && clinicalData.symptoms.length === 0 && !isInitializedRef.current) {
+      setClinicalData(prev => ({
+        ...prev,
+        symptoms: liveExam.data.symptoms
+      }));
+      isInitializedRef.current = true;
+    }
+  }, [symptoms, liveExam, clinicalData.symptoms]);
 
   useEffect(() => {
     if (liveVitals) {
@@ -373,13 +537,12 @@ export function FinalDiagnosis() {
       };
       const prompt = getDifferentialDiagnosisPrompt(patientContext as any, clinicalData);
       
-      const response = await generateContentWithRetry({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-        config: { responseMimeType: "application/json" }
-      });
+      const responseText = await clinicalAIRequest(
+        [{ role: "user", content: prompt }],
+        aiSettings
+      );
 
-      const data = parseJsonResponse(response.text, {} as any);
+      const data = parseJsonResponse(responseText, {} as any);
       
       if (data.top_diagnosis) {
         const allSuggestions = [
@@ -533,11 +696,11 @@ export function FinalDiagnosis() {
     setIsGeneratingNote(true);
     try {
       const prompt = getSoapNotePrompt(selectedPatient.name, clinicalData, selectedDiagnosis, reasoning);
-      const response = await generateContentWithRetry({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-      });
-      const generatedNote = response.text || "No note generated.";
+      const responseText = await clinicalAIRequest(
+        [{ role: "user", content: prompt }],
+        aiSettings
+      );
+      const generatedNote = responseText || "No note generated.";
       sessionStorage.setItem('draft_soap_note', generatedNote);
       toast.success("SOAP note generated successfully");
       navigate('/soap-editor');
@@ -559,12 +722,12 @@ export function FinalDiagnosis() {
       // Find the Plan section from reasoning if it exists, or just use the whole clinical context
       // Actually, let's just use the current reasoning as context for the plan
       const prompt = getPatientEducationPrompt(selectedDiagnosis.description, reasoning);
-      const response = await generateContentWithRetry({
-        model: "gemini-3-flash-preview",
-        contents: [{ parts: [{ text: prompt }] }],
-      });
+      const responseText = await clinicalAIRequest(
+        [{ role: "user", content: prompt }],
+        aiSettings
+      );
       
-      setPatientSummary(response.text || "");
+      setPatientSummary(responseText || "");
       setIsSummaryModalOpen(true);
       toast.success("Patient education summary generated");
     } catch (error) {
@@ -582,30 +745,8 @@ export function FinalDiagnosis() {
           <h2 className="text-2xl font-bold text-slate-900">Final Diagnosis</h2>
           <p className="text-slate-500">Clinical Decision Support & Record Finalization</p>
         </div>
-        
-        {/* Diagnostic Journey Timeline */}
-        <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-full border border-slate-200 shadow-sm">
-          {['Analysis', 'Exam', 'Labs', 'Diagnosis'].map((step, i) => (
-            <div key={step} className="flex items-center gap-2">
-              <span className={cn("text-xs font-medium", i === 3 ? "text-indigo-600" : "text-slate-400")}>{step}</span>
-              {i < 3 && <ArrowRight className="w-3 h-3 text-slate-300" />}
-            </div>
-          ))}
-        </div>
 
         <div className="flex gap-3">
-          <button 
-            onClick={() => setIsLoadTemplateModalOpen(true)}
-            className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors"
-          >
-            <FolderOpen className="w-4 h-4" /> Load Template
-          </button>
-          <button 
-            onClick={() => setIsTemplateModalOpen(true)}
-            className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors"
-          >
-            <Copy className="w-4 h-4" /> Save as Template
-          </button>
           <button 
             onClick={() => {
               toast.info("Printing summary...");

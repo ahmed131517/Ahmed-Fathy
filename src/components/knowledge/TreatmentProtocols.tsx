@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Search, ClipboardList, Activity, ShieldCheck, Info, Loader2, BookOpen, ChevronRight } from 'lucide-react';
 import { cn } from "@/lib/utils";
-import { generateContentWithRetry } from "@/utils/gemini";
-import { Type } from "@google/genai";
+import { parseJsonResponse } from "@/utils/gemini";
+import { useAISettings } from '@/lib/AISettingsContext';
+import { clinicalAIRequest } from '@/services/aiWorkflowService';
 import { auth, googleProvider } from '@/lib/firebase';
 import { signInWithPopup, onAuthStateChanged } from 'firebase/auth';
 import { SavedKnowledgeService } from '@/lib/SavedKnowledgeService';
@@ -107,6 +108,7 @@ const protocolCategories = [
 ];
 
 export function TreatmentProtocols() {
+  const { settings: aiSettings } = useAISettings();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCondition, setSelectedCondition] = useState<string | null>(null);
   const [protocol, setProtocol] = useState<Protocol | null>(null);
@@ -184,37 +186,36 @@ export function TreatmentProtocols() {
     }
 
     try {
-      const response = await generateContentWithRetry({
-        model: "gemini-3-flash-preview",
-        contents: `Provide a clinical treatment protocol for: ${condition}. Include first-line therapy, second-line therapy, monitoring parameters, lifestyle modifications, and clinical pearls.`,
-        config: {
-          systemInstruction: "You are a senior clinical physician. Provide evidence-based, concise treatment protocols following current international guidelines (e.g., ACC/AHA, ADA, GINA). Return the response as a JSON object.",
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              condition: { type: Type.STRING },
-              firstLine: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Primary pharmacological or non-pharmacological interventions." },
-              secondLine: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Alternative or add-on therapies." },
-              monitoring: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Key parameters to track (labs, symptoms, etc.)." },
-              lifestyle: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Non-pharmacological recommendations." },
-              clinicalPearls: { type: Type.STRING, description: "Key clinical tips or warnings." }
-            },
-            required: ["condition", "firstLine", "secondLine", "monitoring", "lifestyle", "clinicalPearls"]
-          }
-        }
-      });
+      const prompt = `Provide a clinical treatment protocol for: ${condition}. Include first-line therapy, second-line therapy, monitoring parameters, lifestyle modifications, and clinical pearls.
+      
+      Return as a JSON object:
+      {
+        "condition": "string",
+        "firstLine": ["string"],
+        "secondLine": ["string"],
+        "monitoring": ["string"],
+        "lifestyle": ["string"],
+        "clinicalPearls": "string"
+      }`;
 
-      if (response.text) {
-        const parsed = JSON.parse(response.text);
-        setProtocol(parsed);
-        
-        // Save to Dexie cache
-        await db.knowledge_protocols.add({
-          ...parsed,
-          category: protocolCategories.find(cat => cat.conditions.includes(condition))?.name || 'General',
-          lastUpdated: Date.now()
-        });
+      const responseText = await clinicalAIRequest(
+        [{ role: 'user', content: prompt }],
+        aiSettings,
+        "You are a senior clinical physician. Provide evidence-based, concise treatment protocols following current international guidelines (e.g., ACC/AHA, ADA, GINA). Return the response as a JSON object."
+      );
+
+      if (responseText) {
+        const parsed = parseJsonResponse(responseText, null as any);
+        if (parsed) {
+          setProtocol(parsed);
+          
+          // Save to Dexie cache
+          await db.knowledge_protocols.add({
+            ...parsed,
+            category: protocolCategories.find(cat => cat.conditions.includes(condition))?.name || 'General',
+            lastUpdated: Date.now()
+          });
+        }
       }
     } catch (error) {
       console.error("Error fetching protocol:", error);

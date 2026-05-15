@@ -1,4 +1,6 @@
-import { generateContentWithRetry, parseJsonResponse } from "../utils/gemini";
+import { AISettings } from "../lib/AISettingsContext";
+import { clinicalAIRequest } from "./aiWorkflowService";
+import { parseJsonResponse } from "../utils/gemini";
 
 export interface ClinicalAnalysis {
   interpretation: string;
@@ -12,7 +14,8 @@ export const analyzeClinicalFindings = async (
   system: string,
   findings: any,
   patientHistory: any,
-  vitals: any
+  vitals: any,
+  settings?: AISettings
 ): Promise<ClinicalAnalysis> => {
   const prompt = `Analyze the following clinical findings for the ${system} system:
   Findings: ${JSON.stringify(findings)}
@@ -28,13 +31,12 @@ export const analyzeClinicalFindings = async (
     "severity": "Mild" | "Moderate" | "Severe"
   }`;
 
-  const response = await generateContentWithRetry({
-    model: "gemini-3-flash-preview",
-    contents: prompt,
-    config: { responseMimeType: "application/json" },
-  });
+  const responseText = await clinicalAIRequest(
+    [{ role: "user", content: prompt }],
+    settings
+  );
 
-  return parseJsonResponse<ClinicalAnalysis>(response.text, {
+  return parseJsonResponse<ClinicalAnalysis>(responseText, {
     interpretation: "Analysis failed.",
     redFlags: [],
     suggestedLabs: [],

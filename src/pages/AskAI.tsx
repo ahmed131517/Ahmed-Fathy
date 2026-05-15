@@ -3,24 +3,21 @@ import {
   Bot, Send, User, Loader2, AlertCircle, Mic, MicOff, Volume2, 
   History, Sparkles, Clipboard, Activity, ShieldAlert, Pill, 
   ChevronRight, Search, Trash2, MessageSquare, BrainCircuit,
-  Stethoscope, FileText, Info, CheckCircle, Bookmark
+  Stethoscope, FileText, Info, CheckCircle, Bookmark, Zap
 } from "lucide-react";
 import { SpeakButton } from "../components/SpeakButton";
 import { playSpeech } from "../services/ttsService";
-import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
-import { sendMessageStreamWithRetry } from "../utils/gemini";
 import Markdown from "react-markdown";
 import { PatientSelection } from "../components/PatientSelection";
 import { usePatient } from "../lib/PatientContext";
 import { useAISettings } from "../lib/AISettingsContext";
+import { clinicalAIRequest } from "@/services/aiWorkflowService";
 import { db, ChatMessage } from "../lib/db";
 import { useLiveQuery } from "dexie-react-hooks";
 import { getAskAiSystemInstruction } from "@/services/aiConfig";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 interface Message {
   id: string;
@@ -43,7 +40,6 @@ export function AskAI() {
   const [isLoading, setIsLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const chatRef = useRef<any>(null);
   const recognitionRef = useRef<any>(null);
 
   const [isVoiceMode, setIsVoiceMode] = useState(false);
@@ -86,6 +82,7 @@ export function AskAI() {
     { id: 'ddx', label: 'Differential Diagnosis', icon: BrainCircuit, prompt: 'Based on the patient\'s symptoms and findings, what are the top 5 differential diagnoses?' },
     { id: 'interactions', label: 'Check Interactions', icon: ShieldAlert, prompt: 'Analyze the patient\'s current medications for any potential drug-drug or drug-disease interactions.' },
     { id: 'guidelines', label: 'Clinical Guidelines', icon: Stethoscope, prompt: 'What are the current evidence-based guidelines for managing this patient\'s primary condition?' },
+    { id: 'twin', label: 'Patient Twin Simulation', icon: Zap, prompt: 'Initiate Patient Digital Twin Mode. Act as an advanced predictive physiological model using this patient\'s complete context. \n\nStep 1: Summarize the patient\'s baseline trajectory if current management continues without changes. \n\nStep 2: Ask me what therapeutic interventions, medication changes, or lifestyle adjustments I would like to simulate next to see probabilistic outcomes, effectiveness, and potential side effects.' },
   ];
 
   const handleQuickAction = (prompt: string) => {
@@ -129,12 +126,13 @@ export function AskAI() {
     async () => {
       if (!selectedPatient?.id) return null;
       
-      const [diagnoses, vitals, labs, prescriptions, physicalExams] = await Promise.all([
+      const [diagnoses, vitals, labs, prescriptions, physicalExams, mentalHealth] = await Promise.all([
         db.diagnoses.where('patientId').equals(selectedPatient.id).sortBy('date'),
         db.vitals.where('patientId').equals(selectedPatient.id).sortBy('date'),
         db.lab_results.where('patientId').equals(selectedPatient.id).sortBy('date'),
         db.prescriptions.where('patientId').equals(selectedPatient.id).toArray(),
-        db.physical_exams.where('patientId').equals(selectedPatient.id).sortBy('date')
+        db.physical_exams.where('patientId').equals(selectedPatient.id).sortBy('date'),
+        db.mental_health_assessments.where('patientId').equals(selectedPatient.id).sortBy('date')
       ]);
 
       // Fetch prescription items for each prescription
@@ -144,11 +142,12 @@ export function AskAI() {
       }));
 
       return {
-        diagnoses,
-        vitals,
-        labs,
-        prescriptions: prescriptionsWithItems,
-        physicalExams
+        diagnoses: diagnoses || [],
+        vitals: vitals || [],
+        labs: labs || [],
+        prescriptions: prescriptionsWithItems || [],
+        physicalExams: physicalExams || [],
+        mentalHealth: mentalHealth || []
       };
     },
     [selectedPatient?.id]
@@ -167,78 +166,128 @@ export function AskAI() {
     [selectedPatient?.id]
   );
 
-  useEffect(() => {
-    // Build system instruction with patient context and AI settings
-    let patientContext = "";
-    if (selectedPatient) {
-      const patientName = settings.anonymizePHI ? "Patient A" : selectedPatient.name;
-      patientContext = `Name: ${patientName}\nAge: ${selectedPatient.age || 'Unknown'}\nGender: ${selectedPatient.gender || 'Unknown'}\nBlood Type: ${selectedPatient.bloodType || 'Unknown'}\nStatus: ${selectedPatient.status || 'Unknown'}\n`;
+  // Load actual selected patient document from DB to keep it reactive
+  const livePatient = useLiveQuery(
+    () => {
+      if (!selectedPatient?.id) return null;
+      // In Dexie id string is often 'id', but localId is numeric. 
+      // The context selectedPatient usually has the 'id' (UUID) from the remote sync or local.
+      return db.patients.where('id').equals(selectedPatient.id).first();
+    },
+    [selectedPatient?.id]
+  );
+
+  const patientContext = React.useMemo(() => {
+    // Build exhaustive patient context from all categorical data
+    let context = "";
+    const activePatient = livePatient || selectedPatient;
+
+    if (activePatient) {
+      const patientName = settings.anonymizePHI ? "Patient A" : (activePatient.firstName ? `${activePatient.firstName} ${activePatient.lastName}` : activePatient.name);
       
-      // Basic Allergies & Conditions from patient record
-      if (selectedPatient.allergies && Array.isArray(selectedPatient.allergies) && selectedPatient.allergies.length > 0) {
-        const allergiesList = (selectedPatient.allergies || []).map((a: any) => `${a.name} ${a.severity ? `(${a.severity})` : ''}`).join(', ');
-        patientContext += `Allergies: ${allergiesList}\n`;
-      }
+      // Category 1: Personal Details
+      context += `[CATEGORY: PERSONAL DETAILS]\n`;
+      context += `Name: ${patientName}\nAge: ${activePatient.age || 'Unknown'}\nGender: ${activePatient.gender || 'Unknown'}\nBlood Type: ${activePatient.bloodType || 'Unknown'}\nActive Status: ${activePatient.status || 'Unknown'}\n\n`;
       
-      if (selectedPatient.chronicConditions && selectedPatient.chronicConditions.length > 0) {
-        patientContext += `Chronic Conditions: ${selectedPatient.chronicConditions.join(', ')}\n`;
-      }
+      // Category 2: Medical & Surgical History
+      context += `[CATEGORY: MEDICAL & SURGICAL HISTORY]\n`;
+      const chronicConditions = (activePatient as any).chronicConditions || [];
+      const surgeries = (activePatient as any).surgeries || [];
+      const familyHistory = (activePatient as any).familyHistory || [];
+      const allergies = (activePatient as any).allergies || [];
 
-      if (selectedPatient.surgeries && selectedPatient.surgeries.length > 0) {
-        patientContext += `Surgical History: ${selectedPatient.surgeries.join(', ')}\n`;
-      }
+      context += `Chronic Conditions: ${Array.isArray(chronicConditions) && chronicConditions.length > 0 ? chronicConditions.join(', ') : 'None documented'}\n`;
+      context += `Other Conditions: ${(activePatient as any).otherConditions || 'None'}\n`;
+      context += `Allergies: ${allergies.length > 0 ? allergies.map((a: any) => `${a.name} (${a.severity || 'mild'})`).join(', ') : 'No known allergies'}\n`;
+      context += `Surgical History: ${Array.isArray(surgeries) && surgeries.length > 0 ? surgeries.join(', ') : 'None documented'}\n`;
+      context += `Family History: ${Array.isArray(familyHistory) && familyHistory.length > 0 ? familyHistory.join(', ') : 'None documented'}\n`;
+      if ((activePatient as any).familyHistoryNotes) context += `Family History Notes: ${(activePatient as any).familyHistoryNotes}\n`;
+      context += `\n`;
 
-      if (selectedPatient.familyHistory && selectedPatient.familyHistory.length > 0) {
-        patientContext += `Family History: ${selectedPatient.familyHistory.join(', ')}\n`;
-      }
-
-      if (selectedPatient.familyHistoryNotes) {
-        patientContext += `Family History Notes: ${selectedPatient.familyHistoryNotes}\n`;
-      }
-
-      if (selectedPatient.otherConditions) {
-        patientContext += `Other Conditions: ${selectedPatient.otherConditions}\n`;
-      }
-
-      // Add detailed medical records if available
-      if (patientData) {
-        if (patientData.diagnoses && patientData.diagnoses.length > 0) {
-          patientContext += `\nDIAGNOSES HISTORY:\n${(patientData.diagnoses || []).map(d => `- ${d.date}: ${d.condition} (${d.code || 'No code'}). Notes: ${d.notes || 'N/A'}`).join('\n')}\n`;
+      // Category 3: Symptom Awareness (Aggregated)
+      if (patientData && patientData.diagnoses && patientData.diagnoses.length > 0) {
+        const allSymptoms = new Set<string>();
+        patientData.diagnoses.forEach(d => {
+          if (d.symptoms) d.symptoms.forEach(s => allSymptoms.add(s));
+        });
+        if (allSymptoms.size > 0) {
+          context += `[CATEGORY: SYMPTOM AWARENESS]\n`;
+          context += `Reported Symptoms across clinical encounters: ${Array.from(allSymptoms).join(', ')}\n\n`;
         }
+      }
 
+      // Category 4: Physical Examination & Vitals
+      if (patientData) {
+        context += `[CATEGORY: PHYSICAL EXAMINATION]\n`;
+        
+        // Latest Vitals
         if (patientData.vitals && patientData.vitals.length > 0) {
           const latest = patientData.vitals[patientData.vitals.length - 1];
-          patientContext += `\nLATEST VITALS (${latest.date}):\nBP: ${latest.bp_systolic}/${latest.bp_diastolic}, HR: ${latest.hr}, Temp: ${latest.temp}°C, RR: ${latest.rr}, SpO2: ${latest.spo2}%, Weight: ${latest.weight}kg\n`;
+          context += `Latest Vital Signs (${latest.date}): BP: ${latest.bp_systolic}/${latest.bp_diastolic}, HR: ${latest.hr}, Temp: ${latest.temp}°C, RR: ${latest.rr}, SpO2: ${latest.spo2}%, Weight: ${latest.weight}kg, BMI: ${latest.bmi}\n`;
+        } else {
+          context += `Vital Signs: No latest records found.\n`;
         }
 
-        if (patientData.labs && patientData.labs.length > 0) {
-          patientContext += `\nRECENT LAB RESULTS:\n${(patientData.labs || []).slice(-5).map(l => `- ${l.date}: ${l.testName} = ${l.value} ${l.unit} (${l.status})`).join('\n')}\n`;
-        }
-
-        if (patientData.prescriptions && patientData.prescriptions.length > 0) {
-          patientContext += `\nMEDICATION HISTORY:\n${(patientData.prescriptions || []).map(p => {
-            const items = (p.items || []).map(i => `${i.medicationName} ${i.dosage} ${i.frequency}`).join(', ');
-            return `- ${new Date(p.createdAt).toLocaleDateString()}: ${items} (Status: ${p.status})`;
-          }).join('\n')}\n`;
-        }
-
-        if (patientData.physicalExams.length > 0) {
+        // Exam Findings from records & latest record
+        if (patientData.physicalExams && patientData.physicalExams.length > 0) {
           const latestExam = patientData.physicalExams[patientData.physicalExams.length - 1];
-          patientContext += `\nLATEST PHYSICAL EXAM (${latestExam.date}): Status: ${latestExam.status}\n`;
+          context += `Latest Formal Physical Exam (${latestExam.date}): Status: ${latestExam.status}.\n`;
         }
+
+        if (patientData.diagnoses) {
+          const allFindings = new Set<string>();
+          patientData.diagnoses.forEach(d => {
+            if (d.examFindings) d.examFindings.forEach(f => allFindings.add(f));
+          });
+          if (allFindings.size > 0) {
+            context += `Reported Clinical Findings: ${Array.from(allFindings).join(', ')}\n`;
+          }
+        }
+        context += `\n`;
+      }
+
+      // Category 5: Lab Results (Last 10)
+      if (patientData && patientData.labs && patientData.labs.length > 0) {
+        context += `[CATEGORY: LAB RESULTS (LAST 10)]\n`;
+        const last10Labs = patientData.labs.slice(-10);
+        context += last10Labs.map(l => `- ${l.date}: ${l.testName} = ${l.value} ${l.unit} [${l.status.toUpperCase()}]`).join('\n');
+        context += `\n\n`;
+      }
+
+      // Category 6: Clinical Scoring (PHQ-9, GAD-7, etc.)
+      if (patientData && patientData.mentalHealth && patientData.mentalHealth.length > 0) {
+        context += `[CATEGORY: CLINICAL SCORING]\n`;
+        context += patientData.mentalHealth.map(m => `- ${m.date}: ${m.type} Score: ${m.totalScore} (${m.interpretation})`).join('\n');
+        context += `\n\n`;
+      }
+
+      // Category 7: Final Diagnosis History & Trends
+      if (patientData && patientData.diagnoses && patientData.diagnoses.length > 0) {
+        context += `[CATEGORY: FINAL DIAGNOSIS & HISTORY]\n`;
+        const lastDiagnosis = patientData.diagnoses[patientData.diagnoses.length - 1];
+        context += `LATEST CONFIRMED DIAGNOSIS: ${lastDiagnosis.condition} (Confirmed on ${lastDiagnosis.date})\n`;
+        context += `HISTORICAL DIAGNOSTIC TRENDS:\n`;
+        context += patientData.diagnoses.map(d => `- ${d.date}: ${d.condition} (Code: ${d.code || 'N/A'})`).join('\n');
+        context += `\n\n`;
+      }
+
+      // Category 8: PRESCRIPTION (Active Medications)
+      if (patientData && patientData.prescriptions && patientData.prescriptions.length > 0) {
+        context += `[CATEGORY: PRESCRIPTION - ACTIVE MEDICATIONS]\n`;
+        const activePrescriptions = patientData.prescriptions.filter(p => (p.status === 'active' || p.status === 'filled') && !p.isDeleted);
+        if (activePrescriptions.length > 0) {
+          context += activePrescriptions.map(p => {
+            const items = (p.items || []).map(i => `${i.medicationName} | Dose: ${i.dosage} | Freq: ${i.frequency} | Dur: ${i.duration || 'N/A'}`).join('\n  ');
+            return `- Prescription Date: ${new Date(p.createdAt).toLocaleDateString()}\n  ${items}`;
+          }).join('\n');
+        } else {
+          context += `No active prescriptions currently recorded.`;
+        }
+        context += `\n`;
       }
     }
-
-    const systemInstruction = getAskAiSystemInstruction(settings, patientContext);
-
-    // Initialize chat session
-    chatRef.current = ai.chats.create({
-      model: "gemini-3.1-pro-preview",
-      config: {
-        systemInstruction,
-      }
-    });
-  }, [selectedPatient, settings.detailLevel, settings.clinicalTone, settings.specialty, settings.anonymizePHI, patientData]);
+    return context;
+  }, [selectedPatient, patientData, settings.anonymizePHI]);
 
   useEffect(() => {
     if (chatHistory && chatHistory.length > 0) {
@@ -247,16 +296,10 @@ export function AskAI() {
         role: msg.role,
         content: msg.content
       })));
-      
-      // If we have history, we need to recreate the chat with history
-      // Note: The @google/genai SDK doesn't easily support setting history on an existing chat object
-      // For a robust implementation, we'd need to send the history as context or use the interactions API
-      // For now, we'll just load the UI messages. The AI will lose exact context of previous turns
-      // but will have the patient context.
     } else {
       // Reset messages when patient changes and no history
       const initialMessage = selectedPatient 
-        ? `Hello! I am your AI medical assistant. I see you have selected patient **${selectedPatient.name}**. How can I help you analyze their case today?`
+        ? `Hello! I am your enhanced AI medical assistant. I have automatically synchronized with **${selectedPatient.name}'s** full medical record, including history, latest labs, vitals, and active prescriptions. \n\nHow can I help you analyze their case today?`
         : "Hello! I am your AI medical assistant. Please select a patient above to provide context, or ask me any general medical queries.";
         
       const initialMsgObj: Message = {
@@ -393,61 +436,45 @@ export function AskAI() {
     setInput("");
     setIsLoading(true);
 
-    const modelMessageId = (Date.now() + 1).toString();
+      const modelMessageId = (Date.now() + 1).toString();
     // Optimistically add empty model message
     setMessages((prev) => [
       ...prev,
       { id: modelMessageId, role: "model", content: "" },
     ]);
 
-    let fullResponse = "";
-
     try {
-      if (!chatRef.current) {
-        throw new Error("Chat not initialized");
-      }
+      const systemInstruction = getAskAiSystemInstruction(settings, patientContext);
 
-      // If we have history, we should ideally pass it to the model.
-      // Since ai.chats.create doesn't take history directly in the simple API,
-      // we'll send the current message. The chatRef maintains state for the *current* session.
-      // If the user refreshed the page, the chatRef lost history.
-      // A workaround is to send the recent history as part of the message if needed,
-      // but for now we rely on the chatRef's internal state for active sessions.
+      const responseText = await clinicalAIRequest(
+        messages.map(m => ({
+          role: (m.role === 'model' ? 'assistant' : 'user') as "user" | "assistant",
+          content: m.content
+        })).concat({ role: 'user' as const, content: currentInput.trim() }),
+        settings,
+        systemInstruction
+      );
 
-      let responseStream;
-      try {
-        responseStream = await sendMessageStreamWithRetry(chatRef.current, userMessage.content);
-      } catch (error: any) {
-        console.error("AI response failed after retries:", error);
-        throw error;
-      }
-
-      for await (const chunk of responseStream) {
-        const c = chunk as GenerateContentResponse;
-        if (c.text) {
-          fullResponse += c.text;
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === modelMessageId
-                ? { ...msg, content: fullResponse }
-                : msg
-            )
-          );
-        }
-      }
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === modelMessageId
+            ? { ...msg, content: responseText }
+            : msg
+        )
+      );
 
       // Save final model message to DB
       await db.chat_messages.add({
         id: modelMessageId,
         role: "model",
-        content: fullResponse,
+        content: responseText,
         patientId,
         timestamp: Date.now()
       });
 
       // Auto-read if enabled or in voice mode
       if (settings.autoRead || isVoiceModeRef.current) {
-        await playSpeech(fullResponse, settings.elevenLabsVoiceId);
+        await playSpeech(responseText, settings.elevenLabsVoiceId);
       }
 
     } catch (error) {

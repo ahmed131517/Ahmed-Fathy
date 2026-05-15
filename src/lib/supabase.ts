@@ -3,11 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-const isConfigured = !!(supabaseUrl && supabaseAnonKey);
-
-if (!isConfigured) {
-  console.warn('Supabase credentials missing. Sync will be disabled.');
-}
+export const supabaseEnabled = !!(supabaseUrl && supabaseAnonKey);
 
 const createDummyResponse = () => Promise.resolve({ data: [], error: { message: 'Supabase not configured' } });
 
@@ -20,10 +16,10 @@ const dummyClient = {
           return (onfulfilled: any) => createDummyResponse().then(onfulfilled);
         }
         // These methods usually represent the end of a chain or a terminal operation
-        if (['insert', 'upsert', 'update', 'delete', 'gt', 'eq', 'lt', 'lte', 'gte', 'single', 'maybeSingle', 'execute'].includes(prop as string)) {
+        if (['insert', 'upsert', 'update', 'delete', 'single', 'maybeSingle', 'execute'].includes(prop as string)) {
           return () => createDummyResponse();
         }
-        // For everything else (select, order, limit, etc.), return the builder itself for chaining
+        // For everything else (select, order, limit, eq, gt, etc.), return the builder itself for chaining
         return () => builder;
       }
     });
@@ -46,6 +42,6 @@ const dummyClient = {
   removeChannel: () => ({}),
 } as any;
 
-export const supabase = isConfigured 
+export const supabase = supabaseEnabled 
   ? createClient(supabaseUrl, supabaseAnonKey) 
   : dummyClient;

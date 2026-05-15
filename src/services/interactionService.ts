@@ -1,9 +1,11 @@
-import { generateContentWithRetry, parseJsonResponse } from "../utils/gemini";
+import { clinicalAIRequest, AIChatMessage } from "./aiWorkflowService";
+import { parseJsonResponse } from "../utils/gemini";
+import { AISettings } from "../lib/AISettingsContext";
 import { getInteractionCheckPrompt } from "./aiConfig";
 import { ddiService, InteractionResult } from "./ddiService";
 import { db } from "@/lib/db";
 
-export async function checkInteractions(medications: string[]): Promise<InteractionResult[]> {
+export async function checkInteractions(medications: string[], settings?: AISettings): Promise<InteractionResult[]> {
   if (medications.length < 2) return [];
 
   const results: InteractionResult[] = [];
@@ -43,53 +45,45 @@ export async function checkInteractions(medications: string[]): Promise<Interact
     console.error("Verified interaction check failed:", error);
   }
 
-  // 3. AI Insight (Secondary Layer - Gemini)
-  // We use AI to summarize, explain, or find interactions missed by the databases
+  // 3. AI Insight (Secondary Layer)
   try {
-    const prompt = getInteractionCheckPrompt(medications);
-    const response = await generateContentWithRetry({
-      model: "gemini-3-flash-preview",
-      contents: prompt,
-      config: { 
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              severity: { type: "string", enum: ["Major", "Moderate", "Minor"] },
-              description: { type: "string" },
-              drugs: { type: "array", items: { type: "string" } }
-            },
-            required: ["severity", "description", "drugs"]
-          }
-        }
-      }
-    });
+    const promptConfig = getInteractionCheckPrompt(medications);
+    // getInteractionCheckPrompt returns an array of messages for generateContentWithRetry
+    // We'll convert it to AIChatMessage format for clinicalAIRequest if needed
+    const messages: AIChatMessage[] = (promptConfig as any).map((m: any) => ({
+      role: m.role === 'assistant' ? 'assistant' : 'user',
+      content: m.parts[0].text
+    }));
 
-    const aiInteractions = parseJsonResponse<any[]>(response.text, []);
+    const responseText = await clinicalAIRequest(
+      messages,
+      settings
+    );
+
+    const aiInteractions = parseJsonResponse<any[]>(responseText, []);
     aiInteractions.forEach(i => {
-      // Avoid duplicate alerts if already found in databases
-      const isDuplicate = results.some(r => 
-        r.drugs.every(d => i.drugs.some((id: string) => id.toLowerCase().includes(d.toLowerCase())))
-      );
+      if (!Array.isArray(i.drugs)) return;
+      
+      const isDuplicate = results.some(r => {
+        if (!Array.isArray(r.drugs)) return false;
+        return r.drugs.every(d => i.drugs.some((id: string) => typeof id === 'string' && typeof d === 'string' && id.toLowerCase().includes(d.toLowerCase())))
+      });
 
       if (!isDuplicate) {
         results.push({
           source: 'AI Insight',
-          severity: i.severity,
-          description: i.description,
+          severity: i.severity || 'Unknown',
+          description: i.description || 'No description provided',
           drugs: i.drugs
         });
       }
     });
   } catch (error) {
     console.error("AI interaction check failed:", error);
-    // We don't throw here, so database results are still returned
     results.push({
       source: 'AI Insight',
       severity: 'Unknown',
-      description: 'AI analysis is currently unavailable due to high demand. Please rely on verified database results.',
+      description: 'AI analysis is currently unavailable. Please rely on verified database results.',
       drugs: medications
     });
   }

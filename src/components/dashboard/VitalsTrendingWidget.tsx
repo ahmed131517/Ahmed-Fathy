@@ -3,12 +3,15 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { usePatient } from "@/lib/PatientContext";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { ChartContainer } from '@/components/ui/ChartContainer';
 import { Activity, TrendingUp, Droplets, Scale, Sparkles, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { generateContentWithRetry } from "@/utils/gemini";
+import { useAISettings } from "@/lib/AISettingsContext";
+import { clinicalAIRequest } from "@/services/aiWorkflowService";
 
 export function VitalsTrendingWidget() {
   const { selectedPatient } = usePatient();
+  const { settings: aiSettings } = useAISettings();
   const [selectedMetric, setSelectedMetric] = useState<'BP' | 'Glucose' | 'Weight'>('BP');
   const [aiInsight, setAiInsight] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -42,11 +45,11 @@ export function VitalsTrendingWidget() {
       
       Provide a concise clinical insight (max 2 sentences) about the trend and any potential risks or improvements.`;
       
-      const response = await generateContentWithRetry({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-      });
-      setAiInsight(response.text || "No insight available.");
+      const responseText = await clinicalAIRequest(
+        [{ role: 'user', content: prompt }],
+        aiSettings
+      );
+      setAiInsight(responseText || "No insight available.");
     } catch (error) {
       console.error("AI Insight failed:", error);
     } finally {
@@ -93,9 +96,10 @@ export function VitalsTrendingWidget() {
         </div>
       </div>
 
-      <div className="flex-1 min-h-[200px]">
+      <div className="w-full min-w-0 flex-1 min-h-[200px]">
         {trendData.length > 0 ? (
-          <ResponsiveContainer width="100%" height="100%">
+          <ChartContainer>
+<ResponsiveContainer width="100%" height="100%">
             <LineChart data={trendData}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
               <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 10}} dy={10} />
@@ -119,6 +123,7 @@ export function VitalsTrendingWidget() {
               )}
             </LineChart>
           </ResponsiveContainer>
+</ChartContainer>
         ) : (
           <div className="h-full flex flex-col items-center justify-center text-center text-slate-400">
             <AlertCircle className="w-8 h-8 mb-2 opacity-20" />

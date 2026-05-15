@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Monitor, Moon, Sun, Layout, Type, Palette, Maximize2, Zap, Accessibility } from "lucide-react";
+import { Monitor, Moon, Sun, Layout, Type, Palette, Maximize2, Zap, Accessibility, Wand2 } from "lucide-react";
 import { useTheme } from "../../lib/ThemeContext";
 import { useSettings } from "../../lib/SettingsContext";
 import { cn } from "../../lib/utils";
@@ -7,7 +7,7 @@ import { useTranslation } from "../../lib/i18n";
 
 export function AppearanceSettings() {
   const { theme, setTheme } = useTheme();
-  const { fontSize, accentColor, fontFamily, fontColor, density, borderRadius, reducedMotion, updateSettings } = useSettings();
+  const { designAesthetic, fontSize, accentColor, fontFamily, fontColor, density, borderRadius, reducedMotion, updateSettings } = useSettings();
   const { t, isRTL } = useTranslation();
 
   const themes = [
@@ -15,6 +15,15 @@ export function AppearanceSettings() {
     { id: 'dark', name: t('dark'), icon: Moon },
     { id: 'system', name: t('system'), icon: Monitor },
   ] as const;
+
+  const aesthetics = [
+    { id: 'default', name: 'Standard Flow', desc: 'The default balanced interface.' },
+    { id: 'sophisticated-dark', name: 'Sophisticated Dark', desc: 'High-contrast, professional dark mode with pure blacks and neutral grays.' },
+    { id: 'clean-minimalist', name: 'Clean Minimalist', desc: 'Clinical, lots of white space, strict monochromatic grayscale.' },
+    { id: 'modern-saas', name: 'Modern SaaS', desc: 'Soft off-white backgrounds, crisp cards, vibrant accents.' },
+    { id: 'neo-brutalist', name: 'Neo-Brutalist', desc: 'High contrast, thick borders, hard shadows.' },
+  ] as const;
+
 
   const fontSizes = [
     { id: 'small', name: t('small') },
@@ -97,6 +106,30 @@ export function AppearanceSettings() {
             >
               <t.icon className="w-6 h-6" />
               <span className="text-sm font-medium">{t.name}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="card-panel p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Wand2 className="w-5 h-5 text-[var(--accent-color)]" />
+          <h2 className="text-lg font-bold text-slate-900 dark:text-white">Design Aesthetic</h2>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {aesthetics.map((aesthetic) => (
+            <button
+              key={aesthetic.id}
+              onClick={() => updateSettings({ designAesthetic: aesthetic.id })}
+              className={cn(
+                "flex flex-col items-start text-left gap-1 p-4 rounded-xl border-2 transition-all",
+                designAesthetic === aesthetic.id
+                  ? "border-[var(--accent-color)] bg-[color-mix(in_srgb,var(--accent-color),transparent_90%)]"
+                  : "border-slate-100 dark:border-slate-800 hover:border-slate-200 dark:hover:border-slate-700 bg-white dark:bg-slate-900"
+              )}
+            >
+              <span className={cn("text-base font-bold", designAesthetic === aesthetic.id ? "text-[var(--accent-color)]" : "text-slate-900 dark:text-white")}>{aesthetic.name}</span>
+              <span className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">{aesthetic.desc}</span>
             </button>
           ))}
         </div>

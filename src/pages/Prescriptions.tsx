@@ -1,14 +1,18 @@
-import { checkInteractions } from "@/services/interactionService";
+import { ClinicalIntelligenceService, TherapeuticGapAlert, IndicationAlert } from "@/services/clinical.intelligence.service";
 import { InteractionResult } from "@/services/ddiService";
 import { checkSafetyAlerts, SafetyAlert } from "@/services/safetyService";
+import { PrescriptionService } from "@/services/prescription.service";
 import { MedicationReconciliation } from "@/components/MedicationReconciliation";
 import { useState, useMemo, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { 
-  FileText, Plus, Layout, Cpu, History, Eye, CheckCircle, 
+  FileText, Layout, Cpu, History, Eye, CheckCircle, 
   Search, ShoppingCart, Trash2, AlertCircle, X, PlusCircle,
   Hash, Clock, Calendar, Info, Sparkles, Loader2, RefreshCw,
-  Activity, Printer, AlertTriangle, ShieldCheck
+  Activity, Printer, AlertTriangle, ShieldCheck, Calculator,
+  Shuffle, BrainCircuit, Zap, ArrowRight, Plus
 } from "lucide-react";
+import { WeightCalculatorModal } from "@/components/prescriptions/WeightCalculatorModal";
 import { cn } from "@/lib/utils";
 import { Textarea } from "@/components/ui/textarea";
 import { medicationsDatabase } from "@/data/medications";
@@ -16,8 +20,10 @@ import { prescriptionTemplates } from "@/data/templates";
 import { PrescriptionPreview } from "@/components/PrescriptionPreview";
 import { usePatient } from "@/lib/PatientContext";
 import { useSettings } from "@/lib/SettingsContext";
-import { getGeneratePrescriptionPrompt, getAlternativeMedicationPrompt } from "@/services/aiConfig";
-import { generateContentWithRetry, parseJsonResponse } from "../utils/gemini";
+import { useAISettings } from '../lib/AISettingsContext';
+import { clinicalAIRequest } from '@/services/aiWorkflowService';
+import { getGeneratePrescriptionPrompt, getAlternativeMedicationPrompt, getMedicationInstructionsPrompt, getPrescriptionNotesPrompt } from "@/services/aiConfig";
+import { parseJsonResponse } from "../utils/gemini";
 import { toast } from "sonner";
 import { medicationService, Drug } from "@/services/medicationService";
 import { PatientHistoryService } from "@/services/PatientHistoryService";
@@ -28,8 +34,11 @@ import { useLiveQuery } from "dexie-react-hooks";
 const allMedications = Object.values(medicationsDatabase).flat();
 
 export function Prescriptions() {
+  const { settings: aiSettings } = useAISettings();
   const { selectedPatient, confirmedDiagnosis, setConfirmedDiagnosis } = usePatient();
   const { customPrescriptionTemplates } = useSettings();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [activeTab, setActiveTab] = useState('new');
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
@@ -64,11 +73,15 @@ export function Prescriptions() {
     rbs: "",
     oe: "",
     co: "",
-    ph: ""
+    ph: "",
+    weight: ""
   });
   const [interactionAlerts, setInteractionAlerts] = useState<InteractionResult[]>([]);
   const [safetyAlerts, setSafetyAlerts] = useState<SafetyAlert[]>([]);
+  const [gapAlerts, setGapAlerts] = useState<TherapeuticGapAlert[]>([]);
+  const [indicationAlerts, setIndicationAlerts] = useState<IndicationAlert[]>([]);
   const [isCheckingInteractions, setIsCheckingInteractions] = useState(false);
+  const [labs, setLabs] = useState<any[]>([]);
   
   const allTemplates = useMemo(() => {
     return { ...prescriptionTemplates, ...customPrescriptionTemplates };
@@ -113,6 +126,7 @@ export function Prescriptions() {
             temp: latestVitals.temp?.toString() || "",
             rr: latestVitals.rr?.toString() || "",
             sao2: latestVitals.spo2 ? `${latestVitals.spo2}%` : "",
+            weight: latestVitals.weight?.toString() || "",
             rbs: "", // RBS might not be in the standard vitals table if it's a separate field
             oe: "",
             co: latestVitals.notes || "",
@@ -124,7 +138,22 @@ export function Prescriptions() {
       }
     };
     
-    fetchLatestVitals();
+        fetchLatestVitals();
+    
+    const fetchLatestLabs = async () => {
+      if (!selectedPatient?.id) return;
+      try {
+        const latestLabs = await db.lab_results
+          .where('patientId')
+          .equals(selectedPatient.id)
+          .toArray();
+        setLabs(latestLabs);
+      } catch (error) {
+        console.error("Failed to fetch latest labs:", error);
+      }
+    };
+    
+    fetchLatestLabs();
     
     const fetchLatestDiagnosis = async () => {
       if (!selectedPatient?.id || confirmedDiagnosis !== undefined && confirmedDiagnosis !== null && confirmedDiagnosis !== "") return;
@@ -170,11 +199,44 @@ export function Prescriptions() {
           }))
         };
         const alerts = checkSafetyAlerts(tempPatient, { name: confirmedDiagnosis || "" });
+        const organAlerts = ClinicalIntelligenceService.checkOrganFunctionSafety(
+          meds,
+          {
+            age: selectedPatient.age,
+            weightKg: parseFloat(vitals.weight) || 0,
+            isFemale: selectedPatient.gender?.toLowerCase() === 'female',
+            creatinine: parseFloat(labs.find(l => l.testName.toLowerCase().includes('creatinine'))?.value) || 0,
+            alt: parseFloat(labs.find(l => l.testName.toLowerCase().includes('alt'))?.value) || 0,
+            hasLiverDisease: selectedPatient.chronicConditions?.some((c: string) => 
+              /liver|hepatic|cirrhosis|hepatitis/i.test(c)
+            )
+          }
+        );
+
+        const combinedAlerts = [...alerts, ...organAlerts] as SafetyAlert[];
         
         // Only update if alerts have changed to avoid unnecessary re-renders
         setSafetyAlerts(prev => {
-          if (JSON.stringify(prev) === JSON.stringify(alerts)) return prev;
-          return alerts;
+          if (JSON.stringify(prev) === JSON.stringify(combinedAlerts)) return prev;
+          return combinedAlerts;
+        });
+
+        // 3. Therapeutic Gap Analysis
+        const conditions = [
+          ...(selectedPatient.chronicConditions || []),
+          ...(confirmedDiagnosis ? [confirmedDiagnosis] : [])
+        ];
+        const gaps = await ClinicalIntelligenceService.checkTherapeuticGaps(conditions, meds);
+        setGapAlerts(prev => {
+          if (JSON.stringify(prev) === JSON.stringify(gaps)) return prev;
+          return gaps;
+        });
+
+        // 4. Indication Auditor
+        const indications = await ClinicalIntelligenceService.auditMedicationIndications(meds, conditions);
+        setIndicationAlerts(prev => {
+          if (JSON.stringify(prev) === JSON.stringify(indications)) return prev;
+          return indications;
         });
       }
 
@@ -183,7 +245,7 @@ export function Prescriptions() {
         return;
       }
       setIsCheckingInteractions(true);
-      const alerts = await checkInteractions(meds);
+      const alerts = await ClinicalIntelligenceService.checkInteractions(meds);
       setInteractionAlerts(prev => {
         if (JSON.stringify(prev) === JSON.stringify(alerts)) return prev;
         return alerts;
@@ -191,13 +253,38 @@ export function Prescriptions() {
       setIsCheckingInteractions(false);
     };
     check();
-  }, [currentPrescription, selectedPatient, confirmedDiagnosis]);
+  }, [currentPrescription, selectedPatient, confirmedDiagnosis, labs, vitals.weight]);
+
+  // Handle data returning from audit page
+  useEffect(() => {
+    if (location.state?.items) {
+      setCurrentPrescription(location.state.items);
+      if (location.state?.audited) {
+        toast.success("Prescription audited and approved.");
+      }
+    }
+  }, [location.state]);
 
   // Modals and UI states
   const [selectedMedForForms, setSelectedMedForForms] = useState<any | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isTemplatesOpen, setIsTemplatesOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+
+  // Weight calculator state
+  const [calculatorState, setCalculatorState] = useState<{
+    isOpen: boolean;
+    itemId: string | null;
+    medicationName: string;
+    concentration: string;
+    form: string;
+  }>({
+    isOpen: false,
+    itemId: null,
+    medicationName: "",
+    concentration: "",
+    form: ""
+  });
   const [isAiSuggestOpen, setIsAiSuggestOpen] = useState(false);
   const [isCustomMedOpen, setIsCustomMedOpen] = useState(false);
   const [customMedName, setCustomMedName] = useState("");
@@ -213,6 +300,8 @@ export function Prescriptions() {
   const [dbMeds, setDbMeds] = useState<Drug[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isDiscovering, setIsDiscovering] = useState(false);
+  const [itemsGeneratingAI, setItemsGeneratingAI] = useState<string[]>([]);
+  const [isGeneratingNotes, setIsGeneratingNotes] = useState(false);
 
   const handleAiDiscover = async () => {
     if (!searchQuery || searchQuery.length < 2) return;
@@ -233,12 +322,11 @@ If it is not a valid medication, return:
 {
   "isValid": false
 }`;
-      const response = await generateContentWithRetry({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-        config: { responseMimeType: "application/json" }
-      });
-      const data = parseJsonResponse<any>(response.text, { isValid: false });
+      const responseText = await clinicalAIRequest(
+        [{ role: "user", content: prompt }],
+        aiSettings
+      );
+      const data = parseJsonResponse<any>(responseText, { isValid: false });
       if (data.isValid) {
         await medicationService.discoverAndAddDrug({
           generic_name: data.generic_name,
@@ -308,7 +396,7 @@ If it is not a valid medication, return:
       }
       setIsSearching(true);
       try {
-        const results = await medicationService.searchDrugs(searchQuery);
+        const results = await medicationService.searchDrugs(searchQuery, nameType === 'generic' ? 'generic' : 'trade');
         setDbMeds(results);
       } catch (error) {
         console.error("Search failed", error);
@@ -319,7 +407,7 @@ If it is not a valid medication, return:
 
     const timer = setTimeout(searchMeds, 300);
     return () => clearTimeout(timer);
-  }, [searchQuery]);
+  }, [searchQuery, nameType]);
 
   // Fetch prescription history from database
   const prescriptionHistory = useLiveQuery(
@@ -406,24 +494,101 @@ If it is not a valid medication, return:
   };
 
   const handleAddMedication = (medName: string, form: any) => {
-    const isCustom = typeof form === 'string';
+    const isCustom = typeof form !== 'object' || form === null;
     const formName = isCustom ? form : form.name;
     const newItem = {
       id: "item_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9),
       medication: medName,
       form: formName,
-      concentration: isCustom ? formName : (form.concentration || formName),
+      concentration: isCustom ? form : (form.concentration || formName),
       dosage: isCustom ? "" : (form.dosage || ""),
       frequency: isCustom ? "" : (form.frequency || ""),
       duration: isCustom ? "" : (form.duration || ""),
       instructions: isCustom ? "" : (form.instructions || "")
     };
-    setCurrentPrescription([...currentPrescription, newItem]);
+
+    // If form is an object and contains properties, use them (like when adding from custom modal)
+    if (!isCustom) {
+      if (form.concentration) newItem.concentration = form.concentration;
+      if (form.dosage) newItem.dosage = form.dosage;
+      if (form.frequency) newItem.frequency = form.frequency;
+      if (form.duration) newItem.duration = form.duration;
+      if (form.instructions) newItem.instructions = form.instructions;
+    }
+    
+    const updatedPrescription = [...currentPrescription, newItem];
+    setCurrentPrescription(updatedPrescription);
     setSelectedMedForForms(null);
+
+    // Auto-generate instructions if diagnosis is present and instructions are empty
+    if (confirmedDiagnosis && !newItem.instructions) {
+      handleAutoGenerateItemInstructions(newItem.id);
+    }
   };
 
   const handleRemoveFromPrescription = (id: string) => {
     setCurrentPrescription(currentPrescription.filter(m => m.id !== id));
+  };
+
+  const handleAutoGenerateItemInstructions = async (itemId: string) => {
+    const item = currentPrescription.find(i => i.id === itemId);
+    if (!item || !item.medication) return;
+
+    setItemsGeneratingAI(prev => [...prev, itemId]);
+    try {
+      const prompt = getMedicationInstructionsPrompt(item.medication, {
+        diagnosis: confirmedDiagnosis || "Not provided",
+        dosage: item.dosage || "Not provided",
+        frequency: item.frequency || "Not provided",
+        patientAllergies: selectedPatient?.allergies?.map((a: any) => a.name).join(", ") || "None reported"
+      });
+
+      const responseText = await clinicalAIRequest(
+        [{ role: "user", content: prompt }],
+        aiSettings
+      );
+      
+      if (responseText) {
+        handleUpdatePrescriptionItem(itemId, 'instructions', responseText.trim());
+        toast.success(`AI instructions for ${item.medication} generated`);
+      }
+    } catch (error) {
+      console.error("Failed to generate item instructions:", error);
+      toast.error("Failed to generate instructions via AI");
+    } finally {
+      setItemsGeneratingAI(prev => prev.filter(id => id !== itemId));
+    }
+  };
+
+  const handleAutoGeneratePrescriptionNotes = async () => {
+    if (currentPrescription.length === 0) {
+      toast.error("Add medications first");
+      return;
+    }
+
+    setIsGeneratingNotes(true);
+    try {
+      const prompt = getPrescriptionNotesPrompt({
+        medications: currentPrescription.map(i => i.medication),
+        diagnosis: confirmedDiagnosis || "Not provided",
+        patientName: selectedPatient?.name || "Patient"
+      });
+
+      const responseText = await clinicalAIRequest(
+        [{ role: "user", content: prompt }],
+        aiSettings
+      );
+
+      if (responseText) {
+        setPrescriptionNotes(responseText.trim());
+        toast.success("Prescription notes auto-filled by AI");
+      }
+    } catch (error) {
+      console.error("Failed to generate prescription notes:", error);
+      toast.error("Failed to generate notes via AI");
+    } finally {
+      setIsGeneratingNotes(false);
+    }
   };
 
   const handleUpdatePrescriptionItem = (id: string, field: string, value: string) => {
@@ -480,35 +645,13 @@ If it is not a valid medication, return:
     }
 
     try {
-      const timestamp = Date.now();
-      const prescriptionId = crypto.randomUUID();
-
-      // Save to local Dexie DB
-      await db.prescriptions.add({
-        id: prescriptionId,
-        patientId: selectedPatient.id,
-        diagnosis: confirmedDiagnosis || "",
-        notes: prescriptionNotes,
-        refills: parseInt(refills),
-        status: 'Pending',
-        createdAt: timestamp,
-        lastModified: timestamp,
-        isDeleted: 0,
-        isSynced: 0
-      });
-
-      for (const item of currentPrescription) {
-        await db.prescription_items.add({
-          id: crypto.randomUUID(),
-          prescriptionId: prescriptionId,
-          medicationName: item.medication,
-          dosage: item.dosage,
-          frequency: item.frequency,
-          duration: item.duration,
-          instructions: item.instructions,
-          form: item.form
-        } as any);
-      }
+      await PrescriptionService.savePrescription(
+        selectedPatient.id,
+        confirmedDiagnosis || "",
+        prescriptionNotes,
+        parseInt(refills),
+        currentPrescription
+      );
 
       toast.success("Prescription saved successfully!");
       setCurrentPrescription([]);
@@ -599,13 +742,12 @@ If it is not a valid medication, return:
         existingMedications: patientMedications.map(m => m.name).join(", ")
       });
 
-      const response = await generateContentWithRetry({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-        config: { responseMimeType: "application/json" }
-      });
+      const responseText = await clinicalAIRequest(
+        [{ role: "user", content: prompt }],
+        aiSettings
+      );
 
-      const data = parseJsonResponse(response.text, []);
+      const data = parseJsonResponse(responseText, []);
       setAiSuggestions(data);
       setSelectedSuggestions([]);
     } catch (error: any) {
@@ -676,17 +818,18 @@ If it is not a valid medication, return:
         allergies: allergiesStr
       });
       
-      const response = await generateContentWithRetry({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-        config: { responseMimeType: "application/json" }
-      });
+      const responseText = await clinicalAIRequest(
+        [{ role: "user", content: prompt }],
+        aiSettings
+      );
       
-      const alternative = parseJsonResponse(response.text, {} as any);
-      const newSuggestions = [...aiSuggestions];
-      newSuggestions[idx] = alternative;
-      setAiSuggestions(newSuggestions);
-      toast.success("Alternative medication suggested.");
+      const alternative = parseJsonResponse(responseText, {} as any);
+      if (alternative && alternative.medication) {
+        const newSuggestions = [...aiSuggestions];
+        newSuggestions[idx] = alternative;
+        setAiSuggestions(newSuggestions);
+        toast.success("Alternative medication suggested.");
+      }
     } catch (e: any) {
       console.error("Failed to get alternative:", e);
       const isQuotaError = e?.error?.code === 429 || e?.code === 429;
@@ -711,7 +854,14 @@ If it is not a valid medication, return:
     }
   };
 
-  const getMedicationDisplay = (genericName: string) => {
+  const getMedicationDisplay = (genericName: any) => {
+    if (!genericName) return "";
+    
+    if (typeof genericName === 'object') {
+      const extracted = genericName.name || genericName.generic_name || genericName.medication;
+      genericName = typeof extracted === 'string' ? extracted : "Unknown Medication";
+    }
+
     if (nameType === 'generic') return genericName;
     
     const tradeNames: Record<string, string> = {
@@ -836,6 +986,24 @@ If it is not a valid medication, return:
                 toast.error("Please add at least one medication.");
                 return;
               }
+              navigate('/clinical-audit', { 
+                state: { 
+                  items: currentPrescription,
+                  notes: prescriptionNotes,
+                  refills: refills
+                } 
+              });
+            }}
+            className="px-4 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-lg text-sm font-medium hover:bg-indigo-100 flex items-center gap-2 transition-colors"
+          >
+            <ShieldCheck className="w-4 h-4" /> Check
+          </button>
+          <button 
+            onClick={() => {
+              if (currentPrescription.length === 0) {
+                toast.error("Please add at least one medication.");
+                return;
+              }
               setIsPreviewOpen(true);
             }}
             className="px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 flex items-center gap-2 transition-colors"
@@ -858,9 +1026,31 @@ If it is not a valid medication, return:
 
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col flex-1 overflow-hidden">
             <div className="p-4 border-b border-slate-200">
-              <h3 className="font-semibold text-slate-800 flex items-center gap-2 mb-3">
-                <Search className="w-4 h-4 text-slate-500" /> Medications
-              </h3>
+              <div className="flex justify-between items-center mb-3">
+                <h3 className="font-semibold text-slate-800 flex items-center gap-2">
+                  <Search className="w-4 h-4 text-slate-500" /> Medications
+                </h3>
+                <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200">
+                   <button 
+                     onClick={() => setNameType('generic')}
+                     className={cn(
+                       "px-3 py-1.5 text-xs font-bold rounded-md transition-all",
+                       nameType === 'generic' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                     )}
+                   >
+                     Generic
+                   </button>
+                   <button 
+                     onClick={() => setNameType('trade')}
+                     className={cn(
+                       "px-3 py-1.5 text-xs font-bold rounded-md transition-all",
+                       nameType === 'trade' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                     )}
+                   >
+                     Trade
+                   </button>
+                </div>
+              </div>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input 
@@ -1049,14 +1239,14 @@ If it is not a valid medication, return:
                   </div>
                 )}
                 
-                {selectedMedForForms.sideEffects && (
+                {selectedMedForForms.sideEffects && Array.isArray(selectedMedForForms.sideEffects) && (
                   <div>
                     <h5 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Common Side Effects</h5>
                     <p className="text-xs text-slate-600">{selectedMedForForms.sideEffects.join(", ")}</p>
                   </div>
                 )}
 
-                {selectedMedForForms.interactions && (
+                {selectedMedForForms.interactions && Array.isArray(selectedMedForForms.interactions) && (
                   <div>
                     <h5 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Key Interactions</h5>
                     <p className="text-xs text-slate-600">{selectedMedForForms.interactions.join(", ")}</p>
@@ -1126,7 +1316,7 @@ If it is not a valid medication, return:
                       <div key={i} className="p-3 bg-white border border-red-100 rounded-lg shadow-sm">
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                            {alert.drugs.join(" + ")}
+                            {Array.isArray(alert.drugs) ? alert.drugs.join(" + ") : "Unknown"}
                           </span>
                           <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase ${
                             alert.severity === 'Major' ? 'bg-red-100 text-red-700' :
@@ -1161,7 +1351,7 @@ If it is not a valid medication, return:
                             {alert.type}
                           </span>
                           <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase ${
-                            alert.severity === 'Severe' ? 'bg-red-100 text-red-700' :
+                            (alert.severity === 'Severe' || alert.severity === 'Major') ? 'bg-red-100 text-red-700' :
                             alert.severity === 'Moderate' ? 'bg-amber-100 text-amber-700' :
                             'bg-blue-100 text-blue-700'
                           }`}>
@@ -1172,6 +1362,65 @@ If it is not a valid medication, return:
                       </div>
                     ))}
                   </div>
+
+                  {gapAlerts.length > 0 && (
+                    <div className="mt-6">
+                      <div className="flex items-center gap-2 text-indigo-700 font-bold text-sm bg-indigo-50 p-2.5 rounded-lg mb-3">
+                        <Sparkles className="w-4 h-4 text-indigo-600" />
+                        <span>Therapeutic Gap Analysis</span>
+                      </div>
+                      <div className="space-y-3">
+                        {gapAlerts.map((gap, i) => (
+                          <div key={i} className="p-3 bg-white border border-indigo-100 rounded-lg shadow-sm">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-xs font-bold text-indigo-500 uppercase tracking-wider">
+                                Missing Therapy
+                              </span>
+                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase ${
+                                gap.priority === 'High' ? 'bg-red-100 text-red-700' :
+                                gap.priority === 'Medium' ? 'bg-amber-100 text-amber-700' :
+                                'bg-blue-100 text-blue-700'
+                              }`}>
+                                {gap.priority}
+                              </span>
+                            </div>
+                            <p className="text-sm font-bold text-slate-800 mb-1">{gap.condition}</p>
+                            <p className="text-xs text-slate-600 mb-2">{gap.message}</p>
+                            {gap.clinicalContext && (
+                              <div className="text-[10px] bg-slate-50 p-1.5 rounded text-slate-500 border border-slate-100">
+                                <strong>Guideline:</strong> {gap.clinicalContext}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {indicationAlerts.length > 0 && (
+                    <div className="mt-6">
+                      <div className="flex items-center gap-2 text-rose-700 font-bold text-sm bg-rose-50 p-2.5 rounded-lg mb-3">
+                        <CheckCircle className="w-4 h-4 text-rose-600" />
+                        <span>Indication Auditor</span>
+                      </div>
+                      <div className="space-y-3">
+                        {indicationAlerts.map((alert, i) => (
+                          <div key={i} className="p-3 bg-white border border-rose-100 rounded-lg shadow-sm">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-xs font-bold text-rose-500 uppercase tracking-wider">
+                                Missing Indication
+                              </span>
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded uppercase bg-amber-100 text-amber-700">
+                                {alert.severity}
+                              </span>
+                            </div>
+                            <p className="text-sm font-bold text-slate-800 mb-1">{alert.drug}</p>
+                            <p className="text-xs text-slate-600">{alert.message}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
               {currentPrescription.length === 0 ? (
@@ -1202,15 +1451,30 @@ If it is not a valid medication, return:
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
                           <div className="flex flex-col gap-2">
                             <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Concentration</label>
-                            <div className="relative">
-                              <Activity className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                              <input 
-                                type="text" 
-                                value={item.concentration || ""}
-                                onChange={(e) => handleUpdatePrescriptionItem(item.id, 'concentration', e.target.value)}
-                                placeholder="e.g., 500mg"
-                                className="w-full pl-9 pr-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                              />
+                            <div className="flex gap-2">
+                              <div className="relative flex-1">
+                                <Activity className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                <input 
+                                  type="text" 
+                                  value={item.concentration || ""}
+                                  onChange={(e) => handleUpdatePrescriptionItem(item.id, 'concentration', e.target.value)}
+                                  placeholder="e.g., 500mg"
+                                  className="w-full pl-9 pr-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                                />
+                              </div>
+                              <button 
+                                onClick={() => setCalculatorState({
+                                  isOpen: true,
+                                  itemId: item.id,
+                                  medicationName: item.medication,
+                                  concentration: item.concentration || "",
+                                  form: item.form || ""
+                                })}
+                                title="Weight-based calculator"
+                                className="p-2.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors border border-indigo-100"
+                              >
+                                <Calculator className="w-4 h-4" />
+                              </button>
                             </div>
                           </div>
                           <div className="flex flex-col gap-2">
@@ -1253,7 +1517,22 @@ If it is not a valid medication, return:
                             </div>
                           </div>
                           <div className="flex flex-col gap-2 md:col-span-4">
-                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Clinical Instructions</label>
+                            <div className="flex items-center justify-between">
+                              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Clinical Instructions</label>
+                              <button
+                                onClick={() => handleAutoGenerateItemInstructions(item.id)}
+                                disabled={itemsGeneratingAI.includes(item.id)}
+                                className="flex items-center gap-1.5 text-[10px] font-bold text-indigo-600 hover:text-indigo-700 transition-colors bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100 disabled:opacity-50"
+                                title="Auto-generate clinical instructions via AI"
+                              >
+                                {itemsGeneratingAI.includes(item.id) ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <Sparkles className="w-3 h-3" />
+                                )}
+                                Auto-Fill Instructions
+                              </button>
+                            </div>
                             <div className="relative">
                               <Info className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                               <input 
@@ -1275,12 +1554,26 @@ If it is not a valid medication, return:
 
             <div className="border-t-2 border-slate-100 pt-6">
               <div className="mb-6">
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Clinical Notes / Instructions</label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Clinical Notes / Instructions</label>
+                  <button
+                    onClick={handleAutoGeneratePrescriptionNotes}
+                    disabled={isGeneratingNotes || currentPrescription.length === 0}
+                    className="flex items-center gap-1.5 text-[10px] font-bold text-indigo-600 hover:text-indigo-700 transition-colors bg-indigo-50 px-2.5 py-1 rounded-full border border-indigo-100 disabled:opacity-50 shadow-sm"
+                  >
+                    {isGeneratingNotes ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <Sparkles className="w-3 h-3 text-indigo-500" />
+                    )}
+                    Generate Structured Clinical Notes
+                  </button>
+                </div>
                 <Textarea 
                   value={prescriptionNotes || ""}
                   onChange={(e) => setPrescriptionNotes(e.target.value)}
-                  placeholder="Enter specific instructions for the patient or pharmacist..."
-                  className="w-full p-3 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none min-h-[80px] transition-all bg-slate-50 focus:bg-white"
+                  placeholder="AI can auto-generate structured goals, regimen details, follow-up, and safety monitoring..."
+                  className="w-full p-4 border-2 border-slate-200 rounded-xl text-sm font-mono leading-relaxed focus:ring-2 focus:ring-indigo-500 outline-none resize-none min-h-[160px] transition-all bg-white shadow-inner text-slate-900 placeholder:text-slate-400"
                 ></Textarea>
               </div>
               
@@ -1319,30 +1612,10 @@ If it is not a valid medication, return:
       </>
       ) : (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-slate-200 flex justify-between items-center">
+          <div className="p-6 border-b border-slate-200">
             <div>
               <h3 className="text-lg font-bold text-slate-900">Active Medications</h3>
               <p className="text-sm text-slate-500">Manage current patient medications</p>
-            </div>
-            <div className="flex items-center gap-3 bg-slate-100 p-1 rounded-lg border border-slate-200">
-               <button 
-                 onClick={() => setNameType('generic')}
-                 className={cn(
-                   "px-3 py-1.5 text-xs font-bold rounded-md transition-all",
-                   nameType === 'generic' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
-                 )}
-               >
-                 Generic
-               </button>
-               <button 
-                 onClick={() => setNameType('trade')}
-                 className={cn(
-                   "px-3 py-1.5 text-xs font-bold rounded-md transition-all",
-                   nameType === 'trade' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
-                 )}
-               >
-                 Trade
-               </button>
             </div>
           </div>
           <div className="p-6">
@@ -1424,6 +1697,27 @@ If it is not a valid medication, return:
       )}
 
       {/* Modals */}
+      <WeightCalculatorModal 
+        isOpen={calculatorState.isOpen}
+        onClose={() => setCalculatorState(prev => ({ ...prev, isOpen: false }))}
+        patientWeight={vitals.weight}
+        medicationName={calculatorState.medicationName}
+        initialConcentration={calculatorState.concentration}
+        form={calculatorState.form}
+        onApply={(dosage, instructions) => {
+          if (calculatorState.itemId === "CUSTOM") {
+            setCustomMedDosage(dosage);
+            // Concatenate with existing instructions if needed or set it
+            const newInstructions = customMedInstructions ? `${customMedInstructions}. ${instructions}` : instructions;
+            setCustomMedInstructions(newInstructions);
+          } else if (calculatorState.itemId) {
+            handleUpdatePrescriptionItem(calculatorState.itemId, 'dosage', dosage);
+            handleUpdatePrescriptionItem(calculatorState.itemId, 'instructions', instructions);
+          }
+          setCalculatorState(prev => ({ ...prev, isOpen: false }));
+          toast.success("Dosage calculated and applied");
+        }}
+      />
       {isTemplatesOpen && (
         <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
@@ -1742,7 +2036,11 @@ If it is not a valid medication, return:
                         {rx.items.map((item: any, idx: number) => (
                           <div key={idx} className="flex items-center gap-2 text-sm">
                             <div className="w-1.5 h-1.5 rounded-full bg-indigo-400"></div>
-                            <span className="font-medium text-slate-800">{item.medication}</span>
+                            <span className="font-medium text-slate-800">
+                              {typeof item.medication === 'object' 
+                                ? (item.medication.name || item.medication.generic_name || "Unknown") 
+                                : item.medication}
+                            </span>
                             <span className="text-slate-500">•</span>
                             <span className="text-slate-600">{item.dosage}, {item.frequency}</span>
                           </div>
@@ -1804,13 +2102,27 @@ If it is not a valid medication, return:
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-slate-700 mb-1">Concentration</label>
-                  <input 
-                    type="text" 
-                    value={customMedConcentration}
-                    onChange={(e) => setCustomMedConcentration(e.target.value)}
-                    placeholder="e.g., 500mg"
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                  />
+                  <div className="flex gap-1">
+                    <input 
+                      type="text" 
+                      value={customMedConcentration}
+                      onChange={(e) => setCustomMedConcentration(e.target.value)}
+                      placeholder="e.g., 500mg"
+                      className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                    />
+                    <button 
+                      onClick={() => setCalculatorState({
+                        isOpen: true,
+                        itemId: "CUSTOM",
+                        medicationName: customMedName || "Custom Medication",
+                        concentration: customMedConcentration || "",
+                        form: customMedForm || ""
+                      })}
+                      className="p-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100"
+                    >
+                      <Calculator className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-slate-700 mb-1">Dosage</label>
@@ -1844,7 +2156,32 @@ If it is not a valid medication, return:
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-bold text-slate-700 mb-1">Clinical Instructions</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-sm font-bold text-slate-700">Clinical Instructions</label>
+                  <button
+                    onClick={async () => {
+                      if (!customMedName || !confirmedDiagnosis) {
+                        toast.error("Please enter med name and ensure diagnosis is finalized");
+                        return;
+                      }
+                      try {
+                        const prompt = getMedicationInstructionsPrompt(customMedName, {
+                          diagnosis: confirmedDiagnosis,
+                          dosage: customMedDosage || "Not specified",
+                          frequency: customMedFrequency || "Not specified",
+                          patientAllergies: selectedPatient?.allergies?.map((a: any) => a.name).join(", ") || "None reported"
+                        });
+                        const responseText = await clinicalAIRequest([{ role: "user", content: prompt }], aiSettings);
+                        if (responseText) setCustomMedInstructions(responseText.trim());
+                      } catch (e) {
+                        toast.error("Failed to generate instructions");
+                      }
+                    }}
+                    className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100"
+                  >
+                    AI Generate
+                  </button>
+                </div>
                 <input 
                   type="text" 
                   value={customMedInstructions}

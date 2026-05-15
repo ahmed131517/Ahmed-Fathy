@@ -21,24 +21,23 @@ export const AI_CONFIG = {
  * Generates the system instruction for the Ask AI feature.
  */
 export function getAskAiSystemInstruction(settings: { detailLevel: string, clinicalTone: string, specialty: string }, patientContext?: string) {
-  let instruction = AI_CONFIG.SYSTEM_INSTRUCTIONS.DEFAULT;
+  let instruction = `[ENHANCED AI AWARENESS FRAMEWORK]
+You are an advanced medical digital twin and clinical analyst assistant. 
+Your primary goal is to provide exhaustive, data-aware insights based on the selected patient's full medical record.
 
-  if (settings.detailLevel === 'concise') {
-    instruction += `\n\n${AI_CONFIG.SYSTEM_INSTRUCTIONS.DETAIL_LEVEL.CONCISE}`;
-  } else {
-    instruction += `\n\n${AI_CONFIG.SYSTEM_INSTRUCTIONS.DETAIL_LEVEL.COMPREHENSIVE}`;
-  }
+Your specialty focus is: ${settings.specialty}. Tailor all responses from this perspective.
 
-  if (settings.clinicalTone === 'professional') {
-    instruction += `\n\n${AI_CONFIG.SYSTEM_INSTRUCTIONS.CLINICAL_TONE.PROFESSIONAL}`;
-  } else {
-    instruction += `\n\n${AI_CONFIG.SYSTEM_INSTRUCTIONS.CLINICAL_TONE.PATIENT_FRIENDLY}`;
-  }
-
-  instruction += `\n\nYour primary specialty focus is: ${settings.specialty}. Tailor your advice and insights from this perspective.`;
+[OPERATIONAL GUIDELINES]
+1. CONTEXT PRIORITIZATION: Always prioritize the provided [PATIENT CONTEXT] categories when formulating responses.
+2. PROFESSIONALISM: ${settings.clinicalTone === 'professional' ? AI_CONFIG.SYSTEM_INSTRUCTIONS.CLINICAL_TONE.PROFESSIONAL : AI_CONFIG.SYSTEM_INSTRUCTIONS.CLINICAL_TONE.PATIENT_FRIENDLY}
+3. DENSITY: ${settings.detailLevel === 'concise' ? AI_CONFIG.SYSTEM_INSTRUCTIONS.DETAIL_LEVEL.CONCISE : AI_CONFIG.SYSTEM_INSTRUCTIONS.DETAIL_LEVEL.COMPREHENSIVE}
+4. PREDICTIVE MODELING: If the user initiates "Patient Twin Simulation", provide probabilistic outcomes based on physiological baselines and proposed interventions.
+5. SAFETY: Always include relevant red flags and monitoring requirements for any recommended treatments.`;
 
   if (patientContext) {
-    instruction += `\n\nCURRENT PATIENT CONTEXT:\n${patientContext}\n\nPlease use this patient context to provide personalized and relevant medical insights when answering the user's questions.`;
+    instruction += `\n\n[PATIENT CONTEXT]\n${patientContext}\n\nUse this data as the single source of truth for this patient encounter. Any recommendation, summary, or analysis must be specifically tailored to these records.`;
+  } else {
+    instruction += `\n\n[PATIENT CONTEXT]: No patient selected. Provide general evidence-based medical knowledge until a patient context is provided.`;
   }
 
   return instruction;
@@ -95,6 +94,59 @@ export function getGeneratePrescriptionPrompt(patientData: {
       - reasoning: string (brief clinical reasoning, including contraindication checks and interaction avoidance)
       
       Only return the JSON array.`;
+}
+
+/**
+ * Generates a prompt for generating specific instructions for a single medication.
+ */
+export function getMedicationInstructionsPrompt(medication: string, context: {
+  diagnosis: string;
+  dosage: string;
+  frequency: string;
+  patientAllergies: string;
+}) {
+  return `As a clinical assistant, generate specific clinical instructions for the following medication.
+      
+      Medication: ${medication}
+      Dosage: ${context.dosage}
+      Frequency: ${context.frequency}
+      Diagnosis: ${context.diagnosis}
+      Patient Allergies: ${context.patientAllergies}
+      
+      Rules:
+      1. Provide clear, concise clinical instructions for the patient.
+      2. If the drug has critical safety warnings or monitoring needs (e.g., "Avoid alcohol", "Take with high-fat meal", "Watch for yellow skin"), prioritize these.
+      3. Max 12 words. Focus on safety over common knowledge.
+      
+      Return ONLY the instructions text.`;
+}
+
+/**
+ * Generates a prompt for generating general prescription notes / patient advice.
+ */
+export function getPrescriptionNotesPrompt(prescription: {
+  medications: string[];
+  diagnosis: string;
+  patientName: string;
+}) {
+  return `As a senior clinical analyst, generate a structured clinical summary and treatment plan for the following prescription.
+      
+      Patient: ${prescription.patientName}
+      Diagnosis: ${prescription.diagnosis}
+      Medications: ${prescription.medications.join(", ")}
+      
+      Rules:
+      1. Use the following EXACT structure:
+         GOALS: [Briefly state therapy aims]
+         REGIMEN: [Specific instructions for this medication list]
+         FOLLOW-UP: [Timeline and targets, e.g., "Repeat serum IgE in 4 weeks"]
+         MONITORING/SAFETY: [Specific labs like LFTs, ECGs, or red flags, e.g., "Baseline LFTs for Itraconazole"]
+      
+      2. Content must be high-density and clinically actionable.
+      3. For specific drugs known to require monitoring (e.g., Itraconazole -> LFTs, Statins -> LFTs, ACEi -> Renal/K+), include those specific monitoring instructions.
+      4. Keep the total length concise (max 150 words).
+      
+      Return ONLY the structured text.`;
 }
 
 /**

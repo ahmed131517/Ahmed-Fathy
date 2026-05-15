@@ -6,8 +6,9 @@ import {
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { usePatient } from "../lib/PatientContext";
+import { useAISettings } from "../lib/AISettingsContext";
+import { clinicalAIRequest } from "@/services/aiWorkflowService";
 import { GoogleMap, useJsApiLoader, Marker } from '@react-google-maps/api';
-import { generateContentWithRetry } from "../utils/gemini";
 import { toast } from "sonner";
 import Markdown from "react-markdown";
 
@@ -109,6 +110,7 @@ const PharmacyMap = ({ pharmacies }: { pharmacies: Pharmacy[] }) => {
 
 export function Pharmacies() {
   const { selectedPatient } = usePatient();
+  const { settings: aiSettings } = useAISettings();
   const [pharmacies, setPharmacies] = useState<Pharmacy[]>(initialPharmacies);
   const [orders, setOrders] = useState<Order[]>(initialOrders);
   const [searchQuery, setSearchQuery] = useState("");
@@ -194,22 +196,16 @@ export function Pharmacies() {
         console.warn("Geolocation failed, using default center", err);
       }
 
-      const response = await generateContentWithRetry({
-        model: "gemini-2.5-flash",
-        contents: "Find 5 good pharmacies nearby and provide their details including address and rating.",
-        config: {
-          tools: [{ googleMaps: {} }],
-          toolConfig: {
-            retrievalConfig: {
-              latLng: location || center
-            }
-          }
-        },
-      });
+      const responseText = await clinicalAIRequest(
+        [{ role: 'user', content: "Find 5 good pharmacies nearby and provide their details including address and rating." }],
+        aiSettings,
+        "You are a helpful assistant. Use grounding if available to find and list pharmacies."
+      );
 
-      setAiResponse(response.text);
-      const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-      setGroundingChunks(chunks);
+      setAiResponse(responseText);
+      // Note: Grounding chunks for Gemini 2.5 are handled differently in clinicalAIRequest 
+      // if it routes there, but for now we focus on the text response
+      setGroundingChunks([]); 
       
       toast.success("Nearby pharmacies found!");
     } catch (error) {

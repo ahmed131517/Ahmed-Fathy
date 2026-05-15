@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { UserCheck, Eye, Wind, Heart, Activity, Move, Cpu, Feather as FeatherIcon, Clipboard, Save, Check, Thermometer, Droplets, Scale, Ruler, Mic, Sparkles, FileText, RefreshCw, CheckCircle2, AlertCircle, Camera, Trash2, CheckCircle, ChevronDown, ChevronUp, Edit2, X, Plus, AlertTriangle, Stethoscope, Ear, Hand, Info } from "lucide-react";
-import { generateContentWithRetry } from "../utils/gemini";
+import { UserCheck, Eye, Wind, Heart, Activity, Move, Cpu, Feather as FeatherIcon, Clipboard, Save, Check, Thermometer, Droplets, Scale, Ruler, Mic, Sparkles, FileText, RefreshCw, CheckCircle2, AlertCircle, Camera, Trash2, CheckCircle, ChevronDown, ChevronUp, Edit2, X, Plus, AlertTriangle, Stethoscope, Ear, Hand, Info, Maximize2, Minimize2 } from "lucide-react";
+import { clinicalAIRequest } from "../services/aiWorkflowService";
+import { useAISettings } from "../lib/AISettingsContext";
 import { cn } from "@/lib/utils";
 import { CheckboxFindings } from "@/components/physical-exam/CheckboxFindings";
 import { Slider } from "@/components/ui/slider";
@@ -13,12 +14,42 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ExaminationGuidance } from "@/components/physical-exam/ExaminationGuidance";
+import { FindingsAnalyzer } from "@/components/physical-exam/FindingsAnalyzer";
 import { JointBodyMap } from "./msk/JointBodyMap";
 import { JointExamCard } from "./msk/JointExamCard";
 import { db } from "@/lib/db";
 import { toast } from "sonner";
 import { usePatient } from "@/lib/PatientContext";
 import { useSymptom } from "@/lib/SymptomContext";
+
+interface SectionHeaderProps {
+  title: string;
+  onMarkNormal: () => void;
+  onClear: () => void;
+}
+
+function SectionHeader({ title, onMarkNormal, onClear }: SectionHeaderProps) {
+  return (
+    <div className="flex items-center justify-between mb-4 mt-2">
+      <h4 className="font-semibold text-base text-slate-900">{title}</h4>
+      <div className="flex gap-2">
+        <button 
+          onClick={onMarkNormal}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100 hover:bg-emerald-100 transition-all shadow-sm"
+        >
+          <CheckCircle className="w-3.5 h-3.5" /> All Normal
+        </button>
+        <button 
+          onClick={onClear}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100 transition-all shadow-sm"
+        >
+          <Trash2 className="w-3.5 h-3.5" /> Clear
+        </button>
+      </div>
+    </div>
+  );
+}
 
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -318,7 +349,7 @@ const smartPhrases = [
   { label: "PERRLA", text: "Pupils equal, round, reactive to light and accommodation." },
 ];
 
-export function MusculoskeletalTab({ findings, onChange }: { findings: any, onChange: (field: string, value: any) => void }) {
+export function MusculoskeletalTab({ findings, onChange, onMarkNormal, onClear }: { findings: any, onChange: (field: string, value: any) => void, onMarkNormal: () => void, onClear: () => void }) {
   const {
     galsScreen,
     gaitPosture,
@@ -366,7 +397,11 @@ export function MusculoskeletalTab({ findings, onChange }: { findings: any, onCh
 
   return (
     <div className="space-y-6">
-      <h4 className="font-semibold text-base">Musculoskeletal System</h4>
+      <SectionHeader 
+        title="Musculoskeletal System" 
+        onMarkNormal={onMarkNormal} 
+        onClear={onClear} 
+      />
 
       {/* GALS Screen */}
       <div className="space-y-2">
@@ -533,7 +568,7 @@ export function MusculoskeletalTab({ findings, onChange }: { findings: any, onCh
   );
 }
 
-export function NeurologicalTab({ findings, onChange }: { findings: any, onChange: (field: string, value: any) => void }) {
+export function NeurologicalTab({ findings, onChange, onMarkNormal, onClear }: { findings: any, onChange: (field: string, value: any) => void, onMarkNormal: () => void, onClear: () => void }) {
   const {
     mental,
     showCranial,
@@ -582,20 +617,55 @@ export function NeurologicalTab({ findings, onChange }: { findings: any, onChang
 
   return (
     <div className="space-y-6">
-      <h4 className="font-semibold text-base">Neurological System</h4>
-
-      <CheckboxFindings
-        label="Mental Status"
-        options={[
-          { id: "alert", label: "Alert" },
-          { id: "oriented-x3", label: "Oriented x3" },
-          { id: "normal-speech", label: "Normal Speech" },
-          { id: "normal-memory", label: "Normal Memory" },
-          { id: "follows-commands", label: "Follows Commands" },
-        ]}
-        selected={mental}
-        onChange={(v) => onChange('mental', v)}
+      <SectionHeader 
+        title="Neurological System" 
+        onMarkNormal={onMarkNormal} 
+        onClear={onClear} 
       />
+
+      <div className="space-y-4">
+        <Label className="font-semibold text-slate-800">Mental Status</Label>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-1">
+            <Label className="text-xs">Conscious Level</Label>
+            <Select value={mental?.consciousLevel} onValueChange={(v) => onChange('mental', { ...mental, consciousLevel: v })}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select..."/></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="normal">Normal</SelectItem>
+                <SelectItem value="lethargic">Lethargic</SelectItem>
+                <SelectItem value="obtunded">Obtunded</SelectItem>
+                <SelectItem value="stuporous">Stuporous</SelectItem>
+                <SelectItem value="comatose">Comatose</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          
+          <div className="space-y-1">
+            <Label className="text-xs">Alertness</Label>
+            <Select value={mental?.alertness} onValueChange={(v) => onChange('mental', { ...mental, alertness: v })}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select..."/></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="normal">Normal</SelectItem>
+                <SelectItem value="drowsy">Drowsy</SelectItem>
+                <SelectItem value="hyper-alert">Hyper-alert</SelectItem>
+                <SelectItem value="agitated">Agitated</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <CheckboxFindings
+          label="Orientation"
+          options={[
+            { id: "time", label: "Time" },
+            { id: "person", label: "Person" },
+            { id: "place", label: "Place" },
+            { id: "situation", label: "Situation" },
+          ]}
+          selected={mental?.orientation || []}
+          onChange={(v) => onChange('mental', { ...mental, orientation: v })}
+        />
+      </div>
 
       {/* Cranial Nerves */}
       <div className="space-y-2">
@@ -1016,7 +1086,7 @@ export function NeurologicalTab({ findings, onChange }: { findings: any, onChang
   );
 }
 
-export function SkinTab({ findings, onChange }: { findings: any, onChange: (field: string, value: any) => void }) {
+export function SkinTab({ findings, onChange, onMarkNormal, onClear }: { findings: any, onChange: (field: string, value: any) => void, onMarkNormal: () => void, onClear: () => void }) {
   const {
     showDetailed,
     color,
@@ -1064,7 +1134,11 @@ export function SkinTab({ findings, onChange }: { findings: any, onChange: (fiel
 
   return (
     <div className="space-y-6">
-      <h4 className="font-semibold text-base">Skin Examination</h4>
+      <SectionHeader 
+        title="Skin Examination" 
+        onMarkNormal={onMarkNormal} 
+        onClear={onClear} 
+      />
 
       <CheckboxFindings
         label="Skin Assessment"
@@ -1403,7 +1477,7 @@ const heentSmartPhrases = [
   { label: "PERRLA", text: "Pupils equal, round, reactive to light and accommodation." },
 ];
 
-export function HeentTab({ findings, onChange }: { findings: any, onChange: (field: string, value: any) => void }) {
+export function HeentTab({ findings, onChange, onMarkNormal, onClear }: { findings: any, onChange: (field: string, value: any) => void, onMarkNormal: () => void, onClear: () => void }) {
   const { heentState, pupilSize, notes } = findings;
   const [modalOpen, setModalOpen] = useState(false);
   const [currentPart, setCurrentPart] = useState<string | null>(null);
@@ -1431,14 +1505,12 @@ export function HeentTab({ findings, onChange }: { findings: any, onChange: (fie
   };
 
   const markAllNormal = () => {
-    const all: HeentState = {};
-    Object.keys(heentMapping).forEach(partId => {
-      all[partId] = { status: 'normal', findings: {} };
-    });
-    onChange('heentState', all);
+    onMarkNormal();
   };
 
-  const clearAll = () => onChange('heentState', {});
+  const clearAll = () => {
+    onClear();
+  };
 
   const saveAbnormalFindings = () => {
     if (!currentPart) return;
@@ -1483,33 +1555,39 @@ export function HeentTab({ findings, onChange }: { findings: any, onChange: (fie
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h4 className="font-semibold text-base">HEENT & Neck Examination</h4>
-        <div className="flex gap-2">
-          <Button size="sm" variant="default" onClick={markAllNormal} className="gap-1 h-7 text-xs">
-            <CheckCircle className="h-3 w-3" /> All Normal
-          </Button>
-          <Button size="sm" variant="outline" onClick={clearAll} className="gap-1 h-7 text-xs">
-            <Trash2 className="h-3 w-3" /> Clear
-          </Button>
-        </div>
-      </div>
+      <SectionHeader 
+        title="HEENT & Neck Examination" 
+        onMarkNormal={markAllNormal} 
+        onClear={clearAll} 
+      />
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {(heentSections || []).map(section => (
           <div key={section.key} className="rounded-lg border bg-card p-4 space-y-3">
             <div className="flex items-center justify-between">
               <h5 className="text-sm font-semibold text-primary">{section.title}</h5>
-              <Button
-                size="sm" variant="ghost" className="h-6 text-[10px] px-2"
-                onClick={() => {
-                  const updates: HeentState = {};
-                  (section.parts || []).forEach(p => { updates[p] = { status: 'normal', findings: {} }; });
-                  onChange('heentState', { ...heentState, ...updates });
-                }}
-              >
-                ✓ Normal
-              </Button>
+              <div className="flex gap-1">
+                <Button
+                  size="sm" variant="ghost" className="h-6 text-[10px] px-2 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                  onClick={() => {
+                    const updates: HeentState = {};
+                    (section.parts || []).forEach(p => { updates[p] = { status: 'normal', findings: {} }; });
+                    onChange('heentState', { ...heentState, ...updates });
+                  }}
+                >
+                  <CheckCircle className="h-3 w-3 mr-1" /> All Normal
+                </Button>
+                <Button
+                  size="sm" variant="ghost" className="h-6 text-[10px] px-2"
+                  onClick={() => {
+                    const next = { ...heentState };
+                    (section.parts || []).forEach(p => { delete next[p]; });
+                    onChange('heentState', next);
+                  }}
+                >
+                  <Trash2 className="h-3 w-3 mr-1" /> Clear
+                </Button>
+              </div>
             </div>
             <div className="flex flex-wrap gap-1.5">
               {(section.parts || []).map(partId => {
@@ -1629,43 +1707,16 @@ export function HeentTab({ findings, onChange }: { findings: any, onChange: (fie
   );
 }
 
-export function SseTab({ findings, onChange }: { findings: any, onChange: (field: string, value: any) => void }) {
+export function SseTab({ findings, onChange, onMarkNormal, onClear }: { findings: any, onChange: (field: string, value: any) => void, onMarkNormal: () => void, onClear: () => void }) {
   const { visualAcuityR, visualAcuityL, fundoscopy, weber, rinneR, rinneL, otoscopy, notes } = findings;
-
-  const markAllNormal = () => {
-    onChange('visualAcuityR', '20/20');
-    onChange('visualAcuityL', '20/20');
-    onChange('fundoscopy', ['normal-fundus']);
-    onChange('weber', 'midline');
-    onChange('rinneR', 'ac>bc');
-    onChange('rinneL', 'ac>bc');
-    onChange('otoscopy', ['normal-tm']);
-  };
-
-  const clearAll = () => {
-    onChange('visualAcuityR', '');
-    onChange('visualAcuityL', '');
-    onChange('fundoscopy', []);
-    onChange('weber', '');
-    onChange('rinneR', '');
-    onChange('rinneL', '');
-    onChange('otoscopy', []);
-    onChange('notes', '');
-  };
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h4 className="font-semibold text-base">Specialized Sensory Exam (SSE)</h4>
-        <div className="flex gap-2">
-          <Button size="sm" variant="default" onClick={markAllNormal} className="gap-1 h-7 text-xs">
-            <CheckCircle className="h-3 w-3" /> All Normal
-          </Button>
-          <Button size="sm" variant="outline" onClick={clearAll} className="gap-1 h-7 text-xs">
-            <Trash2 className="h-3 w-3" /> Clear
-          </Button>
-        </div>
-      </div>
+      <SectionHeader 
+        title="Specialized Sensory Exam (SSE)" 
+        onMarkNormal={onMarkNormal} 
+        onClear={onClear} 
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="space-y-4">
@@ -1775,9 +1826,10 @@ const cardioAuscultationFindings = [
   { id: "s4-gallop", label: "S4 Gallop" },
   { id: "systolic-murmur", label: "Systolic Murmur" },
   { id: "diastolic-murmur", label: "Diastolic Murmur" },
-  { id: "ejection-click", label: "Ejection Click" },
+  { id: "mid-systolic-click", label: "Mid-systolic Click" },
   { id: "opening-snap", label: "Opening Snap" },
   { id: "pericardial-rub", label: "Pericardial Rub" },
+  { id: "mediastinal-crunch", label: "Mediastinal Crunch" },
 ];
 
 const cardioInspectionFindings = [
@@ -1787,6 +1839,7 @@ const cardioInspectionFindings = [
   { id: "clubbing", label: "Clubbing" },
   { id: "edema", label: "Peripheral Edema" },
   { id: "xanthoma", label: "Xanthoma" },
+  { id: "surgical-scar", label: "Surgical Scar" },
 ];
 
 const cardioPalpationFindings = [
@@ -1795,40 +1848,45 @@ const cardioPalpationFindings = [
   { id: "parasternal-heave", label: "Parasternal Heave" },
   { id: "thrills", label: "Thrills" },
   { id: "palpable-p2", label: "Palpable P2" },
+  { id: "tender-chest", label: "Chest Wall Tenderness" },
 ];
 
 const cardioAllFindingsList = [...cardioAuscultationFindings, ...cardioInspectionFindings, ...cardioPalpationFindings];
 
-const cardioFindingAnalysis: Record<string, { severity?: string[]; timing?: string[]; character?: string[]; grade?: string[]; radiation?: string[]; significance: string }> = {
+const cardioFindingAnalysis: Record<string, { severity?: string[]; timing?: string[]; character?: string[]; grade?: string[]; radiation?: string[]; maneuver?: string[]; significance: string }> = {
   "systolic-murmur": {
     grade: ["I/VI", "II/VI", "III/VI", "IV/VI", "V/VI", "VI/VI"],
     timing: ["Early Systolic", "Mid-Systolic", "Late Systolic", "Pan-Systolic"],
-    character: ["Crescendo", "Decrescendo", "Crescendo-Decrescendo", "Plateau"],
+    character: ["Blowing", "Harsh", "Musical", "Crescendo-Decrescendo", "Plateau"],
     radiation: ["Axilla", "Carotids", "Back", "None"],
-    significance: "Consider aortic stenosis, mitral regurgitation, VSD, or flow murmur. Grade and radiation help differentiate.",
+    maneuver: ["Increases with Squatting", "Decreases with Valsalva", "Increases with Handgrip"],
+    significance: "Consider aortic stenosis (mid-systolic, harsh), mitral regurgitation (pan-systolic, blowing), or HOCM (increases with Valsalva).",
   },
   "diastolic-murmur": {
     grade: ["I/IV", "II/IV", "III/IV", "IV/IV"],
     timing: ["Early Diastolic", "Mid-Diastolic", "Late Diastolic (Presystolic)"],
     character: ["Blowing", "Rumbling"],
+    maneuver: ["Handgrip increases AR", "Inspiration increases right-sided", "Left lateral decubitus increases MS"],
     significance: "Always pathological. Consider aortic regurgitation (early, blowing) or mitral stenosis (mid, rumbling).",
   },
-  "s3-gallop": {
-    significance: "Suggests volume overload or ventricular dysfunction — consider heart failure, mitral regurgitation, or high-output states. Normal in young adults.",
-  },
-  "s4-gallop": {
-    significance: "Suggests reduced ventricular compliance — consider hypertension, aortic stenosis, hypertrophic cardiomyopathy, or ischemia.",
-  },
-  "pericardial-rub": {
-    character: ["Scratchy", "Grating", "Squeaky"],
-    significance: "Suggests pericarditis — consider viral, uremic, post-MI (Dressler's), or autoimmune etiology.",
-  },
-  "ejection-click": {
-    timing: ["Early Systolic"],
-    significance: "Suggests bicuspid aortic valve or pulmonic stenosis.",
+  "mid-systolic-click": {
+    significance: "Classic sign of Mitral Valve Prolapse (MVP). Often followed by a late systolic murmur.",
   },
   "opening-snap": {
-    significance: "Classic for mitral stenosis. Interval from S2 to OS inversely correlates with stenosis severity.",
+    significance: "High-pitched sound following S2, characteristic of Mitral Stenosis. S2-OS interval inverse to severity.",
+  },
+  "s3-gallop": {
+    significance: "Suggests volume overload or ventricular dysfunction — consider heart failure or mitral regurgitation. Normal in young adults/pregnancy.",
+  },
+  "s4-gallop": {
+    significance: "Suggests reduced ventricular compliance — consider hypertension, aortic stenosis, or hypertrophic cardiomyopathy.",
+  },
+  "pericardial-rub": {
+    character: ["Scratchy", "Grating", "Three-component"],
+    significance: "Suggests pericarditis. Often louder when leaning forward in expiration.",
+  },
+  "mediastinal-crunch": {
+    significance: "Hamman's sign: Crunching/clicking sound synchronous with heart beat. Suggests pneumomediastinum.",
   },
   "jvd-elevated": {
     severity: ["Mild", "Moderate", "Severe"],
@@ -1870,7 +1928,7 @@ interface FindingDetail {
   findingLabel: string;
 }
 
-export function CardiovascularTab({ findings, onChange }: { findings: any, onChange: (field: string, value: any) => void }) {
+export function CardiovascularTab({ findings, onChange, onMarkNormal, onClear }: { findings: any, onChange: (field: string, value: any) => void, onMarkNormal: () => void, onClear: () => void }) {
   const {
     heart,
     pulses,
@@ -1938,7 +1996,11 @@ export function CardiovascularTab({ findings, onChange }: { findings: any, onCha
 
   return (
     <div className="space-y-6">
-      <h4 className="font-semibold text-base">Cardiovascular System</h4>
+      <SectionHeader 
+        title="Cardiovascular System" 
+        onMarkNormal={onMarkNormal} 
+        onClear={onClear} 
+      />
 
       <CheckboxFindings
         label="Heart"
@@ -2268,7 +2330,7 @@ const findingAnalysis: Record<string, { severity?: string[]; timing?: string[]; 
 
 
 
-export function RespiratoryTab({ findings, onChange }: { findings: any, onChange: (field: string, value: any) => void }) {
+export function RespiratoryTab({ findings, onChange, onMarkNormal, onClear }: { findings: any, onChange: (field: string, value: any) => void, onMarkNormal: () => void, onClear: () => void }) {
   const {
     lungs,
     regionalFindings,
@@ -2350,7 +2412,11 @@ export function RespiratoryTab({ findings, onChange }: { findings: any, onChange
 
   return (
     <div className="space-y-6">
-      <h4 className="font-semibold text-base">Respiratory System</h4>
+      <SectionHeader 
+        title="Respiratory System" 
+        onMarkNormal={onMarkNormal} 
+        onClear={onClear} 
+      />
 
       <CheckboxFindings
         label="Lungs"
@@ -2691,7 +2757,7 @@ const giFindingAnalysis: Record<string, { severity?: string[]; timing?: string[]
   striae: { significance: "Purple striae may suggest Cushing's syndrome. Silver/white striae are common post-pregnancy or weight change." },
 };
 
-export function GastrointestinalTab({ findings, onChange }: { findings: any, onChange: (field: string, value: any) => void }) {
+export function GastrointestinalTab({ findings, onChange, onMarkNormal, onClear }: { findings: any, onChange: (field: string, value: any) => void, onMarkNormal: () => void, onClear: () => void }) {
   const {
     abdomen,
     regionFindings,
@@ -2759,7 +2825,11 @@ export function GastrointestinalTab({ findings, onChange }: { findings: any, onC
 
   return (
     <div className="space-y-6">
-      <h4 className="font-semibold text-base">Gastrointestinal System</h4>
+      <SectionHeader 
+        title="Gastrointestinal System" 
+        onMarkNormal={onMarkNormal} 
+        onClear={onClear} 
+      />
 
       <CheckboxFindings
         label="Abdomen"
@@ -2967,12 +3037,17 @@ export function GastrointestinalTab({ findings, onChange }: { findings: any, onC
   );
 }
 
-export function PsychiatricTab({ findings, onChange }: { findings: any, onChange: (field: string, value: any) => void }) {
-  const { mood, affect, thoughtProcess, thoughtContent, insight, judgment, notes } = findings;
+export function PsychiatricTab({ findings, onChange, onMarkNormal, onClear }: { findings: any, onChange: (field: string, value: any) => void, onMarkNormal: () => void, onClear: () => void }) {
+  const { mood, affect, thoughtProcess, thoughtContent, insight, judgment, appearance, behavior, speech, perception, cognition, notes } = findings;
+  const [selectedTest, setSelectedTest] = useState<string | null>(null);
 
   return (
     <div className="space-y-6">
-      <h4 className="font-semibold text-base">Psychiatric Assessment</h4>
+      <SectionHeader 
+        title="Psychiatric Assessment" 
+        onMarkNormal={onMarkNormal} 
+        onClear={onClear} 
+      />
       
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="space-y-4">
@@ -3004,6 +3079,47 @@ export function PsychiatricTab({ findings, onChange }: { findings: any, onChange
             </Select>
           </div>
 
+          <CheckboxFindings
+            label="Appearance"
+            options={[
+              { id: "well-groomed", label: "Well-groomed" },
+              { id: "untidy", label: "Untidy" },
+              { id: "disheveled", label: "Disheveled" },
+              { id: "appropriate", label: "Appropriate" },
+              { id: "bizarre", label: "Bizarre" },
+            ]}
+            selected={appearance || []}
+            onChange={(v) => onChange('appearance', v)}
+          />
+          <CheckboxFindings
+            label="Behavior"
+            options={[
+              { id: "cooperative", label: "Cooperative" },
+              { id: "agitated", label: "Agitated" },
+              { id: "withdrawn", label: "Withdrawn" },
+              { id: "guarded", label: "Guarded" },
+              { id: "uncooperative", label: "Uncooperative" },
+              { id: "normal", label: "Normal" },
+            ]}
+            selected={behavior || []}
+            onChange={(v) => onChange('behavior', v)}
+          />
+          <CheckboxFindings
+            label="Speech"
+            options={[
+              { id: "normal", label: "Normal" },
+              { id: "pressured", label: "Pressured" },
+              { id: "slowed", label: "Slowed" },
+              { id: "slurred", label: "Slurred" },
+              { id: "monotone", label: "Monotone" },
+              { id: "fluent", label: "Fluent" },
+            ]}
+            selected={speech || []}
+            onChange={(v) => onChange('speech', v)}
+          />
+        </div>
+
+        <div className="space-y-4">
           <div className="space-y-1.5">
             <Label className="text-sm">Thought Process</Label>
             <Select value={thoughtProcess} onValueChange={(v) => onChange('thoughtProcess', v)}>
@@ -3017,9 +3133,7 @@ export function PsychiatricTab({ findings, onChange }: { findings: any, onChange
               </SelectContent>
             </Select>
           </div>
-        </div>
 
-        <div className="space-y-4">
           <CheckboxFindings
             label="Thought Content"
             options={[
@@ -3061,6 +3175,56 @@ export function PsychiatricTab({ findings, onChange }: { findings: any, onChange
         </div>
       </div>
 
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
+          <CheckboxFindings
+            label="Perception"
+            options={[
+              { id: "normal", label: "Normal" },
+              { id: "auditory-hallucinations", label: "Hallucinations (Auditory)" },
+              { id: "visual-hallucinations", label: "Hallucinations (Visual)" },
+              { id: "illusions", label: "Illusions" },
+              { id: "depersonalization", label: "Depersonalization" },
+            ]}
+            selected={perception || []}
+            onChange={(v) => onChange('perception', v)}
+          />
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold">Psychiatric Tests</Label>
+            <div className="flex flex-wrap gap-2">
+              {['MMSE', 'MoCA', 'GDS'].map(test => (
+                <Button key={test} variant="outline" size="sm" className="h-7 text-xs" onClick={() => setSelectedTest(test)}>
+                  {test}
+                </Button>
+              ))}
+            </div>
+            <CheckboxFindings
+              label="Cognition"
+              options={[
+                { id: "alert", label: "Alert" },
+                { id: "disoriented", label: "Disoriented" },
+                { id: "memory-impairment", label: "Memory Impairment" },
+                { id: "attention-deficit", label: "Attention Deficit" },
+                { id: "normal", label: "Normal" },
+              ]}
+              selected={cognition || []}
+              onChange={(v) => onChange('cognition', v)}
+            />
+          </div>
+      </div>
+      
+      <Dialog open={!!selectedTest} onOpenChange={() => setSelectedTest(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{selectedTest}</DialogTitle>
+          </DialogHeader>
+          <div className="text-sm">
+            {selectedTest === 'MMSE' && "Mini-Mental State Examination details..."}
+            {selectedTest === 'MoCA' && "Montreal Cognitive Assessment details..."}
+            {selectedTest === 'GDS' && "Geriatric Depression Scale details..."}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <div className="space-y-1.5">
         <Label className="text-sm">Notes</Label>
         <Textarea placeholder="Enter detailed psychiatric assessment..." value={notes || ""} onChange={e => onChange('notes', e.target.value)} />
@@ -3069,12 +3233,16 @@ export function PsychiatricTab({ findings, onChange }: { findings: any, onChange
   );
 }
 
-export function GeriatricTab({ findings, onChange }: { findings: any, onChange: (field: string, value: any) => void }) {
+export function GeriatricTab({ findings, onChange, onMarkNormal, onClear }: { findings: any, onChange: (field: string, value: any) => void, onMarkNormal: () => void, onClear: () => void }) {
   const { moca, mmse, frailty, adl, iadl, gait, notes } = findings;
 
   return (
     <div className="space-y-6">
-      <h4 className="font-semibold text-base">Geriatric & Functional Assessment</h4>
+      <SectionHeader 
+        title="Geriatric & Functional Assessment" 
+        onMarkNormal={onMarkNormal} 
+        onClear={onClear} 
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="space-y-4">
@@ -3161,23 +3329,296 @@ export function GeriatricTab({ findings, onChange }: { findings: any, onChange: 
 }
 
 export function PhysicalExam() {
+  const { settings: aiSettings } = useAISettings();
   const { selectedPatient } = usePatient();
   const [isGenerating, setIsGenerating] = useState(false);
   const [examSummary, setExamSummary] = useState<string | null>(null);
   const [showSummaryModal, setShowSummaryModal] = useState(false);
-  const [cranialNervesFindings, setCranialNervesFindings] = useState<Record<string, string>>({});
-  const [showMotor, setShowMotor] = useState(false);
-  const [motorBulk, setMotorBulk] = useState("normal");
-  const [motorTone, setMotorTone] = useState("normal");
-  const [motorPower, setMotorPower] = useState<Record<string, string>>({});
-  const [showSensory, setShowSensory] = useState(false);
-  const [sensoryModalitiesFindings, setSensoryModalitiesFindings] = useState<Record<string, string>>({});
-  const [showReflexes, setShowReflexes] = useState(false);
-  const [reflexesFindings, setReflexesFindings] = useState<Record<string, string>>({});
-  const [plantarResponse, setPlantarResponse] = useState("flexor");
-  const [clonus, setClonus] = useState("absent");
-
   const { symptoms } = useSymptom();
+
+  const handleMarkAllNormal = (tabId: string) => {
+    switch(tabId) {
+      case 'general':
+        handleGeneralChange('appearance', 'normal', 'normal');
+        handleGeneralChange('detailed', {
+          consciousLevel: ['Alert'],
+          alertness: ['Normal'],
+          orientation: ['Time', 'Person', 'Place', 'Situation'],
+          skinSigns: [],
+          extremities: [],
+          lymphatic: [],
+          generalLook: ['Well-nourished', 'Well-developed'],
+          build: ['Normal'],
+          posture: ['Normal Posture'],
+          gait: ['Normal Gait'],
+          facialExpression: ['Normal']
+        });
+        break;
+      case 'heent':
+        setHeentFindings({
+          heentState: {
+            'scalp': ['Normal'],
+            'eyelids': ['Normal'],
+            'conjunctiva': ['Normal'],
+            'sclera': ['Normal'],
+            'pupils': ['Normal'],
+            'throat': ['Normal'],
+            'ears': ['Normal'],
+            'nose': ['Normal'],
+            'lips': ['Normal'],
+            'tongue': ['Normal'],
+            'neck': ['Normal']
+          },
+          pupilSize: [3],
+          notes: 'Routine HEENT exam unremarkable.',
+          status: 'normal'
+        });
+        break;
+      case 'cardiovascular':
+        setCardiovascularFindings(prev => ({
+          ...prev,
+          heart: ['Regular S1, S2', 'No murmurs/rubs/gallops'],
+          pulses: 'normal',
+          status: 'normal'
+        }));
+        break;
+      case 'respiratory':
+        setRespiratoryFindings(prev => ({
+          ...prev,
+          lungs: ['Clear to auscultation bilaterally', 'Normal breath sounds'],
+          status: 'normal'
+        }));
+        break;
+      case 'gastrointestinal':
+        setGastrointestinalFindings(prev => ({
+          ...prev,
+          abdomen: ['Soft', 'Non-tender', 'No organomegaly', 'Bowel sounds present'],
+          status: 'normal'
+        }));
+        break;
+      case 'musculoskeletal':
+        setMusculoskeletalFindings(prev => ({
+          ...prev,
+          galsScreen: 'normal',
+          nvStatus: ["pulses-intact", "sensation-intact", "cap-refill-normal"],
+          status: 'normal'
+        }));
+        break;
+      case 'neurological':
+        setNeurologicalFindings(prev => ({
+          ...prev,
+          mental: ['Alert and oriented x4'],
+          motorBulk: 'normal',
+          motorTone: 'normal',
+          plantarResponse: 'flexor',
+          clonus: 'absent',
+          status: 'normal'
+        }));
+        break;
+      case 'sse':
+        setSseFindings({
+          visualAcuityR: '20/20',
+          visualAcuityL: '20/20',
+          fundoscopy: ['normal-fundus'],
+          weber: 'midline',
+          rinneR: 'ac>bc',
+          rinneL: 'ac>bc',
+          otoscopy: ['normal-tm'],
+          notes: '',
+          status: 'normal'
+        });
+        break;
+      case 'psychiatric':
+        setPsychiatricFindings({
+          mood: 'euthymic',
+          affect: 'appropriate',
+          thoughtProcess: 'linear',
+          thoughtContent: ['normal-content'],
+          insight: 'good',
+          judgment: 'good',
+          notes: '',
+          status: 'normal'
+        });
+        break;
+      case 'geriatric':
+        setGeriatricFindings({
+          moca: '30',
+          mmse: '30',
+          frailty: 'robust',
+          adl: [],
+          iadl: [],
+          gait: 'normal',
+          notes: '',
+          status: 'normal'
+        });
+        break;
+      case 'skin':
+        setSkinFindings(prev => ({
+          ...prev,
+          color: 'normal',
+          temp: 'warm',
+          moisture: 'normal',
+          turgor: 'normal',
+          edema: 'none',
+          status: 'normal'
+        }));
+        break;
+    }
+    toast.success(`${tabId.charAt(0).toUpperCase() + tabId.slice(1)} marked as normal`);
+  };
+
+  const handleClearTab = (tabId: string) => {
+    switch(tabId) {
+      case 'general':
+        setGeneralFindings({
+          appearance: '',
+          mentalStatus: '',
+          detailed: {
+            consciousLevel: [],
+            alertness: [],
+            orientation: [],
+            skinSigns: [],
+            extremities: [],
+            lymphatic: [],
+            generalLook: [],
+            build: [],
+            posture: [],
+            gait: [],
+            facialExpression: []
+          },
+          notes: '',
+          status: 'untouched'
+        });
+        break;
+      case 'heent':
+        setHeentFindings({
+          heentState: {},
+          pupilSize: [3],
+          notes: '',
+          status: 'untouched'
+        });
+        break;
+      case 'sse':
+        setSseFindings({
+          visualAcuityR: '20/20',
+          visualAcuityL: '20/20',
+          fundoscopy: [],
+          weber: 'midline',
+          rinneR: 'ac>bc',
+          rinneL: 'ac>bc',
+          otoscopy: [],
+          notes: '',
+          status: 'untouched'
+        });
+        break;
+      case 'respiratory':
+        setRespiratoryFindings({
+          lungs: [],
+          regionalFindings: {},
+          notes: '',
+          status: 'untouched'
+        });
+        break;
+      case 'cardiovascular':
+        setCardiovascularFindings({
+          heart: [],
+          pulses: 'normal',
+          regionFindings: {},
+          findingDetails: {},
+          notes: '',
+          status: 'untouched'
+        });
+        break;
+      case 'gastrointestinal':
+        setGastrointestinalFindings({
+          abdomen: [],
+          regionFindings: {},
+          findingDetails: {},
+          notes: '',
+          status: 'untouched'
+        });
+        break;
+      case 'musculoskeletal':
+        setMusculoskeletalFindings({
+          galsScreen: '',
+          gaitPosture: [],
+          mrcUpper: '5',
+          mrcLower: '5',
+          nvStatus: ["pulses-intact", "sensation-intact", "cap-refill-normal"],
+          jointExams: [],
+          notes: '',
+          status: 'untouched'
+        });
+        break;
+      case 'neurological':
+        setNeurologicalFindings({
+          mental: [],
+          showCranial: false,
+          showMotor: false,
+          showSensory: false,
+          showReflexes: false,
+          involuntary: [],
+          coordination: [],
+          sensoryLevel: '',
+          stereognosis: 'normal',
+          graphesthesia: 'normal',
+          hoffmann: 'negative',
+          frontalSigns: [],
+          cranialNervesFindings: {},
+          motorBulk: 'normal',
+          motorTone: 'normal',
+          motorPower: {},
+          sensoryModalitiesFindings: {},
+          reflexesFindings: {},
+          plantarResponse: 'flexor',
+          clonus: 'absent',
+          notes: '',
+          status: 'untouched'
+        });
+        break;
+      case 'skin':
+        setSkinFindings({
+          showDetailed: false,
+          color: 'normal',
+          temp: 'warm',
+          moisture: 'normal',
+          turgor: 'normal',
+          edema: 'none',
+          nails: [],
+          vascular: [],
+          hairDist: 'normal',
+          lesions: [],
+          notes: '',
+          status: 'untouched'
+        });
+        break;
+      case 'psychiatric':
+        setPsychiatricFindings({
+          mood: 'euthymic',
+          affect: 'appropriate',
+          thoughtProcess: 'linear',
+          thoughtContent: [],
+          insight: 'good',
+          judgment: 'good',
+          notes: '',
+          status: 'untouched'
+        });
+        break;
+      case 'geriatric':
+        setGeriatricFindings({
+          moca: '',
+          mmse: '',
+          frailty: 'robust',
+          adl: [],
+          iadl: [],
+          gait: 'normal',
+          notes: '',
+          status: 'untouched'
+        });
+        break;
+    }
+    toast.info(`${tabId.charAt(0).toUpperCase() + tabId.slice(1)} cleared`);
+  };
 
   const handleFinalize = async () => {
     if (!selectedPatient) {
@@ -3372,6 +3813,7 @@ export function PhysicalExam() {
   });
 
   const [activeTab, setActiveTab] = useState('general');
+  const [isFullWidth, setIsFullWidth] = useState(false);
   const [listeningField, setListeningField] = useState<string | null>(null);
   
   const [vitals, setVitals] = useState({
@@ -3424,7 +3866,7 @@ export function PhysicalExam() {
       skinSigns: [],
       extremities: [],
       lymphatic: [],
-      Generallook: [],
+      generalLook: [],
       build: [],
       posture: [],
       gait: [],
@@ -3480,7 +3922,11 @@ export function PhysicalExam() {
   });
 
   const [neurologicalFindings, setNeurologicalFindings] = useState({
-    mental: [] as string[],
+    mental: {
+      consciousLevel: '',
+      alertness: '',
+      orientation: [] as string[]
+    },
     showCranial: false,
     showMotor: false,
     showSensory: false,
@@ -3526,6 +3972,11 @@ export function PhysicalExam() {
     thoughtContent: [] as string[],
     insight: 'good',
     judgment: 'good',
+    appearance: [] as string[],
+    behavior: [] as string[],
+    speech: [] as string[],
+    perception: [] as string[],
+    cognition: [] as string[],
     notes: '',
     status: 'untouched'
   });
@@ -3653,11 +4104,11 @@ ${JSON.stringify(examData, null, 2)}
 
 Format the output as a professional medical note under the heading "Physical Examination Summary".`;
 
-      const response = await generateContentWithRetry({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-      });
-      setExamSummary(response.text || "Summary generation failed.");
+      const responseText = await clinicalAIRequest(
+        [{ role: "user", content: prompt }],
+        aiSettings
+      );
+      setExamSummary(responseText || "Summary generation failed.");
     } catch (error) {
       console.error("Summary generation failed:", error);
       setExamSummary("Error generating summary. Please try again.");
@@ -3692,7 +4143,7 @@ Format the output as a professional medical note under the heading "Physical Exa
   };
 
   return (
-    <div className="space-y-6 h-full flex flex-col overflow-y-auto pb-8">
+    <div className="space-y-6 h-full flex flex-col overflow-y-auto pb-8 [&::-webkit-scrollbar]:hidden px-1">
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold text-slate-900">Physical Examination</h2>
@@ -3708,12 +4159,6 @@ Format the output as a professional medical note under the heading "Physical Exa
             {isGenerating ? 'Generating...' : 'Generate Summary'}
           </button>
           <button 
-            onClick={handleSaveDraft}
-            className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors"
-          >
-            <Save className="w-4 h-4" /> Save as Draft
-          </button>
-          <button 
             onClick={handleFinalize}
             className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center gap-2 transition-colors"
           >
@@ -3721,6 +4166,9 @@ Format the output as a professional medical note under the heading "Physical Exa
           </button>
         </div>
       </div>
+
+      {/* AI Examination Guidance */}
+      {selectedPatient && <ExaminationGuidance patient={selectedPatient} symptoms={symptoms} />}
 
       {/* Vital Signs Section */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
@@ -3954,24 +4402,36 @@ Format the output as a professional medical note under the heading "Physical Exa
       {/* Examination Tabs and Summary Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Examination Tabs */}
-        <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col flex-1 overflow-hidden min-h-[500px]">
-        <div className="flex overflow-x-auto border-b border-slate-200 p-2 gap-1 bg-slate-50">
-          {tabs.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={cn(
-                "flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors",
-                activeTab === tab.id 
-                  ? "bg-white text-indigo-600 shadow-sm border border-slate-200" 
-                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-transparent"
-              )}
-            >
-              <tab.icon className="w-4 h-4" />
-              {tab.name}
-              {getTabStatusIcon(tab.id)}
-            </button>
-          ))}
+        <div className={cn(
+          "bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col flex-1 overflow-hidden min-h-[500px] transition-all duration-300",
+          isFullWidth ? "lg:col-span-3" : "lg:col-span-2"
+        )}>
+        <div className="flex overflow-x-auto border-b border-slate-200 p-2 gap-1 bg-slate-50 items-center justify-between">
+          <div className="flex gap-1 overflow-x-auto [&::-webkit-scrollbar]:hidden">
+            {tabs.map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={cn(
+                  "flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors",
+                  activeTab === tab.id 
+                    ? "bg-white text-indigo-600 shadow-sm border border-slate-200" 
+                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-transparent"
+                )}
+              >
+                <tab.icon className="w-4 h-4" />
+                {tab.name}
+                {getTabStatusIcon(tab.id)}
+              </button>
+            ))}
+          </div>
+          <button 
+            onClick={() => setIsFullWidth(!isFullWidth)}
+            className="p-2 hover:bg-slate-200 rounded-lg transition-colors text-slate-500 mr-2"
+            title={isFullWidth ? "Exit Full Width" : "Full Width"}
+          >
+            {isFullWidth ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+          </button>
         </div>
 
         <div className="flex-1 p-6 overflow-y-auto [&::-webkit-scrollbar]:hidden">
@@ -3982,97 +4442,170 @@ Format the output as a professional medical note under the heading "Physical Exa
                 onChange={handleGeneralChange}
                 onDictation={handleDictation}
                 listeningField={listeningField}
+                onMarkNormal={() => handleMarkAllNormal('general')}
+                onClear={() => handleClearTab('general')}
               />
             </div>
           )}
 
           {activeTab === 'heent' && (
             <div className="animate-in fade-in duration-300">
-              <HeentTab findings={heentFindings} onChange={(field, value) => setHeentFindings(prev => ({ ...prev, [field]: value, status: 'abnormal' }))} />
+              <HeentTab 
+                findings={heentFindings} 
+                onChange={(field, value) => setHeentFindings(prev => ({ ...prev, [field]: value, status: 'abnormal' }))} 
+                onMarkNormal={() => handleMarkAllNormal('heent')}
+                onClear={() => handleClearTab('heent')}
+              />
             </div>
           )}
 
           {activeTab === 'sse' && (
             <div className="animate-in fade-in duration-300">
-              <SseTab findings={sseFindings} onChange={(field, value) => setSseFindings(prev => ({ ...prev, [field]: value, status: 'abnormal' }))} />
+              <SseTab 
+                findings={sseFindings} 
+                onChange={(field, value) => setSseFindings(prev => ({ ...prev, [field]: value, status: 'abnormal' }))} 
+                onMarkNormal={() => handleMarkAllNormal('sse')}
+                onClear={() => handleClearTab('sse')}
+              />
             </div>
           )}
 
           {activeTab === 'respiratory' && (
             <div className="animate-in fade-in duration-300">
-              <RespiratoryTab findings={respiratoryFindings} onChange={(field, value) => setRespiratoryFindings(prev => ({ ...prev, [field]: value, status: 'abnormal' }))} />
+              <RespiratoryTab 
+                findings={respiratoryFindings} 
+                onChange={(field, value) => setRespiratoryFindings(prev => ({ ...prev, [field]: value, status: 'abnormal' }))} 
+                onMarkNormal={() => handleMarkAllNormal('respiratory')}
+                onClear={() => handleClearTab('respiratory')}
+              />
             </div>
           )}
 
           {activeTab === 'cardiovascular' && (
             <div className="animate-in fade-in duration-300">
-              <CardiovascularTab findings={cardiovascularFindings} onChange={handleCardiovascularChange} />
+              <CardiovascularTab 
+                findings={cardiovascularFindings} 
+                onChange={handleCardiovascularChange} 
+                onMarkNormal={() => handleMarkAllNormal('cardiovascular')}
+                onClear={() => handleClearTab('cardiovascular')}
+              />
             </div>
           )}
 
           {activeTab === 'gastrointestinal' && (
             <div className="animate-in fade-in duration-300">
-              <GastrointestinalTab findings={gastrointestinalFindings} onChange={handleGastrointestinalChange} />
+              <GastrointestinalTab 
+                findings={gastrointestinalFindings} 
+                onChange={handleGastrointestinalChange} 
+                onMarkNormal={() => handleMarkAllNormal('gastrointestinal')}
+                onClear={() => handleClearTab('gastrointestinal')}
+              />
             </div>
           )}
 
           {activeTab === 'musculoskeletal' && (
             <div className="animate-in fade-in duration-300">
-              <MusculoskeletalTab findings={musculoskeletalFindings} onChange={handleMusculoskeletalChange} />
+              <MusculoskeletalTab 
+                findings={musculoskeletalFindings} 
+                onChange={handleMusculoskeletalChange} 
+                onMarkNormal={() => handleMarkAllNormal('musculoskeletal')}
+                onClear={() => handleClearTab('musculoskeletal')}
+              />
             </div>
           )}
 
           {activeTab === 'neurological' && (
             <div className="animate-in fade-in duration-300">
-              <NeurologicalTab findings={neurologicalFindings} onChange={handleNeurologicalChange} />
+              <NeurologicalTab 
+                findings={neurologicalFindings} 
+                onChange={handleNeurologicalChange} 
+                onMarkNormal={() => handleMarkAllNormal('neurological')}
+                onClear={() => handleClearTab('neurological')}
+              />
             </div>
           )}
 
           {activeTab === 'skin' && (
             <div className="animate-in fade-in duration-300">
-              <SkinTab findings={skinFindings} onChange={handleSkinChange} />
+              <SkinTab 
+                findings={skinFindings} 
+                onChange={handleSkinChange} 
+                onMarkNormal={() => handleMarkAllNormal('skin')}
+                onClear={() => handleClearTab('skin')}
+              />
             </div>
           )}
 
           {activeTab === 'psychiatric' && (
             <div className="animate-in fade-in duration-300">
-              <PsychiatricTab findings={psychiatricFindings} onChange={(field, value) => setPsychiatricFindings(prev => ({ ...prev, [field]: value, status: 'abnormal' }))} />
+              <PsychiatricTab 
+                findings={psychiatricFindings} 
+                onChange={(field, value) => setPsychiatricFindings(prev => ({ ...prev, [field]: value, status: 'abnormal' }))} 
+                onMarkNormal={() => handleMarkAllNormal('psychiatric')}
+                onClear={() => handleClearTab('psychiatric')}
+              />
             </div>
           )}
 
           {activeTab === 'geriatric' && (
             <div className="animate-in fade-in duration-300">
-              <GeriatricTab findings={geriatricFindings} onChange={(field, value) => setGeriatricFindings(prev => ({ ...prev, [field]: value, status: 'abnormal' }))} />
+              <GeriatricTab 
+                findings={geriatricFindings} 
+                onChange={(field, value) => setGeriatricFindings(prev => ({ ...prev, [field]: value, status: 'abnormal' }))} 
+                onMarkNormal={() => handleMarkAllNormal('geriatric')}
+                onClear={() => handleClearTab('geriatric')}
+              />
             </div>
           )}
         </div>
         </div>
 
         {/* Examination Summary */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 flex flex-col sticky top-6">
-          <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
-            <Clipboard className="w-5 h-5 text-indigo-600" />
-            Examination Summary
-          </h3>
-          <button 
-            onClick={generateExamSummary}
-            disabled={isGenerating}
-            className="px-3 py-1.5 bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-lg text-sm font-medium hover:bg-indigo-100 flex items-center gap-2 transition-colors disabled:opacity-50"
-          >
-            {isGenerating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />} 
-            {isGenerating ? 'Generating...' : 'Auto-Generate with AI'}
-          </button>
+        {!isFullWidth && (
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 flex flex-col sticky top-6 space-y-6">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+                  <Clipboard className="w-5 h-5 text-indigo-600" />
+                  Examination Summary
+                </h3>
+                <button 
+                  onClick={generateExamSummary}
+                  disabled={isGenerating}
+                  className="px-3 py-1.5 bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-lg text-sm font-medium hover:bg-indigo-100 flex items-center gap-2 transition-colors disabled:opacity-50"
+                >
+                  {isGenerating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />} 
+                  {isGenerating ? 'Generating...' : 'Auto-Generate with AI'}
+                </button>
+              </div>
+              <Textarea 
+                value={examSummary || ""}
+                onChange={(e) => setExamSummary(e.target.value)}
+                className="w-full min-h-[400px] p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none resize-none bg-slate-50 focus:bg-white transition-colors"
+                placeholder="Enter your overall assessment and examination summary..."
+              />
+            </div>
+
+            <FindingsAnalyzer 
+              vitals={vitals} 
+              findings={{
+                general: generalFindings,
+                heent: heentFindings,
+                sse: sseFindings,
+                respiratory: respiratoryFindings,
+                cardiovascular: cardiovascularFindings,
+                gastrointestinal: gastrointestinalFindings,
+                musculoskeletal: musculoskeletalFindings,
+                neurological: neurologicalFindings,
+                skin: skinFindings,
+                psychiatric: psychiatricFindings,
+                geriatric: geriatricFindings
+              }} 
+            />
+          </div>
+        )}
         </div>
-        <Textarea 
-          value={examSummary || ""}
-          onChange={(e) => setExamSummary(e.target.value)}
-          className="w-full flex-1 p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none resize-none bg-slate-50 focus:bg-white transition-colors"
-          placeholder="Enter your overall assessment and examination summary..."
-        />
       </div>
-    </div>
-  </div>
 );
 }
 
@@ -4081,9 +4614,11 @@ interface GeneralTabProps {
   onChange: (field: string, value: any, status?: string) => void;
   onDictation: (field: string, currentValue: string, setter: (val: string) => void) => void;
   listeningField: string | null;
+  onMarkNormal: () => void;
+  onClear: () => void;
 }
 
-function GeneralTab({ findings, onChange, onDictation, listeningField }: GeneralTabProps) {
+function GeneralTab({ findings, onChange, onDictation, listeningField, onMarkNormal, onClear }: GeneralTabProps) {
   const [activeCategories, setActiveCategories] = useState<string[]>([]);
 
   // Sync active categories with findings on mount
@@ -4146,7 +4681,7 @@ function GeneralTab({ findings, onChange, onDictation, listeningField }: General
       options: ['Lymphadenopathy', 'Tender lymph nodes', 'Matted lymph nodes'] 
     },
     { 
-      id: 'Generallook', 
+      id: 'generalLook', 
       label: 'General Look', 
       options: ['Ill-appearing', 'Distressed', 'Lethargic', 'Well-nourished', 'Well-developed', 'Cachectic'] 
     },
@@ -4174,92 +4709,79 @@ function GeneralTab({ findings, onChange, onDictation, listeningField }: General
 
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
-      <div>
-        <h3 className="text-lg font-semibold text-slate-800 border-b border-slate-100 pb-2 mb-4">General Appearance</h3>
+      <SectionHeader 
+        title="General Appearance" 
+        onMarkNormal={onMarkNormal} 
+        onClear={onClear} 
+      />
         
-        <div className="space-y-6">
-          <div className="flex items-center gap-6">
-            <label className="text-sm font-medium text-slate-700">Appearance:</label>
-            <div className="flex items-center gap-4">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input 
-                  type="radio" 
-                  name="appearance" 
-                  value="normal"
-                  checked={findings.appearance === 'normal'}
-                  onChange={() => {
-                    onChange('appearance', 'normal', 'normal');
-                  }}
-                  className="text-indigo-600 focus:ring-indigo-500"
-                />
-                <span className="text-sm text-slate-700">Normal</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input 
-                  type="radio" 
-                  name="appearance" 
-                  value="abnormal"
-                  checked={findings.appearance === 'abnormal'}
-                  onChange={() => onChange('appearance', 'abnormal', 'abnormal')}
-                  className="text-indigo-600 focus:ring-indigo-500"
-                />
-                <span className="text-sm text-slate-700">Abnormal</span>
-              </label>
-            </div>
+      <div className="space-y-6">
+        <div className="flex items-center gap-6">
+          <label className="text-sm font-medium text-slate-700">Appearance:</label>
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input 
+                type="radio" 
+                name="appearance" 
+                value="normal"
+                checked={findings.appearance === 'normal'}
+                onChange={() => {
+                  onChange('appearance', 'normal', 'normal');
+                }}
+                className="text-indigo-600 focus:ring-indigo-500"
+              />
+              <span className="text-sm text-slate-700">Normal</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input 
+                type="radio" 
+                name="appearance" 
+                value="abnormal"
+                checked={findings.appearance === 'abnormal'}
+                onChange={() => onChange('appearance', 'abnormal', 'abnormal')}
+                className="text-indigo-600 focus:ring-indigo-500"
+              />
+              <span className="text-sm text-slate-700">Abnormal</span>
+            </label>
           </div>
+        </div>
 
-          {findings.appearance === 'abnormal' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pl-4 border-l-2 border-slate-100">
-              {categories.map(cat => (
-                <div key={cat.id} className="space-y-3">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input 
-                      type="checkbox"
-                      checked={activeCategories.includes(cat.id)}
-                      onChange={(e) => toggleCategory(cat.id, e.target.checked)}
-                      className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                    />
-                    <span className="font-medium text-slate-900">{cat.label}</span>
-                  </label>
-
-                  {activeCategories.includes(cat.id) && (
-                    <div className="flex flex-wrap gap-2 pl-6">
-                      {cat.options.map(opt => (
-                        <label key={opt} className="flex items-center gap-2 cursor-pointer px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 hover:border-indigo-300 transition-colors">
-                          <input 
-                            type="checkbox" 
-                            className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" 
-                            checked={findings.detailed[cat.id]?.includes(opt)}
-                            onChange={(e) => handleOptionChange(cat.id, opt, e.target.checked)}
-                          />
-                          <span className="text-sm text-slate-700">{opt}</span>
-                        </label>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="space-y-2 pt-4 border-t border-slate-100">
-            <div className="flex justify-between items-center">
-              <label className="text-sm font-semibold text-slate-900">Notes</label>
-              <button 
-                onClick={() => onDictation('general-notes', findings.notes, (val) => onChange('notes', val))}
-                className={`p-1.5 rounded-full transition-colors ${listeningField === 'general-notes' ? 'bg-red-100 text-red-600 animate-pulse' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
-                title="Dictate Notes"
-              >
-                <Mic className="w-4 h-4" />
-              </button>
-            </div>
-            <Textarea 
-              className="w-full h-32 p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none resize-none bg-slate-50 focus:bg-white transition-colors"
-              placeholder="Enter detailed notes about general appearance..."
-              value={findings.notes || ""}
-              onChange={(e) => onChange('notes', e.target.value)}
-            />
+        {findings.appearance === 'abnormal' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pl-4 border-l-2 border-indigo-100">
+            {categories.map(cat => (
+              <CheckboxFindings
+                key={cat.id}
+                label={cat.label}
+                options={cat.options.map(opt => ({ 
+                  id: opt, 
+                  label: opt,
+                  severity: (opt.toLowerCase().includes('normal') || opt.toLowerCase().includes('alert')) ? 'normal' : 'abnormal'
+                }))}
+                selected={findings.detailed[cat.id] || []}
+                onChange={(selected) => onChange('detailed', { ...findings.detailed, [cat.id]: selected })}
+                allowSearch={true}
+              />
+            ))}
           </div>
+        )}
+
+        <div className="space-y-2 pt-4 border-t border-slate-100">
+          <div className="flex justify-between items-center">
+            <label className="text-sm font-semibold text-slate-900">Notes</label>
+            <button 
+              onClick={() => onDictation('general-notes', findings.notes, (val) => onChange('notes', val))}
+              className={`p-1.5 rounded-full transition-colors ${listeningField === 'general-notes' ? 'bg-red-100 text-red-600 animate-pulse' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+              title="Dictate Notes"
+            >
+              <Mic className="w-4 h-4" />
+            </button>
+          </div>
+          <Textarea 
+            className="w-full h-32 p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none resize-none bg-slate-50 focus:bg-white transition-colors"
+            placeholder="Enter detailed notes about general appearance..."
+            value={findings.notes || ""}
+            onChange={(e) => onChange('notes', e.target.value)}
+          />
         </div>
       </div>
     </div>
