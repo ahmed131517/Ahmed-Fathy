@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { 
   ShieldCheck, AlertTriangle, ArrowLeft, CheckCircle, XCircle, 
   Sparkles, RefreshCw, AlertCircle, Info, Calculator, Activity,
-  BrainCircuit, FileText, Layout, ArrowRight, Pill, Undo2, Shuffle
+  BrainCircuit, FileText, Layout, ArrowRight, Pill, Undo2, Shuffle, ShieldX
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
@@ -11,6 +11,7 @@ import { usePatient } from '@/lib/PatientContext';
 import { checkSafetyAlerts, SafetyAlert } from '@/services/safetyService';
 import { ClinicalIntelligenceService, TherapeuticGapAlert, IndicationAlert } from '@/services/clinical.intelligence.service';
 import { generateContentWithRetry, parseJsonResponse } from "@/utils/gemini";
+import { ClinicalCalculators } from '@/services/clinical.calculators';
 import { toast } from 'sonner';
 import { db } from '@/lib/db';
 
@@ -33,14 +34,41 @@ export function ClinicalAudit() {
   const [labSuggestions, setLabSuggestions] = useState<string[]>([]);
   const [costAlerts, setCostAlerts] = useState<any[]>([]);
   const [pgxAlerts, setPgxAlerts] = useState<any[]>([]);
+  const [aiRiskSummary, setAiRiskSummary] = useState<string>("");
   const [vitals, setVitals] = useState<any>(null);
   const [labs, setLabs] = useState<any[]>([]);
+
+  // AI Consult State
+  const [isAiConsultOpen, setIsAiConsultOpen] = useState(false);
+  const [chatInput, setChatInput] = useState("");
+  const [chatHistory, setChatHistory] = useState<any[]>([]);
+  const [isChatLoading, setIsChatLoading] = useState(false);
 
   // Safety States
   const [safetyAlerts, setSafetyAlerts] = useState<SafetyAlert[]>([]);
   const [interactionAlerts, setInteractionAlerts] = useState<any[]>([]);
   const [gapAlerts, setGapAlerts] = useState<TherapeuticGapAlert[]>([]);
   const [indicationAlerts, setIndicationAlerts] = useState<IndicationAlert[]>([]);
+
+  const safetyScore = useMemo(() => {
+    let score = 100;
+    
+    // Penalize based on alerts
+    safetyAlerts.forEach(a => {
+      if (a.type === 'Geriatric') score -= 10;
+      else if (a.severity === 'Major' || a.severity === 'Severe') score -= 25;
+      else if (a.severity === 'Moderate') score -= 15;
+      else score -= 5;
+    });
+
+    interactionAlerts.forEach(a => {
+      if (a.severity === 'Major' || a.severity === 'Severe') score -= 20;
+      else if (a.severity === 'Moderate') score -= 10;
+      else score -= 5;
+    });
+
+    return Math.max(0, score);
+  }, [safetyAlerts, interactionAlerts]);
 
   useEffect(() => {
     if (!selectedPatient) {
@@ -64,6 +92,19 @@ export function ClinicalAudit() {
 
     loadContext();
   }, [selectedPatient]);
+
+  const egfr = useMemo(() => {
+    if (!vitals?.weight || !selectedPatient?.age) return null;
+    const creatinine = parseFloat(labs.find(l => l.testName.toLowerCase().includes('creatinine'))?.value) || 0;
+    if (creatinine <= 0) return null;
+    
+    return ClinicalCalculators.calculateEGFR(
+      selectedPatient.age,
+      vitals.weight,
+      creatinine,
+      selectedPatient.gender === 'female'
+    );
+  }, [vitals, labs, selectedPatient]);
 
   const runAudit = async (currentItems: any[], currentVitals: any, currentLabs: any[]) => {
     const meds = currentItems.map(i => i.medication);
@@ -108,17 +149,22 @@ export function ClinicalAudit() {
     if (safety.length === 0 && ddi.length === 0 && gaps.length === 0 && indies.length === 0 && currentItems.length === 0) return;
 
     try {
-      const prompt = `You are a clinical pharmacologist. Review these alerts and provide a "Recommendation" for each.
-      Also provide 3-5 high-priority "Patient Counseling Highlights" for the prescribed medications.
-      Additionally, provide any "Required Lab Monitoring" suggestions for these specific medications (e.g., follow-up for ACE inhibitors, Anticoagulants, Statins, etc.).
-      Finally, check for "Prior Authorization" requirements (drugs that typically need insurance approval) and "Cost Saving" alerts (generic alternatives or high-price warnings).
-      Crucially, scan for "Pharmacogenomic (PGx) Alerts" if any medications imply risks for specific metabolizer phenotypes (e.g., CYP2C19 for Clopidogrel, CYP2D6 for Codeine/SSRIs). Indicate if these are general warnings or specific if you detect patient-specific mentions in context.
+      const prompt = `You are an expert clinical pharmacologist and safety auditor. Review these alerts and perform a comprehensive safety synthesis.
       
+      [DATA INPUTS]
       Prescribed Medications: ${JSON.stringify(currentItems)}
-      Alerts: ${JSON.stringify({ safety, ddi, gaps, indies })}
-      Patient Context: ${JSON.stringify({ conditions: selectedPatient.chronicConditions, allergies: selectedPatient.allergies })}
+      Detected Alerts: ${JSON.stringify({ safety, ddi, gaps, indies })}
+      Patient Context: ${JSON.stringify({ age: selectedPatient.age, conditions: selectedPatient.chronicConditions, allergies: selectedPatient.allergies, vitals, labs })}
       
-      Return JSON: 
+      [TASKS]
+      1. Provide a "Recommendation" for each specific alert.
+      2. Provide 3-5 high-priority "Patient Counseling Highlights".
+      3. Suggest "Required Lab Monitoring" based on these medications and patient data.
+      4. Detect "Financial & Access" alerts (PA, Cost savings).
+      5. Scan for "Pharmacogenomic (PGx)" risks.
+      6. CRITICAL: Write a "Comprehensive Clinical Summary" (3-4 sentences) that synthesizes the total risk profile for the clinician. Focus on the most dangerous potential outcome (e.g., GI bleeding, renal failure, falls risk).
+      
+      Return results EXACTLY in this JSON structure: 
       { 
         "recommendations": { "alert_id": { "action": "Subsitute|Adjust|Add", "suggestion": "New Drug/Dose Name", "reason": "Med justification" } },
         "counseling_highlights": ["Point 1", "Point 2"],
@@ -129,21 +175,24 @@ export function ClinicalAudit() {
         ],
         "pgx_alerts": [
           { "drug": "Name", "genotype_context": "CYP2C19", "warning": "Slow Metabolizer risk", "severity": "High|Moderate" }
-        ]
+        ],
+        "risk_summary": "Synthesized risk narrative..."
       }`;
       
       const responseText = await clinicalAIRequest(
         [{ role: "user", content: prompt }],
         aiSettings
       );
-      const data = parseJsonResponse(responseText, { recommendations: {}, counseling_highlights: [], lab_monitoring: [], financial_alerts: [], pgx_alerts: [] });
+      const data = parseJsonResponse(responseText, { recommendations: {}, counseling_highlights: [], lab_monitoring: [], financial_alerts: [], pgx_alerts: [], risk_summary: "" });
       setRecommendations(data.recommendations || {});
       setCounselingPoints(data.counseling_highlights || []);
       setLabSuggestions(data.lab_monitoring || []);
       setCostAlerts(data.financial_alerts || []);
       setPgxAlerts(data.pgx_alerts || []);
-    } catch (error) {
+      setAiRiskSummary(data.risk_summary || "");
+    } catch (error: any) {
       console.error("AI Recommendation failed", error);
+      toast.error(error.message || "AI Analysis failed. Rate limit may have been reached.");
     }
   };
 
@@ -158,6 +207,40 @@ export function ClinicalAudit() {
   const handleOverride = (id: string, reason: string) => {
     setOverrides(prev => ({ ...prev, [id]: reason }));
     toast.info("Override logged in audit trail.");
+  };
+
+  const handleAiConsult = async () => {
+    if (!chatInput.trim() || isChatLoading) return;
+    
+    const userMsg = chatInput;
+    setChatInput("");
+    setChatHistory(prev => [...prev, { role: 'user', content: userMsg }]);
+    setIsChatLoading(true);
+    
+    try {
+      const prompt = `You are an AI Clinical Pharmacologist assisting a doctor. Answer the user's question about the current clinical audit.
+      
+      [CURRENT CONTEXT]
+      Patient: ${selectedPatient?.name}, ${selectedPatient?.age}yo, ${selectedPatient?.gender}
+      Conditions: ${selectedPatient?.chronicConditions?.join(", ")}
+      Prescribed: ${items.map(i => i.medication).join(", ")}
+      Alerts Found: ${JSON.stringify({ safetyAlerts, interactionAlerts, gapAlerts, indicationAlerts })}
+      
+      Question: ${userMsg}
+      
+      Provide a precise, evidence-based answer for the doctor.`;
+      
+      const response = await clinicalAIRequest(
+        [...chatHistory, { role: 'user', content: prompt }], 
+        aiSettings
+      );
+      
+      setChatHistory(prev => [...prev, { role: 'assistant', content: response }]);
+    } catch (error) {
+      toast.error("Consult failed");
+    } finally {
+      setIsChatLoading(false);
+    }
   };
 
   return (
@@ -212,7 +295,7 @@ export function ClinicalAudit() {
             Cancel
           </button>
           <button 
-            onClick={() => navigate('/prescriptions', { state: { items, audited: true } })}
+            onClick={() => navigate('/prescriptions', { state: { items, audited: true, labSuggestions } })}
             className="px-6 py-2 bg-indigo-600 text-white rounded-full text-sm font-bold shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-all flex items-center gap-2"
           >
             Approve & Return <CheckCircle className="w-4 h-4" />
@@ -223,28 +306,61 @@ export function ClinicalAudit() {
       <div className="flex-1 overflow-y-auto p-6">
         <div className="max-w-5xl mx-auto space-y-6">
           {/* Quick Summary Bar */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div className="md:col-span-1 bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex flex-col items-center justify-center text-center">
+              <div className="relative w-16 h-16 mb-2">
+                <svg className="w-full h-full" viewBox="0 0 36 36">
+                  <path
+                    className="stroke-current text-slate-100"
+                    strokeWidth="4"
+                    fill="none"
+                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                  />
+                  <path
+                    className={cn(
+                      "stroke-current",
+                      safetyScore > 80 ? "text-emerald-500" : safetyScore > 50 ? "text-amber-500" : "text-rose-500"
+                    )}
+                    strokeWidth="4"
+                    strokeDasharray={`${safetyScore}, 100`}
+                    strokeLinecap="round"
+                    fill="none"
+                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                  />
+                </svg>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-xl font-black">{safetyScore}</span>
+                </div>
+              </div>
+              <p className="text-[10px] uppercase font-bold text-slate-400">Safety Index</p>
+            </div>
             <SummaryCard 
               icon={<AlertCircle className="text-rose-500" />} 
               label="Safety Risks" 
-              count={safetyAlerts.length} 
+              count={safetyAlerts.filter(a => a.type === 'Contraindication' || a.type === 'Allergy').length} 
               color="rose"
             />
             <SummaryCard 
-              icon={<RefreshCw className="text-orange-500" />} 
-              label="Interactions" 
+              icon={<Shuffle className="text-orange-500" />} 
+              label="DDIs Detected" 
               count={interactionAlerts.length} 
               color="orange"
             />
             <SummaryCard 
               icon={<BrainCircuit className="text-indigo-500" />} 
-              label="Clinical Gaps" 
+              label="Therapeutic Gaps" 
               count={gapAlerts.length} 
               color="indigo"
             />
             <SummaryCard 
-              icon={<CheckCircle className="text-emerald-500" />} 
-              label="Ready to Finalize" 
+              icon={<ShieldX className="text-purple-500" />} 
+              label="Geriatric Risks" 
+              count={safetyAlerts.filter(a => a.type === 'Geriatric').length} 
+              color="purple"
+            />
+            <SummaryCard 
+              icon={<Pill className="text-emerald-500" />} 
+              label="Staged Items" 
               count={items.length} 
               color="emerald"
             />
@@ -262,65 +378,132 @@ export function ClinicalAudit() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {/* Safety Alerts (Allergies/Contraindications) */}
-                  {safetyAlerts.map((alert, i) => (
-                    <AuditItem 
-                      key={`safety-${i}`}
-                      type="Safety"
-                      severity="critical"
-                      title={alert.type}
-                      message={alert.message}
-                      recommendation={recommendations[`safety-${i}`]}
-                      onAccept={() => handleAcceptRecommendation(`safety-${i}`, recommendations[`safety-${i}`])}
-                      onOverride={(reason) => handleOverride(`safety-${i}`, reason)}
-                    />
-                  ))}
+                  {/* AI Clinical Insight Narration */}
+                  {aiRiskSummary && (
+                    <motion.div 
+                      initial={{ opacity: 0, scale: 0.98 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="bg-indigo-50 border border-indigo-100 rounded-3xl p-5 relative overflow-hidden group shadow-sm"
+                    >
+                      <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
+                        <Sparkles className="w-12 h-12 text-indigo-600" />
+                      </div>
+                      <div className="relative z-10">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="flex h-2 w-2 rounded-full bg-indigo-600 animate-pulse"></span>
+                          <span className="text-[10px] font-black uppercase tracking-widest text-indigo-600">AI Clinical Risk Synthesis</span>
+                        </div>
+                        <p className="text-sm text-indigo-900 font-medium leading-relaxed italic">
+                          "{aiRiskSummary}"
+                        </p>
+                      </div>
+                    </motion.div>
+                  )}
 
-                  {/* Interactions */}
-                  {interactionAlerts.length > 0 && items.length >= 2 && (
-                    <div className="mb-6">
-                      <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                        <Shuffle className="w-3 h-3" /> Interaction Network Matrix
-                      </h3>
-                      <InteractionMatrix medications={items.map(i => i.medication)} interactions={interactionAlerts} />
+                  {/* Drug-Drug Interactions Section */}
+                  {(interactionAlerts.length > 0 || safetyAlerts.some(a => a.type === 'Duplicate')) && (
+                    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                      <div className="flex items-center gap-2 px-1">
+                        <Shuffle className="w-4 h-4 text-orange-500" />
+                        <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest">Medication Safety & Redundancy</h3>
+                      </div>
+                      
+                      {/* Visual Matrix for DDIs if multiple drugs */}
+                      {items.length >= 2 && interactionAlerts.length > 0 && (
+                        <div className="mb-4">
+                          <InteractionMatrix medications={items.map(i => i.medication)} interactions={interactionAlerts} />
+                        </div>
+                      )}
+
+                      <div className="space-y-3">
+                        {/* Duplicate Therapy Alerts */}
+                        {safetyAlerts.filter(a => a.type === 'Duplicate').map((alert: any, i) => (
+                          <AuditItem 
+                            key={`duplicate-${i}`}
+                            type="Duplicate Therapy"
+                            severity="critical"
+                            title="Therapeutic Redundancy"
+                            message={alert.message}
+                          />
+                        ))}
+
+                        {interactionAlerts.map((alert, i) => alert && (
+                          <AuditItem 
+                            key={`ddi-${i}`}
+                            type="DDI"
+                            source={alert.source}
+                            severity={alert.severity === 'Major' || alert.severity === 'Severe' ? 'critical' : 'warning'}
+                            title={Array.isArray(alert.drugs) ? alert.drugs.join(" + ") : "Interaction"}
+                            message={alert.description}
+                            recommendation={recommendations[`ddi-${i}`]}
+                          />
+                        ))}
+                      </div>
                     </div>
                   )}
 
-                  {interactionAlerts.map((alert, i) => (
-                    <AuditItem 
-                      key={`ddi-${i}`}
-                      type="Interaction"
-                      severity={alert.severity === 'Major' ? 'critical' : 'warning'}
-                      title={Array.isArray(alert.drugs) ? alert.drugs.join(" + ") : "Interaction"}
-                      message={alert.description}
-                      recommendation={recommendations[`ddi-${i}`]}
-                    />
-                  ))}
+                  {/* Drug-Disease & Allergy Monitoring Section */}
+                  {(safetyAlerts.filter(a => a.type !== 'Duplicate').length > 0) && (
+                    <div className="space-y-4 pt-4 animate-in fade-in slide-in-from-bottom-2 duration-700">
+                      <div className="flex items-center gap-2 px-1">
+                        <ShieldCheck className="w-4 h-4 text-rose-500" />
+                        <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest">Drug-Disease & Clinical Alerts</h3>
+                      </div>
+                      <div className="space-y-3">
+                        {safetyAlerts.filter(a => a.type !== 'Duplicate').map((alert: any, i) => (
+                          <AuditItem 
+                            key={`safety-${i}`}
+                            type={alert.type || 'Safety'}
+                            severity={alert.type === 'Geriatric' ? 'warning' : 'critical'}
+                            title={
+                              alert.type === 'Contraindication' ? "Clinical Contraindication" : 
+                              alert.type === 'Allergy' ? "Allergy Warning" : 
+                              alert.type === 'Geriatric' ? "Geriatric Safety (Beers Criteria)" :
+                              `${alert.type} Risk`
+                            }
+                            message={alert.message}
+                            recommendation={recommendations[`safety-${i}`]}
+                            onAccept={() => handleAcceptRecommendation(`safety-${i}`, recommendations[`safety-${i}`])}
+                            onOverride={(reason: string) => handleOverride(`safety-${i}`, reason)}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
-                  {/* Gaps */}
-                  {gapAlerts.map((gap, i) => (
-                    <AuditItem 
-                      key={`gap-${i}`}
-                      type="Therapeutic Gap"
-                      severity="warning"
-                      title={`Missing therapy for ${gap.condition}`}
-                      message={gap.message}
-                      recommendation={{ action: "Add", suggestion: "Indicated medication", reason: gap.clinicalContext }}
-                      evidence={gap.evidence}
-                      guidelineUrl={gap.guidelineUrl}
-                    />
-                  ))}
+                  {/* Gaps & Indications Section */}
+                  {(gapAlerts.length > 0 || indicationAlerts.length > 0) && (
+                    <div className="space-y-4 pt-4">
+                      <div className="flex items-center gap-2 px-1">
+                        <BrainCircuit className="w-4 h-4 text-indigo-500" />
+                        <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest">Therapeutic Optimization</h3>
+                      </div>
+                      <div className="space-y-3">
+                        {gapAlerts.map((gap, i) => gap && (
+                          <AuditItem 
+                            key={`gap-${i}`}
+                            type="Therapeutic Gap"
+                            severity="warning"
+                            title={`Missing therapy for ${gap.condition}`}
+                            message={gap.message}
+                            recommendation={{ action: "Add", suggestion: "Indicated medication", reason: gap.clinicalContext }}
+                            evidence={gap.evidence}
+                            guidelineUrl={gap.guidelineUrl}
+                          />
+                        ))}
 
-                  {/* Indications */}
-                  {indicationAlerts.map((alert, i) => (
-                    <AuditItem 
-                      key={`indy-${i}`}
-                      type="Indication Audit"
-                      severity="warning"
-                      title={alert.drug}
-                      message={alert.message}
-                    />
-                  ))}
+                        {indicationAlerts.map((alert, i) => alert && (
+                          <AuditItem 
+                            key={`indy-${i}`}
+                            type="Indication Audit"
+                            severity="warning"
+                            title={alert.drug || 'Medication'}
+                            message={alert.message}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {safetyAlerts.length === 0 && interactionAlerts.length === 0 && gapAlerts.length === 0 && indicationAlerts.length === 0 && (
                     <div className="p-12 text-center bg-white rounded-3xl border border-slate-100 shadow-sm border-dashed">
@@ -451,117 +634,6 @@ export function ClinicalAudit() {
                 </section>
               )}
 
-              {/* Pharmacogenomic Safeguard */}
-              {!isLoading && pgxAlerts.length > 0 && (
-                <section className="mt-8 space-y-4">
-                  <h2 className="text-sm font-black text-slate-400 uppercase tracking-widest px-1">Pharmacogenomic (PGx) Safeguard</h2>
-                  <div className="bg-slate-900 rounded-3xl p-6 text-white shadow-xl relative overflow-hidden border border-slate-700">
-                    <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full -mr-32 -mt-32 blur-3xl"></div>
-                    <div className="relative z-10">
-                      <div className="flex items-center gap-3 mb-6">
-                        <div className="p-2 bg-indigo-600 rounded-xl">
-                          <Activity className="w-6 h-6" />
-                        </div>
-                        <div>
-                          <h3 className="text-xl font-bold">Genomic Sensitivity Detected</h3>
-                          <p className="text-xs text-slate-400 font-medium">Metabolic Pathway Analysis (CYP450)</p>
-                        </div>
-                      </div>
-                      
-                      <div className="space-y-3">
-                        {pgxAlerts.map((alert, i) => (
-                          <div key={i} className="p-4 bg-white/5 rounded-2xl border border-white/10 flex items-center justify-between group hover:bg-white/10 transition-colors">
-                            <div className="flex items-center gap-4">
-                              <div className="px-2 py-1 bg-indigo-500/20 text-indigo-300 rounded text-[10px] font-black uppercase tracking-widest">
-                                {alert.genotype_context}
-                              </div>
-                              <div>
-                                <p className="text-sm font-bold">{alert.drug}</p>
-                                <p className="text-xs text-slate-400">{alert.warning}</p>
-                              </div>
-                            </div>
-                            <div className={cn(
-                              "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter",
-                              alert.severity === 'High' ? "bg-rose-500 text-white" : "bg-amber-500 text-black"
-                            )}>
-                              {alert.severity} Risk
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </section>
-              )}
-
-              {/* Financial & Access Alerts */}
-              {!isLoading && costAlerts.length > 0 && (
-                <section className="mt-8 space-y-4">
-                  <h2 className="text-sm font-black text-slate-400 uppercase tracking-widest px-1">Access & Affordability</h2>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {costAlerts.map((alert, i) => (
-                      <div key={i} className={cn(
-                        "p-4 rounded-2xl border flex gap-4 transition-all hover:shadow-md",
-                        alert.type === 'Prior Auth' ? "bg-amber-50 border-amber-100" : "bg-emerald-50 border-emerald-100"
-                      )}>
-                        <div className={cn(
-                          "p-2.5 rounded-xl h-fit",
-                          alert.type === 'Prior Auth' ? "bg-white text-amber-600" : "bg-white text-emerald-600"
-                        )}>
-                          {alert.type === 'Prior Auth' ? <FileText className="w-5 h-5" /> : <Calculator className="w-5 h-5" />}
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex items-center justify-between mb-1">
-                            <p className="text-[10px] font-black uppercase tracking-wider opacity-60">{alert.type}</p>
-                            {alert.savings && (
-                              <span className="text-[9px] bg-emerald-600 text-white px-1.5 py-0.5 rounded font-black uppercase">
-                                {alert.savings} Savings
-                              </span>
-                            )}
-                          </div>
-                          <h4 className="font-bold text-slate-800 text-sm mb-1">{alert.drug}</h4>
-                          <p className="text-xs text-slate-600 leading-relaxed">{alert.message}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              )}
-
-              {/* Lab Monitoring Section */}
-              {!isLoading && (
-                <section className="mt-8 space-y-4">
-                  <h2 className="text-sm font-black text-slate-400 uppercase tracking-widest px-1">Required Lab Monitoring</h2>
-                  <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-                    <div className="p-5 border-b border-slate-100 flex items-center gap-3">
-                      <RefreshCw className="w-5 h-5 text-indigo-600" />
-                      <h3 className="font-bold text-slate-800">Follow-up Schedule</h3>
-                    </div>
-                    <div className="p-1">
-                      {labSuggestions.length > 0 ? (
-                        labSuggestions.map((suggestion, i) => (
-                          <div key={i} className="flex items-center justify-between p-4 hover:bg-slate-50 rounded-2xl transition-colors group">
-                            <div className="flex items-center gap-4">
-                              <div className="w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600 font-bold">
-                                {i + 1}
-                              </div>
-                              <p className="text-sm font-medium text-slate-800">{suggestion}</p>
-                            </div>
-                            <button className="px-3 py-1.5 text-[10px] font-black uppercase bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-600 hover:text-white transition-all opacity-0 group-hover:opacity-100">
-                              Order Now
-                            </button>
-                          </div>
-                        ))
-                      ) : (
-                        <div className="p-8 text-center text-slate-400 italic text-sm">
-                          No specific laboratory monitoring required for this profile.
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </section>
-              )}
-
               {/* Financial & Access Alerts */}
               {!isLoading && costAlerts.length > 0 && (
                 <section className="mt-8 space-y-4">
@@ -632,7 +704,7 @@ export function ClinicalAudit() {
                   </div>
                   <div>
                     <p className="text-[10px] uppercase font-bold opacity-70 mb-1">eGFR</p>
-                    <p className="text-lg font-black">78 ml/min</p>
+                    <p className="text-lg font-black">{egfr ? `${Math.round(egfr)} ml/min` : 'N/A'}</p>
                   </div>
                   <div className="col-span-2">
                     <p className="text-[10px] uppercase font-bold opacity-70 mb-1">Known Allergies</p>
@@ -647,6 +719,87 @@ export function ClinicalAudit() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* AI Clinical Consult Floating Button & Drawer */}
+      <div className="fixed bottom-8 right-8 z-50">
+        <AnimatePresence>
+          {isAiConsultOpen && (
+            <motion.div 
+              initial={{ opacity: 0, y: 20, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 20, scale: 0.9 }}
+              className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-96 h-[500px] mb-4 flex flex-col overflow-hidden"
+            >
+              <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-indigo-600 text-white">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-5 h-5" />
+                  <span className="font-bold">Clinical AI Consult</span>
+                </div>
+                <button onClick={() => setIsAiConsultOpen(false)} className="p-1 hover:bg-white/20 rounded-lg">
+                  <XCircle className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50">
+                {chatHistory.map((msg, i) => (
+                  <div key={i} className={cn("flex", msg.role === 'user' ? "justify-end" : "justify-start")}>
+                    <div className={cn(
+                      "max-w-[85%] p-3 rounded-2xl text-sm shadow-sm",
+                      msg.role === 'user' 
+                        ? "bg-indigo-600 text-white rounded-tr-none" 
+                        : "bg-white text-slate-800 border border-slate-100 rounded-tl-none"
+                    )}>
+                      {msg.content}
+                    </div>
+                  </div>
+                ))}
+                {isChatLoading && (
+                  <div className="flex justify-start">
+                    <div className="bg-white p-3 rounded-2xl rounded-tl-none border border-slate-100 flex items-center gap-2">
+                      <RefreshCw className="w-4 h-4 animate-spin text-indigo-500" />
+                      <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Reasoning...</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="p-4 border-t border-slate-100 bg-white">
+                <form 
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleAiConsult();
+                  }}
+                  className="flex gap-2"
+                >
+                  <input 
+                    type="text" 
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    placeholder="Ask about these risks..."
+                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <button 
+                    disabled={!chatInput.trim() || isChatLoading}
+                    className="p-2 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-100 hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    <ArrowRight className="w-5 h-5" />
+                  </button>
+                </form>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        
+        <button 
+          onClick={() => setIsAiConsultOpen(!isAiConsultOpen)}
+          className={cn(
+            "w-14 h-14 rounded-full flex items-center justify-center shadow-2xl transition-all hover:scale-105 active:scale-95",
+            isAiConsultOpen ? "bg-slate-900 text-white" : "bg-indigo-600 text-white"
+          )}
+        >
+          {isAiConsultOpen ? <XCircle className="w-6 h-6" /> : <Sparkles className="w-6 h-6" />}
+        </button>
       </div>
     </div>
   );
@@ -743,10 +896,44 @@ function InteractionMatrix({ medications, interactions }: { medications: string[
   );
 }
 
-function AuditItem({ type, severity, title, message, recommendation, onAccept, onOverride, evidence, guidelineUrl }: any) {
+function AuditItem({ type, severity, title, message, recommendation, onAccept, onOverride, evidence, guidelineUrl, source }: any) {
+  const { settings: aiSettings } = useAISettings();
   const [showOverride, setShowOverride] = useState(false);
   const [overrideReason, setOverrideReason] = useState("");
   const [selectedStandardReason, setSelectedStandardReason] = useState("");
+  
+  const [isExplaining, setIsExplaining] = useState(false);
+  const [aiExplanation, setAiExplanation] = useState<string | null>(null);
+
+  const handleExplain = async () => {
+    if (aiExplanation) {
+      setAiExplanation(null);
+      return;
+    }
+    
+    setIsExplaining(true);
+    try {
+      const prompt = `You are a clinical pharmacologist. Explain this safety alert in detail for a medical professional.
+      
+      Alert Type: ${type}
+      Alert Title: ${title}
+      Message: ${message}
+      
+      Discuss:
+      1. Physiological mechanism of the risk.
+      2. Clinical significance and potential outcomes if ignored.
+      3. Actionable mitigation strategies.
+      
+      Keep it professional, high-density, and structured with Markdown headers. Max 150 words.`;
+      
+      const response = await clinicalAIRequest([{ role: "user", content: prompt }], aiSettings);
+      setAiExplanation(response);
+    } catch (error) {
+      toast.error("AI explanation failed");
+    } finally {
+      setIsExplaining(false);
+    }
+  };
 
   const standardReasons = [
     "Benefit outweighs known risk",
@@ -774,29 +961,68 @@ function AuditItem({ type, severity, title, message, recommendation, onAccept, o
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-1">
             <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">{type} validation</span>
+            {source && (
+              <span className={cn(
+                "text-[9px] px-1.5 py-0.5 rounded font-black uppercase",
+                source === 'Verified Database' ? "bg-indigo-100 text-indigo-700" : "bg-purple-100 text-purple-700"
+              )}>
+                {source}
+              </span>
+            )}
             {severity === 'critical' && <span className="text-[9px] bg-rose-600 text-white px-1.5 py-0.5 rounded font-black uppercase">Stat</span>}
           </div>
           <h4 className="font-bold text-slate-900 text-lg mb-1">{title}</h4>
           <p className="text-sm text-slate-600 leading-relaxed mb-3">{message}</p>
           
-          {evidence && (
-            <div className="flex items-center gap-2 mb-4">
+          <div className="flex flex-wrap items-center gap-2 mb-4">
+            {evidence && (
               <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-100 rounded text-[10px] font-bold text-slate-600 border border-slate-200">
                 <FileText className="w-3 h-3" />
                 Evidence: {evidence}
               </div>
-              {guidelineUrl && (
-                <a 
-                  href={guidelineUrl} 
-                  target="_blank" 
-                  rel="noreferrer"
-                  className="text-[10px] font-bold text-indigo-600 hover:underline flex items-center gap-0.5"
-                >
-                  View Guideline <ArrowRight className="w-2.5 h-2.5" />
-                </a>
-              )}
-            </div>
-          )}
+            )}
+            {guidelineUrl && (
+              <a 
+                href={guidelineUrl} 
+                target="_blank" 
+                rel="noreferrer"
+                className="text-[10px] font-bold text-indigo-600 hover:underline flex items-center gap-0.5"
+              >
+                View Guideline <ArrowRight className="w-2.5 h-2.5" />
+              </a>
+            )}
+            <button 
+              onClick={handleExplain}
+              disabled={isExplaining}
+              className="px-2 py-1 bg-indigo-50 text-indigo-600 rounded text-[10px] font-bold border border-indigo-100 hover:bg-indigo-600 hover:text-white transition-all flex items-center gap-1.5 disabled:opacity-50"
+            >
+              {isExplaining ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3 text-indigo-400" />}
+              {aiExplanation ? "Hide Explanation" : "Explain with AI"}
+            </button>
+          </div>
+
+          <AnimatePresence>
+            {aiExplanation && (
+              <motion.div 
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="mb-4 bg-slate-900 rounded-2xl p-4 text-xs text-slate-300 overflow-hidden border border-white/10"
+              >
+                <div className="markdown-content">
+                  <div className="flex items-center gap-2 mb-3 border-b border-white/10 pb-2">
+                    <div className="p-1.5 bg-indigo-500 rounded-lg">
+                      <BrainCircuit className="w-3.5 h-3.5 text-white" />
+                    </div>
+                    <span className="font-black text-white uppercase tracking-widest text-[9px]">Advanced Clinical Reasoning</span>
+                  </div>
+                  <div className="prose prose-invert prose-xs max-w-none">
+                    <p className="whitespace-pre-wrap leading-relaxed">{aiExplanation}</p>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
           
           {recommendation && (
             <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 flex gap-4">

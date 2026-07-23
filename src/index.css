@@ -277,3 +277,246 @@ h1, h2, h3 {
     print-color-adjust: exact !important;
   }
 }
+
+/* =========================================================
+   Markdown / Prose & Table Styling (Clinical/Medical Style)
+   ========================================================= */
+.prose {
+  line-height: 1.6;
+}
+
+.prose h1, .prose h2, .prose h3, .prose h4 {
+  font-family: "Inter", -apple-system, sans-serif;
+  font-weight: 700;
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+}
+
+.prose h1 {
+  font-size: 1.625rem;
+  color: #1e293b;
+  border-bottom: 3px solid #2563eb;
+  padding-bottom: 8px;
+  margin-top: 28px;
+  margin-bottom: 12px;
+}
+
+.dark .prose h1 {
+  color: #f8fafc;
+  border-bottom-color: #3b82f6;
+}
+
+.prose h2 {
+  font-size: 1.375rem;
+  color: #1e293b;
+  border-bottom: 3px solid #2563eb;
+  padding-bottom: 8px;
+  margin-top: 28px;
+  margin-bottom: 12px;
+}
+
+.dark .prose h2 {
+  color: #f8fafc;
+  border-bottom-color: #3b82f6;
+}
+
+.prose h3 {
+  font-size: 1.125rem;
+  color: #0f172a;
+  margin-top: 1.25em;
+  margin-bottom: 0.5em;
+}
+
+.dark .prose h3 {
+  color: #f1f5f9;
+}
+
+.prose p {
+  margin-bottom: 1em;
+  color: #334155;
+  font-size: 15px;
+}
+
+.dark .prose p {
+  color: #cbd5e1;
+}
+
+.prose ul, .prose ol {
+  margin-bottom: 1em;
+  padding-left: 1.5rem;
+}
+
+.prose ul {
+  list-style-type: disc;
+}
+
+.prose ol {
+  list-style-type: decimal;
+}
+
+.prose li {
+  margin-bottom: 0.35em;
+  color: #334155;
+  font-size: 15px;
+}
+
+.dark .prose li {
+  color: #cbd5e1;
+}
+
+.prose strong {
+  color: #111827;
+  font-weight: 600;
+}
+
+.dark .prose strong {
+  color: #f9fafb;
+}
+
+/* Container */
+.table-container, .prose .table-container {
+  width: 100%;
+  overflow-x: auto;
+  margin: 20px 0;
+}
+
+/* Main Table styling inside Markdown/Prose context */
+.prose table {
+  width: 100% !important;
+  border-collapse: collapse !important;
+  font-family: "Inter", "Segoe UI", Arial, sans-serif !important;
+  font-size: 15px !important;
+  line-height: 1.6 !important;
+  background: #ffffff !important;
+  border-radius: 10px !important;
+  overflow: hidden !important;
+  box-shadow: 0 4px 12px rgba(0,0,0,.08) !important;
+  border: 1px solid #e5e7eb !important;
+  margin-top: 20px !important;
+  margin-bottom: 20px !important;
+}
+
+.dark .prose table {
+  background: #0f172a !important;
+  border-color: #334155 !important;
+  box-shadow: 0 4px 12px rgba(0,0,0,.3) !important;
+}
+
+/* Header */
+.prose thead {
+  background: #2563eb !important;
+  color: white !important;
+}
+
+.dark .prose thead {
+  background: #1d4ed8 !important;
+}
+
+.prose thead th {
+  padding: 14px 18px !important;
+  text-align: left !important;
+  font-weight: 700 !important;
+  letter-spacing: .3px !important;
+  color: white !important;
+  border-bottom: none !important;
+  font-size: 14px !important;
+  text-transform: none !important;
+}
+
+/* Body */
+.prose tbody td {
+  padding: 14px 18px !important;
+  border-bottom: 1px solid #e5e7eb !important;
+  vertical-align: top !important;
+  color: #334155 !important;
+}
+
+.dark .prose tbody td {
+  border-bottom: 1px solid #334155 !important;
+  color: #cbd5e1 !important;
+}
+
+/* Zebra Stripes */
+.prose tbody tr:nth-child(even) {
+  background: #f8fafc !important;
+}
+
+.dark .prose tbody tr:nth-child(even) {
+  background: #1e293b !important;
+}
+
+.prose tbody tr:nth-child(odd) {
+  background: #ffffff !important;
+}
+
+.dark .prose tbody tr:nth-child(odd) {
+  background: #0f172a !important;
+}
+
+/* Hover Effect */
+.prose tbody tr:hover td {
+  background: #eef6ff !important;
+  transition: .2s !important;
+}
+
+.dark .prose tbody tr:hover td {
+  background: #1e3a8a !important;
+}
+
+/* Last Row */
+.prose tbody tr:last-child td {
+  border-bottom: none !important;
+}
+
+/* Priority Badges */
+.priority-critical {
+  background: #dc2626;
+  color: white;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: .85rem;
+  font-weight: 600;
+  display: inline-block;
+}
+
+.priority-high {
+  background: #f59e0b;
+  color: white;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: .85rem;
+  font-weight: 600;
+  display: inline-block;
+}
+
+.priority-moderate {
+  background: #facc15;
+  color: #111827;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: .85rem;
+  font-weight: 600;
+  display: inline-block;
+}
+
+.priority-routine {
+  background: #16a34a;
+  color: white;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: .85rem;
+  font-weight: 600;
+  display: inline-block;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .prose table {
+    font-size: 14px !important;
+  }
+
+  .prose thead th,
+  .prose tbody td {
+    padding: 10px 12px !important;
+  }
+}

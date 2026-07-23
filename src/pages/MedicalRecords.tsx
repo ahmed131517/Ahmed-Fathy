@@ -24,6 +24,7 @@ export function MedicalRecords() {
   const { settings: aiSettings } = useAISettings();
   const navigate = useNavigate();
   const { selectedPatient } = usePatient();
+  console.log("MedicalRecords: selectedPatient:", selectedPatient);
   const [selectedRecord, setSelectedRecord] = useState<any | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'trends' | 'critical' | 'timeline' | 'specialized'>('list');
   const [isSummarizing, setIsSummarizing] = useState(false);
@@ -41,16 +42,28 @@ export function MedicalRecords() {
 
   const timelineEvents = useLiveQuery(
     async () => {
-      if (!selectedPatient) return [];
-      // Watch all relevant tables for changes
-      await db.appointments.where('patientId').equals(selectedPatient.id).toArray();
-      await db.prescriptions.where('patientId').equals(selectedPatient.id).toArray();
-      await db.diagnoses.where('patientId').equals(selectedPatient.id).toArray();
-      await db.lab_results.where('patientId').equals(selectedPatient.id).toArray();
-      await db.vitals.where('patientId').equals(selectedPatient.id).toArray();
-      await db.physical_exams.where('patientId').equals(selectedPatient.id).toArray();
+      if (!selectedPatient) {
+        console.log("MedicalRecords: No selected patient");
+        return [];
+      }
+      console.log("MedicalRecords: Fetching timeline for:", selectedPatient.id);
       
-      return await PatientHistoryService.getPatientHistory(selectedPatient.id);
+      // Watch all relevant tables for changes
+      const [appointments, prescriptions, diagnoses, labs, vitals, exams] = await Promise.all([
+        db.appointments.where('patientId').equals(selectedPatient.id).toArray(),
+        db.prescriptions.where('patientId').equals(selectedPatient.id).toArray(),
+        db.diagnoses.where('patientId').equals(selectedPatient.id).toArray(),
+        db.lab_results.where('patientId').equals(selectedPatient.id).toArray(),
+        db.vitals.where('patientId').equals(selectedPatient.id).toArray(),
+        db.physical_exams.where('patientId').equals(selectedPatient.id).toArray()
+      ]);
+      
+      console.log("MedicalRecords: Fetched counts - Appts:", appointments.length, "Presc:", prescriptions.length, "Diag:", diagnoses.length, "Labs:", labs.length, "Vitals:", vitals.length, "Exams:", exams.length);
+      
+      const history = await PatientHistoryService.getPatientHistory(selectedPatient.id);
+      console.log("MedicalRecords: Total history events:", history.length);
+      
+      return history;
     },
     [selectedPatient]
   ) || [];

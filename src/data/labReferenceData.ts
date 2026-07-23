@@ -363,14 +363,83 @@ export const LAB_REFERENCE_DATA: Record<string, LabTest[]> = {
     { name: "24-hour Urine Protein", category: "urine" },
   ],
   imaging: [
-    { name: "X-ray", category: "imaging" },
-    { name: "Ultrasound (US)", category: "imaging" },
-    { name: "CT Scan", category: "imaging" },
-    { name: "MRI", category: "imaging" },
-    { name: "PET Scan", category: "imaging" },
-    { name: "Fluoroscopy", category: "imaging" },
-    { name: "Interventional Radiology", category: "imaging" },
-    { name: "Doppler Studies", category: "imaging" },
+    { 
+      name: "X-ray", 
+      category: "imaging",
+      components: [
+        { name: "Indication" },
+        { name: "Findings" },
+        { name: "Impression" }
+      ]
+    },
+    { 
+      name: "Ultrasound (US)", 
+      category: "imaging",
+      components: [
+        { name: "Indication" },
+        { name: "Findings" },
+        { name: "Impression" }
+      ]
+    },
+    { 
+      name: "CT Scan", 
+      category: "imaging",
+      components: [
+        { name: "Indication" },
+        { name: "Contrast Used" },
+        { name: "Findings" },
+        { name: "Impression" }
+      ]
+    },
+    { 
+      name: "MRI", 
+      category: "imaging",
+      components: [
+        { name: "Indication" },
+        { name: "Sequence Type" },
+        { name: "Findings" },
+        { name: "Impression" }
+      ]
+    },
+    { 
+      name: "PET Scan", 
+      category: "imaging",
+      components: [
+        { name: "Indication" },
+        { name: "Tracer" },
+        { name: "Findings" },
+        { name: "Impression" }
+      ]
+    },
+    { 
+      name: "Fluoroscopy", 
+      category: "imaging",
+      components: [
+        { name: "Indication" },
+        { name: "Findings" },
+        { name: "Impression" }
+      ]
+    },
+    { 
+      name: "Interventional Radiology", 
+      category: "imaging",
+      components: [
+        { name: "Indication" },
+        { name: "Procedure Performed" },
+        { name: "Findings" },
+        { name: "Post-procedure Status" }
+      ]
+    },
+    { 
+      name: "Doppler Studies", 
+      category: "imaging",
+      components: [
+        { name: "Indication" },
+        { name: "Vessel Assessed" },
+        { name: "Findings" },
+        { name: "Impression" }
+      ]
+    },
   ],
   cardiology: [
     {
@@ -389,7 +458,20 @@ export const LAB_REFERENCE_DATA: Record<string, LabTest[]> = {
     { name: "NT-proBNP", category: "cardiology", unit: "pg/mL", referenceRange: "<125" },
     { name: "Myoglobin", category: "cardiology", unit: "ng/mL", referenceRange: "<85" },
     { name: "Electrocardiogram (ECG)", category: "cardiology" },
-    { name: "Echocardiography", category: "cardiology" },
+    { 
+      name: "Echocardiography", 
+      category: "cardiology",
+      components: [
+        { name: "Ejection Fraction (EF)", unit: "%", referenceRange: "55-70" },
+        { name: "Left Atrial Diameter", unit: "cm", referenceRange: "2.5-4.0" },
+        { name: "LVEDD", unit: "cm", referenceRange: "3.5-5.7" },
+        { name: "LVESD", unit: "cm", referenceRange: "2.5-4.0" },
+        { name: "Septal Wall Thickness", unit: "cm", referenceRange: "0.6-1.1" },
+        { name: "Posterior Wall Thickness", unit: "cm", referenceRange: "0.6-1.1" },
+        { name: "Aortic Root Diameter", unit: "cm", referenceRange: "2.0-3.7" },
+        { name: "Wall Motion Abnormalities", referenceRange: "None" }
+      ]
+    },
     { name: "Stress Test", category: "cardiology" },
     { name: "Holter Monitoring", category: "cardiology" },
   ],

@@ -1,0 +1,8 @@
+{
+  "messages": [{
+    "role": "user",
+    "content": "Based on the patient profile and general context, provide focused clinical examination guidance.\n      \n      Patient: 45y male, N/A\n      Symptoms: None reported yet. Provide a standard age/gender appropriate physical exam overview.\n      \n      Return a JSON object with:\n      {\n        \"focusedExams\": [\n          { \"system\": \"System name\", \"rational\": \"Why this system is relevant\", \"keySigns\": [\"sign 1\", \"sign 2\"] }\n        ],\n        \"clinicalPearls\": [\"pearl 1\", \"pearl 2\"],\n        \"riskFactors\": [\"factor 1\"]\n      }"
+  }],
+  "provider": "gemini",
+  "systemInstruction": "You are a clinical AI. Always respond with only valid JSON."
+}

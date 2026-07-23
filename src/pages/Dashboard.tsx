@@ -27,7 +27,13 @@ export function Dashboard() {
 
   const role = profile.role;
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const getLocalDateString = (d: Date) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+  const todayStr = getLocalDateString(new Date());
   const todayAppointmentsCount = useLiveQuery(
     () => db.appointments.where('date').equals(todayStr).and(a => a.isDeleted === 0).count()
   ) || 0;
@@ -40,8 +46,8 @@ export function Dashboard() {
     () => db.appointments.where('isDeleted').equals(0).toArray()
   ) || [];
 
-  const activePatientsCount = patients.filter(p => p.status === 'Active' || p.status === 'Stable').length;
-  const criticalPatientsCount = patients.filter(p => p.status === 'Critical').length;
+  const activePatientsCount = (patients || []).filter(p => p && (p.status === 'Active' || p.status === 'Stable')).length;
+  const criticalPatientsCount = (patients || []).filter(p => p && p.status === 'Critical').length;
 
   const chartData = useMemo(() => {
     // Generate last 7 days
@@ -53,7 +59,7 @@ export function Dashboard() {
     }
 
     const patientData = days.map(day => {
-      const count = allAppointments.filter(a => a.date === day).length;
+      const count = (allAppointments || []).filter(a => a && a.date === day).length;
       const dateObj = new Date(day);
       const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
       return { name: dayName, patients: count };
@@ -62,6 +68,7 @@ export function Dashboard() {
     // Group by appointment type
     const typeCounts: Record<string, number> = {};
     allAppointments.forEach(a => {
+      if (!a) return;
       const type = a.type || 'Other';
       typeCounts[type] = (typeCounts[type] || 0) + 1;
     });
@@ -76,6 +83,7 @@ export function Dashboard() {
     // Group patients by status
     const statusCounts: Record<string, number> = {};
     patients.forEach(p => {
+      if (!p) return;
       const status = p.status || 'Unknown';
       statusCounts[status] = (statusCounts[status] || 0) + 1;
     });
@@ -112,15 +120,6 @@ export function Dashboard() {
           <p className="text-slate-500 dark:text-slate-400">{t('dashboardOverview')}</p>
         </div>
         <div className="flex gap-3 items-center">
-          <select 
-            value={role}
-            onChange={(e) => updateProfile({ role: e.target.value as any })}
-            className="text-xs border border-slate-200 rounded-md px-2 py-1 bg-white hover:border-indigo-500 transition-colors"
-          >
-            <option value="doctor">Doctor View</option>
-            <option value="nurse">Nurse View</option>
-            <option value="admin">Admin View</option>
-          </select>
           <button 
             onClick={() => {
               toast.info("Navigating to Schedule...");

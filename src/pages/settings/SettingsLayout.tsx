@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation } from "react-router-dom";
-import { ArrowLeft, Settings as SettingsIcon, Bell, Lock, Globe, Monitor, Palette, Users, Stethoscope, CreditCard, HardDrive, FileText, Link as LinkIcon, Sparkles, LogOut, Grid, Shield, Database } from "lucide-react";
+import { ArrowLeft, Settings as SettingsIcon, Bell, Lock, Globe, Monitor, Palette, Users, Stethoscope, CreditCard, HardDrive, FileText, Link as LinkIcon, Sparkles, LogOut, Grid, Shield, Database, Building } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { toast } from "sonner";
 import { useUser } from "../../lib/UserContext";
@@ -30,9 +30,10 @@ export function SettingsLayout() {
     );
   }
 
-  const tabs: { id: string; name: string; key: TranslationKey; icon: any; path: string }[] = [
+  const tabs: { id: string; name: string; key: any; icon: any; path: string }[] = [
     { id: 'overview', name: 'Overview', key: 'overview', icon: Grid, path: '/settings' },
     { id: 'general', name: 'General', key: 'general', icon: Monitor, path: '/settings/general' },
+    { id: 'workspaces', name: 'Workspaces & Clinics', key: 'workspaces', icon: Building, path: '/settings/workspaces' },
     { id: 'appearance', name: 'Appearance', key: 'appearance', icon: Palette, path: '/settings/appearance' },
     { id: 'users', name: 'Staff Management', key: 'staffManagement', icon: Users, path: '/settings/users' },
     { id: 'system', name: 'Inventory & System', key: 'inventorySystem', icon: SettingsIcon, path: '/settings/system' },
@@ -75,7 +76,7 @@ export function SettingsLayout() {
               )}
             >
               <tab.icon className="w-4 h-4" />
-              {t(tab.key)}
+              {tab.key && t(tab.key) !== tab.key ? t(tab.key) : tab.name}
             </Link>
           ))}
         </nav>
@@ -102,7 +103,11 @@ export function SettingsLayout() {
       <main className="flex-1 overflow-auto">
         <header className="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center sticky top-0 z-10">
           <h2 className="text-xl font-bold text-slate-900">
-            {t(tabs.find(t => isActive(t.path))?.key || 'settings')}
+            {(() => {
+              const activeTab = tabs.find(t => isActive(t.path));
+              if (!activeTab) return t('settings');
+              return activeTab.key && t(activeTab.key) !== activeTab.key ? t(activeTab.key) : activeTab.name;
+            })()}
           </h2>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-3">

@@ -1,0 +1,2 @@
+#!/bin/bash
+sed -i 's/export interface Drug {/export interface Drug {\n  mechanism_of_action?: string;\n  adult_dose?: string;\n  pediatric_dose?: string;\n  renal_dose?: string;\n  hepatic_dose?: string;\n  pregnancy_category?: string;\n  lactation?: string;\n  food_interactions?: string[];\n  monitoring_parameters?: string[];\n  lab_tests?: string[];\n  storage?: string;\n  patient_counseling?: string[];\n  references?: string[];/' src/services/medicationService.ts

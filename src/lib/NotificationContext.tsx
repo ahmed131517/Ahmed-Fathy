@@ -20,24 +20,28 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     () => db.notifications.where('isDeleted').equals(0).reverse().sortBy('createdAt')
   ) || [];
 
-  const unreadCount = notifications.filter(n => n.isRead === 0).length;
+  const unreadCount = (notifications || []).filter(n => n && n.isRead === 0).length;
 
   const addNotification = useCallback(async (notification: Omit<Notification, 'localId' | 'createdAt' | 'lastModified' | 'isDeleted' | 'isSynced' | 'isRead'>) => {
-    const now = Date.now();
-    await db.notifications.add({
-      ...notification,
-      isRead: 0,
-      createdAt: now,
-      lastModified: now,
-      isDeleted: 0,
-      isSynced: 0
-    });
-    
-    // Show a toast for important notifications
-    if (notification.type === 'error' || notification.type === 'warning' || notification.type === 'success') {
-      toast[notification.type](notification.title, {
-        description: notification.message
+    try {
+      const now = Date.now();
+      await db.notifications.add({
+        ...notification,
+        isRead: 0,
+        createdAt: now,
+        lastModified: now,
+        isDeleted: 0,
+        isSynced: 0
       });
+      
+      // Show a toast for important notifications
+      if (notification.type === 'error' || notification.type === 'warning' || notification.type === 'success') {
+        toast[notification.type](notification.title, {
+          description: notification.message
+        });
+      }
+    } catch (error) {
+      console.error("Failed to add notification:", error);
     }
   }, []);
 
@@ -49,7 +53,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const markAllAsRead = useCallback(async () => {
-    const unreadIds = notifications.filter(n => n.isRead === 0).map(n => n.localId).filter((id): id is number => id !== undefined);
+    const unreadIds = (notifications || []).filter(n => n && n.isRead === 0).map(n => n.localId).filter((id): id is number => id !== undefined);
     if (unreadIds.length === 0) return;
     
     const now = Date.now();
@@ -64,7 +68,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const clearAll = useCallback(async () => {
-    const ids = notifications.map(n => n.localId).filter((id): id is number => id !== undefined);
+    const ids = (notifications || []).map(n => n && n.localId).filter((id): id is number => id !== undefined);
     if (ids.length === 0) return;
     
     const now = Date.now();
@@ -84,33 +88,43 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   // Seed some initial notifications if empty
   useEffect(() => {
     const seedNotifications = async () => {
-      const count = await db.notifications.count();
-      if (count === 0) {
-        const now = Date.now();
-        await db.notifications.bulkAdd([
-          {
-            title: "Welcome to MedicalApp",
-            message: "Your clinical dashboard is ready. Start by registering a new patient.",
-            type: "success",
-            category: "system",
-            isRead: 0,
-            createdAt: now - 3600000,
-            lastModified: now,
-            isDeleted: 0,
-            isSynced: 0
-          },
-          {
-            title: "Lab Results Pending",
-            message: "Lab results for Sarah Johnson (P-1001) are expected by tomorrow.",
-            type: "info",
-            category: "lab",
-            isRead: 0,
-            createdAt: now - 7200000,
-            lastModified: now,
-            isDeleted: 0,
-            isSynced: 0
-          }
-        ]);
+      try {
+        const count = await db.notifications.count();
+        if (count === 0) {
+          const now = Date.now();
+          await db.notifications.bulkAdd([
+            {
+              title: "Welcome to MedicalApp",
+              message: "Your clinical dashboard is ready. Start by registering a new patient.",
+              type: "success",
+              category: "system",
+              isRead: 0,
+              createdAt: now - 3600000,
+              lastModified: now,
+              isDeleted: 0,
+              isSynced: 0
+            },
+            {
+              title: "Lab Results Pending",
+              message: "Lab results for Sarah Johnson (P-1001) are expected by tomorrow.",
+              type: "info",
+              category: "lab",
+              isRead: 0,
+              createdAt: now - 7200000,
+              lastModified: now,
+              isDeleted: 0,
+              isSynced: 0
+            }
+          ]).catch(err => {
+            if (err.name === 'QuotaExceededError' || err.message?.includes('NO_SPACE')) {
+              console.warn("Storage full during notification seeding - this is expected in some containers.");
+            } else {
+              console.warn("Failed to seed initial notifications:", err);
+            }
+          });
+        }
+      } catch (error) {
+        console.warn("Failed to check notification count for seeding:", error);
       }
     };
     seedNotifications();

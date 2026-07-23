@@ -1,11 +1,39 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, User } from 'firebase/auth';
-import { getFirestore, collection, doc, setDoc, getDoc, getDocs, query, where, onSnapshot, serverTimestamp, Timestamp, deleteDoc } from 'firebase/firestore';
+import { 
+  initializeFirestore, 
+  persistentLocalCache, 
+  persistentMultipleTabManager,
+  collection, 
+  doc, 
+  setDoc, 
+  getDoc, 
+  getDocs, 
+  query, 
+  where, 
+  onSnapshot, 
+  serverTimestamp, 
+  Timestamp, 
+  deleteDoc 
+} from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 // Initialize Firebase SDK
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+
+// Initialize Firestore 
+let firestoreDb;
+try {
+  firestoreDb = initializeFirestore(app, {
+    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+  }, firebaseConfig.firestoreDatabaseId);
+} catch (error) {
+  console.warn("Failed to initialize Firestore with persistent cache, falling back to memory cache:", error);
+  firestoreDb = initializeFirestore(app, {}, firebaseConfig.firestoreDatabaseId);
+}
+
+export const db = firestoreDb;
+
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 

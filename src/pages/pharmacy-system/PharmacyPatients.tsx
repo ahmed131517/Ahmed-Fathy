@@ -13,8 +13,17 @@ export function PharmacyPatients() {
   const patients = useMemo(() => {
     if (!patientsData) return [];
 
-    return patientsData.map(patient => {
-      const patientPrescriptions = prescriptionsData?.filter(p => p.patientId === patient.id || p.patientId === String(patient.localId)) || [];
+    const seen = new Set<string>();
+    const uniquePatientsData = patientsData.filter(patient => {
+      const id = patient.id || String(patient.localId);
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+
+    return uniquePatientsData.map(patient => {
+      const patientId = patient.id || String(patient.localId);
+      const patientPrescriptions = prescriptionsData?.filter(p => p.patientId === patientId) || [];
       
       // Sort prescriptions by createdAt descending to find the latest
       const sortedPrescriptions = [...patientPrescriptions].sort((a, b) => b.createdAt - a.createdAt);
@@ -23,7 +32,7 @@ export function PharmacyPatients() {
         : "No prescriptions";
 
       return {
-        id: patient.id || String(patient.localId),
+        id: patientId,
         name: patient.name,
         lastRx,
         orders: patientPrescriptions.length,

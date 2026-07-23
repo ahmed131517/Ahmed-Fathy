@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useMemo } from 'react';
 import { Patient } from '../data/patients';
 import { PatientService } from '../services/patient.service';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -15,13 +15,33 @@ interface PatientContextType {
 const PatientContext = createContext<PatientContextType | undefined>(undefined);
 
 export function PatientProvider({ children }: { children: ReactNode }) {
-  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(() => {
+    const storedId = localStorage.getItem('selectedPatientId');
+    return null; // Will initialize after patients list loads
+  });
+
   const [confirmedDiagnosis, setConfirmedDiagnosis] = useState<string | null>(null);
 
   const patients = useLiveQuery(
     () => PatientService.getAllPatients(),
     []
   ) || [];
+
+  useEffect(() => {
+    const storedId = localStorage.getItem('selectedPatientId');
+    if (storedId && patients.length > 0) {
+      const patient = patients.find(p => p.id === storedId) || null;
+      setSelectedPatient(patient);
+    }
+  }, [patients]);
+
+  useEffect(() => {
+    if (selectedPatient) {
+      localStorage.setItem('selectedPatientId', selectedPatient.id);
+    } else {
+      localStorage.removeItem('selectedPatientId');
+    }
+  }, [selectedPatient]);
 
   const isLoading = patients.length === 0; // Simplified loading state
 

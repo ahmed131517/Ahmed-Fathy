@@ -24,6 +24,8 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { getDifferentialDiagnosisPrompt, getSoapNotePrompt, getPatientEducationPrompt } from "@/services/aiConfig";
 import { useAISettings } from "../lib/AISettingsContext";
 import { clinicalAIRequest } from "@/services/aiWorkflowService";
+import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { parseJsonResponse } from "../utils/gemini";
 import { SOAPNoteModal } from "@/components/SOAPNoteModal";
 import { PatientSummaryModal } from "@/components/PatientSummaryModal";
@@ -34,6 +36,7 @@ import { Button } from "@/components/ui/button";
 
 interface ClinicalData {
   symptoms: string[];
+  chronicConditions: string[];
   examFindings: string[];
   labResults: string[];
   currentMedications: string[];
@@ -77,12 +80,40 @@ export function FinalDiagnosis() {
   const { symptoms } = useSymptom();
   const { settings: aiSettings } = useAISettings();
   
+  const [clinicalData, setClinicalData] = useState<ClinicalData>({
+    symptoms: symptoms.map(s => s.label),
+    chronicConditions: [],
+    examFindings: [],
+    labResults: [],
+    currentMedications: [],
+    labTrends: "",
+    vitals: {
+      bp: "",
+      hr: "",
+      temp: "",
+      rr: "",
+      spo2: "",
+      oxygenType: "",
+      oxygenDose: "",
+      oxygenInvasive: "",
+      oxygenDeviceType: "",
+      fio2: "",
+      peep: "",
+      pressureSupport: "",
+      flowRate: "",
+      notes: "",
+      weight: "",
+      height: "",
+      bmi: ""
+    }
+  });
+
   const patientData = useMemo(() => {
     if (selectedPatient) {
       return {
         age: selectedPatient.age,
         gender: selectedPatient.gender?.toLowerCase() || 'female',
-        conditions: selectedPatient.chronicConditions || [],
+        conditions: clinicalData.chronicConditions || [],
         medications: selectedPatient.medications?.map((m: any) => m.name || m) || [],
         allergies: selectedPatient.allergies?.map((a: any) => a.name || a) || []
       };
@@ -94,7 +125,7 @@ export function FinalDiagnosis() {
       medications: [],
       allergies: []
     };
-  }, [selectedPatient]);
+  }, [selectedPatient, clinicalData.chronicConditions]);
 
   if (!hasRole('doctor')) {
     return (
@@ -120,6 +151,11 @@ export function FinalDiagnosis() {
   const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
   const [isPeerReview, setIsPeerReview] = useState(false);
   
+  // Positive Medical History Summarization States
+  const [historySummary, setHistorySummary] = useState<string>("");
+  const [isGeneratingHistorySummary, setIsGeneratingHistorySummary] = useState<boolean>(false);
+  const [historyViewMode, setHistoryViewMode] = useState<'summary' | 'detailed'>('summary');
+  
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
   const [templateName, setTemplateName] = useState('');
   const [isLoadTemplateModalOpen, setIsLoadTemplateModalOpen] = useState(false);
@@ -144,33 +180,6 @@ export function FinalDiagnosis() {
     () => selectedPatient ? db.lab_results.where('patientId').equals(selectedPatient.id).reverse().limit(20).toArray() : [],
     [selectedPatient?.id]
   );
-
-  const [clinicalData, setClinicalData] = useState<ClinicalData>({
-    symptoms: symptoms.map(s => s.label),
-    examFindings: [],
-    labResults: [],
-    currentMedications: [],
-    labTrends: "",
-    vitals: {
-      bp: "",
-      hr: "",
-      temp: "",
-      rr: "",
-      spo2: "",
-      oxygenType: "",
-      oxygenDose: "",
-      oxygenInvasive: "",
-      oxygenDeviceType: "",
-      fio2: "",
-      peep: "",
-      pressureSupport: "",
-      flowRate: "",
-      notes: "",
-      weight: "",
-      height: "",
-      bmi: ""
-    }
-  });
 
   const formatExamFindings = useCallback((data: any) => {
     const findings: string[] = [];
@@ -350,8 +359,12 @@ export function FinalDiagnosis() {
       isExamInitializedRef.current = false;
       isLabsInitializedRef.current = false;
       
+      const pConditions = selectedPatient.chronicConditions || [];
+      const condNames = pConditions.map((c: any) => typeof c === 'object' && c !== null ? c.name || c.label || String(c) : String(c)).filter(Boolean);
+
       setClinicalData({
         symptoms: [],
+        chronicConditions: condNames,
         examFindings: [],
         labResults: [],
         currentMedications: [],
@@ -366,6 +379,17 @@ export function FinalDiagnosis() {
       });
     }
   }, [selectedPatient?.id]);
+
+  useEffect(() => {
+    if (selectedPatient?.chronicConditions && clinicalData.chronicConditions.length === 0) {
+      const pConditions = selectedPatient.chronicConditions;
+      const condNames = pConditions.map((c: any) => typeof c === 'object' && c !== null ? c.name || c.label || String(c) : String(c)).filter(Boolean);
+      setClinicalData(prev => ({
+        ...prev,
+        chronicConditions: condNames
+      }));
+    }
+  }, [selectedPatient?.chronicConditions, clinicalData.chronicConditions.length]);
 
   useEffect(() => {
     if (symptoms.length > 0 && !isInitializedRef.current) {
@@ -521,6 +545,115 @@ export function FinalDiagnosis() {
     }
   }, [symptoms]);
 
+  const generateHistorySummary = useCallback(async (force = false) => {
+    if (!selectedPatient) return;
+    
+    const cacheKey = `history_summary_${selectedPatient.id}`;
+    const cached = sessionStorage.getItem(cacheKey);
+    if (cached && !force) {
+      setHistorySummary(cached);
+      return;
+    }
+
+    setIsGeneratingHistorySummary(true);
+    try {
+      const patientConditionsCombined = clinicalData.chronicConditions || [];
+      const condsText = patientConditionsCombined.join(', ') || 'None';
+      const otherCondsText = selectedPatient.otherConditions || 'None';
+      
+      const allergiesText = selectedPatient.allergies?.map((a: any) => {
+        const name = typeof a === 'object' && a !== null ? a.name : String(a);
+        const sev = typeof a === 'object' && a !== null ? a.severity : '';
+        return `${name}${sev ? ` (${sev})` : ''}`;
+      }).join(', ') || 'None';
+
+      const medicationsText = selectedPatient.medications?.map((m: any) => {
+        const name = typeof m === 'object' && m !== null ? m.name : String(m);
+        const dose = typeof m === 'object' && m !== null ? m.dosage : '';
+        const freq = typeof m === 'object' && m !== null ? m.frequency || m.freq : '';
+        return `${name}${dose || freq ? ` (${[dose, freq].filter(Boolean).join(' - ')})` : ''}`;
+      }).join(', ') || 'None';
+
+      const surgeriesText = Array.isArray(selectedPatient.surgeries) 
+        ? selectedPatient.surgeries.map((s: any) => typeof s === 'object' && s !== null ? s.name || s.procedure : String(s)).join(', ')
+        : (selectedPatient.surgeries ? String(selectedPatient.surgeries) : 'None');
+
+      const familyHistoryText = selectedPatient.familyHistory?.map((f: any) => {
+        const rel = typeof f === 'object' && f !== null ? f.relation : 'Relative';
+        const cond = typeof f === 'object' && f !== null ? f.condition : String(f);
+        const age = typeof f === 'object' && f !== null ? f.age : '';
+        return `• ${rel}: ${cond}${age ? ` (Dx Age: ${age})` : ''}`;
+      }).join('\n') || 'None';
+      const familyHistoryNotesText = selectedPatient.familyHistoryNotes || 'None';
+
+      const obsText = selectedPatient.gender?.toLowerCase() === 'female' && selectedPatient.obsHistory
+        ? `G: ${selectedPatient.obsHistory.gravidity || 0}, P: ${selectedPatient.obsHistory.parity || 0}, T: ${selectedPatient.obsHistory.term || 0}, Preterm: ${selectedPatient.obsHistory.preterm || 0}, Abortions: ${selectedPatient.obsHistory.abortions || 0}, Living: ${selectedPatient.obsHistory.living || 0}. Delivery: ${selectedPatient.obsHistory.modeOfDelivery || 'N/A'}. Complications: ${selectedPatient.obsHistory.complicationNotes || 'None'}`
+        : 'N/A';
+
+      const gynText = selectedPatient.gender?.toLowerCase() === 'female' && selectedPatient.gynHistory
+        ? `LMP: ${selectedPatient.gynHistory.lmp || 'N/A'}, Cycle: ${selectedPatient.gynHistory.cycleRegularity || 'N/A'} ${selectedPatient.gynHistory.cycleLength ? `(${selectedPatient.gynHistory.cycleLength} days)` : ''}, Menarche Age: ${selectedPatient.gynHistory.menarcheAge || 'N/A'}, Contraception: ${selectedPatient.gynHistory.contraception || 'N/A'}, Last Pap: ${selectedPatient.gynHistory.papSmear || 'N/A'}`
+        : 'N/A';
+
+      const prompt = `
+You are an expert clinical virtual assistant. Review this patient's registration records and generate summary points.
+
+[1. MEDICAL HISTORY]
+Chronic Conditions: ${condsText}
+Other Conditions: ${otherCondsText}
+Allergies: ${allergiesText}
+Active Medications: ${medicationsText}
+Surgeries: ${surgeriesText}
+
+[2. FAMILY MEDICAL HISTORY]
+Family History Info:
+${familyHistoryText}
+Family Notes: ${familyHistoryNotesText}
+
+[3. OBSTETRIC & GYN HISTORY]
+Gender: ${selectedPatient.gender || 'Unknown'}
+Obstetric Details: ${obsText}
+Gynaecological Details: ${gynText}
+
+Generate extremely clear and concise clinical summary points for this patient. 
+You MUST provide a section "### Summary of Clinical Approach" organized as a Markdown table with columns: | Domain | Findings | Significance |.
+
+Then, construct the rest of your response with these exact markdown headers:
+
+### MEDICAL HISTORY SUMMARY POINTS
+- (Consolidate chronic/active diseases, medications, allergies, and surgeries)
+
+### FAMILY MEDICAL HISTORY SUMMARY POINTS
+- (Summarize heritable/genetic risks)
+
+### OBSTETRIC & GYN HISTORY SUMMARY POINTS
+- (Consolidate LMP, cycles, Pap Smear, and GTPAL if female)
+
+Keep it professional, compact, and list each section as short bulletin lines.
+`;
+
+      const responseText = await clinicalAIRequest(
+        [{ role: "user", content: prompt }],
+        aiSettings
+      );
+
+      if (responseText) {
+        setHistorySummary(responseText);
+        sessionStorage.setItem(cacheKey, responseText);
+      }
+    } catch (error: any) {
+      console.error("Failed to generate history summary:", error);
+      toast.error(error.message || "AI Summarization failed. Please try again.");
+    } finally {
+      setIsGeneratingHistorySummary(false);
+    }
+  }, [selectedPatient, clinicalData.chronicConditions, aiSettings]);
+
+  useEffect(() => {
+    if (selectedPatient?.id) {
+      generateHistorySummary();
+    }
+  }, [selectedPatient?.id, generateHistorySummary]);
+
   const handleGetSuggestions = async () => {
     if (!selectedPatient) {
       toast.error("Please select a patient first.");
@@ -533,7 +666,7 @@ export function FinalDiagnosis() {
     try {
       const patientContext = {
         ...selectedPatient,
-        chronicConditions: selectedPatient.chronicConditions || []
+        chronicConditions: clinicalData.chronicConditions || []
       };
       const prompt = getDifferentialDiagnosisPrompt(patientContext as any, clinicalData);
       
@@ -653,15 +786,15 @@ export function FinalDiagnosis() {
       await db.vitals.add({
         id: crypto.randomUUID(),
         patientId: selectedPatient.id,
-        bp_systolic: isNaN(systolic) ? undefined : systolic,
-        bp_diastolic: isNaN(diastolic) ? undefined : diastolic,
-        hr: parseInt(clinicalData.vitals.hr) || undefined,
-        temp: parseFloat(clinicalData.vitals.temp) || undefined,
-        rr: parseInt(clinicalData.vitals.rr) || undefined,
-        spo2: parseInt(clinicalData.vitals.spo2) || undefined,
-        weight: parseFloat(clinicalData.vitals.weight) || undefined,
-        height: parseFloat(clinicalData.vitals.height) || undefined,
-        bmi: parseFloat(clinicalData.vitals.bmi) || undefined,
+        bp_systolic: isNaN(systolic) ? null : systolic,
+        bp_diastolic: isNaN(diastolic) ? null : diastolic,
+        hr: isNaN(parseInt(clinicalData.vitals.hr)) ? null : parseInt(clinicalData.vitals.hr),
+        temp: isNaN(parseFloat(clinicalData.vitals.temp)) ? null : parseFloat(clinicalData.vitals.temp),
+        rr: isNaN(parseInt(clinicalData.vitals.rr)) ? null : parseInt(clinicalData.vitals.rr),
+        spo2: isNaN(parseInt(clinicalData.vitals.spo2)) ? null : parseInt(clinicalData.vitals.spo2),
+        weight: isNaN(parseFloat(clinicalData.vitals.weight)) ? null : parseFloat(clinicalData.vitals.weight),
+        height: isNaN(parseFloat(clinicalData.vitals.height)) ? null : parseFloat(clinicalData.vitals.height),
+        bmi: isNaN(parseFloat(clinicalData.vitals.bmi)) ? null : parseFloat(clinicalData.vitals.bmi),
         oxygenType: clinicalData.vitals.oxygenType,
         oxygenDose: clinicalData.vitals.oxygenDose,
         oxygenInvasive: clinicalData.vitals.oxygenInvasive,
@@ -865,6 +998,431 @@ export function FinalDiagnosis() {
                 oxygenType: liveVitals.oxygenType
               } : undefined}
             />
+
+            {/* Positive Medical History */}
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-6">
+              <div className="bg-slate-50 border-b border-slate-200 px-4 py-3 flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <BookOpen className="w-4 h-4 text-indigo-500" />
+                    <h3 className="font-semibold text-slate-800 text-sm">Positive Medical History</h3>
+                  </div>
+                  <div className="flex items-center bg-slate-200/60 rounded-lg p-0.5 border border-slate-200">
+                    <button
+                      onClick={() => setHistoryViewMode('summary')}
+                      className={cn(
+                        "text-[10px] font-bold px-2.5 py-1 rounded-md transition-all",
+                        historyViewMode === 'summary' 
+                          ? "bg-white text-indigo-650 shadow-sm" 
+                          : "text-slate-500 hover:text-slate-800"
+                      )}
+                    >
+                      Summary Points
+                    </button>
+                    <button
+                      onClick={() => setHistoryViewMode('detailed')}
+                      className={cn(
+                        "text-[10px] font-bold px-2.5 py-1 rounded-md transition-all",
+                        historyViewMode === 'detailed' 
+                          ? "bg-white text-indigo-650 shadow-sm" 
+                          : "text-slate-500 hover:text-slate-800"
+                      )}
+                    >
+                      Full Details
+                    </button>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => generateHistorySummary(true)}
+                    disabled={isGeneratingHistorySummary}
+                    className="flex items-center gap-1.5 text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 transition-colors bg-white px-2.5 py-1 rounded-md border border-indigo-100 hover:bg-indigo-50/50 disabled:opacity-50"
+                  >
+                    <Sparkles className={cn("w-3 h-3 text-indigo-500", isGeneratingHistorySummary && "animate-spin")} />
+                    {isGeneratingHistorySummary ? 'Summarizing...' : 'Regenerating AI'}
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setEditingField('chronicConditions');
+                      setEditingValue(clinicalData.chronicConditions);
+                    }}
+                    className="text-xs text-indigo-600 font-medium hover:underline px-1 ml-1"
+                  >
+                    Edit
+                  </button>
+                </div>
+              </div>
+              <div className="p-4 space-y-4">
+                {historyViewMode === 'summary' ? (
+                  /* Summary Points View */
+                  <div className="space-y-4">
+                    {isGeneratingHistorySummary && !historySummary ? (
+                      /* Shimmer Loader while generating summary */
+                      <div className="space-y-4 py-2 animate-pulse">
+                        <div className="space-y-2">
+                          <div className="h-3 bg-slate-100 rounded w-1/4"></div>
+                          <div className="h-2 bg-slate-100 rounded w-5/6"></div>
+                          <div className="h-2 bg-slate-100 rounded w-3/4"></div>
+                        </div>
+                        <div className="space-y-2 pt-2 border-t border-slate-100">
+                          <div className="h-3 bg-slate-100 rounded w-1/3"></div>
+                          <div className="h-2 bg-slate-100 rounded w-4/5"></div>
+                        </div>
+                        <div className="space-y-2 pt-2 border-t border-slate-100">
+                          <div className="h-3 bg-slate-100 rounded w-1/4"></div>
+                          <div className="h-2 bg-slate-100 rounded w-2/3"></div>
+                        </div>
+                      </div>
+                    ) : historySummary ? (
+                      /* Output the AI generated Clinical Summary response directly */
+                      <div className="space-y-4 text-xs font-sans text-slate-700 leading-relaxed max-w-none">
+                        <div className="bg-indigo-50/40 border border-indigo-100 rounded-lg p-2.5 text-[11px] text-slate-600 flex items-start gap-2 shadow-sm">
+                          <Sparkles className="w-3.5 h-3.5 text-indigo-500 shrink-0 mt-0.5" />
+                          <div>
+                            <span className="font-bold text-slate-800">AI Intake Summary:</span> Extracted clinical highlights of the patient's registration records.
+                          </div>
+                        </div>
+                        <div className="prose prose-slate max-w-none text-xs space-y-4 text-slate-700 leading-relaxed font-sans prose-headings:text-xs prose-headings:font-bold prose-headings:text-indigo-650 prose-headings:uppercase prose-headings:tracking-wider prose-headings:mb-1 prose-headings:mt-4">
+                          <Markdown remarkPlugins={[remarkGfm]}>
+                            {historySummary}
+                          </Markdown>
+                        </div>
+                      </div>
+                    ) : (
+                      /* Instant High-Yield structured summary highlights */
+                      <div className="space-y-4 text-xs text-slate-700">
+                        {/* 1. Medical History Summary Points */}
+                        <div className="space-y-1 bg-slate-50 border border-slate-200/60 rounded-xl p-3.5">
+                          <h4 className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest border-b border-indigo-100 pb-1 mb-2 flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
+                            Medical History Summary Points
+                          </h4>
+                          <ul className="list-disc list-inside space-y-1.5 pl-0.5 text-slate-600 leading-relaxed">
+                            {clinicalData.chronicConditions?.length > 0 && (
+                              <li>
+                                <strong className="text-slate-850">Chronic Illnesses:</strong> {clinicalData.chronicConditions.join(', ')}
+                              </li>
+                            )}
+                            {selectedPatient.otherConditions?.trim() && (
+                              <li>
+                                <strong className="text-slate-850">Other Conditions:</strong> {selectedPatient.otherConditions}
+                              </li>
+                            )}
+                            {selectedPatient.allergies?.length > 0 ? (
+                              <li>
+                                <strong className="text-slate-850">Allergies:</strong> {selectedPatient.allergies.map((a: any) => {
+                                  const name = typeof a === 'object' && a !== null ? a.name : String(a);
+                                  const sev = typeof a === 'object' && a !== null ? a.severity : '';
+                                  return `${name}${sev ? ` (${sev})` : ''}`;
+                                }).join(', ')}
+                              </li>
+                            ) : (
+                              <li>No documented medication or food allergies.</li>
+                            )}
+                            {selectedPatient.medications?.length > 0 ? (
+                              <li>
+                                <strong className="text-slate-850">Active Therapy:</strong> {selectedPatient.medications.map((m: any) => {
+                                  const name = typeof m === 'object' && m !== null ? m.name : String(m);
+                                  const dose = typeof m === 'object' && m !== null ? m.dosage : '';
+                                  const freq = typeof m === 'object' && m !== null ? m.frequency || m.freq : '';
+                                  return `${name}${dose || freq ? ` (${[dose, freq].filter(Boolean).join(' - ')})` : ''}`;
+                                }).join(', ')}
+                              </li>
+                            ) : (
+                              <li>No routine prescription medications reported.</li>
+                            )}
+                            {(selectedPatient.surgeries && (Array.isArray(selectedPatient.surgeries) ? selectedPatient.surgeries.length > 0 : String(selectedPatient.surgeries).trim() !== "")) && (
+                              <li>
+                                <strong className="text-slate-850">Surgical History:</strong> {Array.isArray(selectedPatient.surgeries)
+                                  ? selectedPatient.surgeries.map((s: any) => typeof s === 'object' && s !== null ? s.name || s.procedure : String(s)).join(', ')
+                                  : String(selectedPatient.surgeries)
+                                }
+                              </li>
+                            )}
+                          </ul>
+                        </div>
+
+                        {/* 2. Family Medical History Summary Points */}
+                        <div className="space-y-1 bg-slate-50 border border-slate-200/60 rounded-xl p-3.5">
+                          <h4 className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest border-b border-indigo-100 pb-1 mb-2 flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
+                            Family Medical History Summary Points
+                          </h4>
+                          <ul className="list-disc list-inside space-y-1.5 pl-0.5 text-slate-600 leading-relaxed">
+                            {selectedPatient.familyHistory && selectedPatient.familyHistory.length > 0 ? (
+                              selectedPatient.familyHistory.map((fm: any, idx) => {
+                                const rel = typeof fm === 'object' && fm !== null ? fm.relation : 'Relative';
+                                const cond = typeof fm === 'object' && fm !== null ? fm.condition : String(fm);
+                                const age = typeof fm === 'object' && fm !== null ? fm.age : '';
+                                return (
+                                  <li key={idx}>
+                                    <strong className="text-slate-850">{rel}:</strong> {cond}{age ? ` (Dx Age: ${age})` : ''}
+                                  </li>
+                                );
+                              })
+                            ) : (
+                              <li className="italic text-slate-400">No active genetic or hereditary disorders logged.</li>
+                            )}
+                            {selectedPatient.familyHistoryNotes?.trim() && (
+                              <li className="text-[11px] text-slate-505 italic">Notes: {selectedPatient.familyHistoryNotes}</li>
+                            )}
+                          </ul>
+                        </div>
+
+                        {/* 3. Obstetric & Gyn History Summary Points */}
+                        <div className="space-y-1 bg-slate-50 border border-slate-200/60 rounded-xl p-3.5">
+                          <h4 className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest border-b border-indigo-100 pb-1 mb-2 flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
+                            Obstetric & Gyn History Summary Points
+                          </h4>
+                          {selectedPatient.gender?.toLowerCase() === 'female' ? (
+                            <ul className="list-disc list-inside space-y-1.5 pl-0.5 text-slate-600 leading-relaxed">
+                              {selectedPatient.obsHistory && (selectedPatient.obsHistory.gravidity || selectedPatient.obsHistory.parity) && (
+                                <li>
+                                  <strong className="text-slate-855">GTPAL Variables:</strong> G{selectedPatient.obsHistory.gravidity || 0} • P{selectedPatient.obsHistory.parity || 0} • T{selectedPatient.obsHistory.term || 0} • Preterm {selectedPatient.obsHistory.preterm || 0} • Abortions {selectedPatient.obsHistory.abortions || 0} • Living {selectedPatient.obsHistory.living || 0}
+                                  {selectedPatient.obsHistory.modeOfDelivery ? ` (Delivery: ${selectedPatient.obsHistory.modeOfDelivery})` : ''}
+                                  {selectedPatient.obsHistory.complicationNotes ? ` (Complications: ${selectedPatient.obsHistory.complicationNotes})` : ''}
+                                </li>
+                              )}
+                              {selectedPatient.gynHistory && (
+                                <>
+                                  {selectedPatient.gynHistory.lmp && (
+                                    <li><strong className="text-slate-850">LMP:</strong> <span className="font-mono text-indigo-950 font-semibold">{selectedPatient.gynHistory.lmp}</span></li>
+                                  )}
+                                  {selectedPatient.gynHistory.cycleRegularity && (
+                                    <li><strong className="text-slate-850">Menses:</strong> {selectedPatient.gynHistory.cycleRegularity} {selectedPatient.gynHistory.cycleLength ? `(${selectedPatient.gynHistory.cycleLength} days)` : ''}</li>
+                                  )}
+                                  {selectedPatient.gynHistory.contraception && (
+                                    <li><strong className="text-slate-850">Contraception:</strong> {selectedPatient.gynHistory.contraception}</li>
+                                  )}
+                                  {selectedPatient.gynHistory.papSmear && (
+                                    <li><strong className="text-slate-850">Pap Smear:</strong> {selectedPatient.gynHistory.papSmear} {selectedPatient.gynHistory.papNotes ? `(${selectedPatient.gynHistory.papNotes})` : ''}</li>
+                                  )}
+                                </>
+                              )}
+                              {!selectedPatient.obsHistory && !selectedPatient.gynHistory && (
+                                <li className="italic text-slate-400">No Obstetric/Gynecological data recorded.</li>
+                              )}
+                            </ul>
+                          ) : (
+                            <p className="text-slate-550 italic pl-1">Not Applicable for male patient.</p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  /* Detailed View - Original lists */
+                  <div className="space-y-4">
+                    {/* Chronic Conditions */}
+                    {clinicalData.chronicConditions && clinicalData.chronicConditions.length > 0 && (
+                      <div className="space-y-1">
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Chronic Conditions</h4>
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                          {clinicalData.chronicConditions.map((condObj: any, idx) => {
+                            const condName = typeof condObj === 'object' && condObj !== null ? condObj.name || condObj.label || String(condObj) : String(condObj);
+                            if (!condName || condName.trim() === '') return null;
+                            return (
+                              <span key={idx} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">
+                                {condName}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Other Conditions */}
+                    {selectedPatient.otherConditions && selectedPatient.otherConditions.trim() !== "" && (
+                      <div className="space-y-1">
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Other Conditions</h4>
+                        <p className="text-sm text-slate-755 bg-slate-50 p-2.5 rounded-lg border border-slate-100 leading-relaxed font-mono text-xs">
+                          {selectedPatient.otherConditions}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Allergies */}
+                    {selectedPatient.allergies && selectedPatient.allergies.length > 0 && (
+                      <div className="space-y-1">
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Allergies</h4>
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                          {selectedPatient.allergies.map((allergy: any, idx) => {
+                            const name = typeof allergy === 'object' && allergy !== null ? allergy.name : String(allergy);
+                            const severity = typeof allergy === 'object' && allergy !== null ? allergy.severity : undefined;
+                            if (!name || name.trim() === '') return null;
+                            
+                            let severityColor = "bg-slate-50 text-slate-700 border-slate-200";
+                            if (severity === "Severe") {
+                              severityColor = "bg-rose-50 text-rose-700 border-rose-200";
+                            } else if (severity === "Moderate") {
+                              severityColor = "bg-amber-50 text-amber-700 border-amber-200";
+                            } else if (severity === "Minor") {
+                              severityColor = "bg-sky-50 text-sky-700 border-sky-250";
+                            }
+
+                            return (
+                              <span key={idx} className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${severityColor}`}>
+                                {name} {severity ? `(${severity})` : ''}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Active Medications */}
+                    {selectedPatient.medications && selectedPatient.medications.length > 0 && (
+                      <div className="space-y-1">
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Active Medications</h4>
+                        <div className="space-y-1 pt-1 max-h-[120px] overflow-y-auto custom-scrollbar pr-1">
+                          {selectedPatient.medications.map((med: any, idx) => {
+                            const name = typeof med === 'object' && med !== null ? med.name : String(med);
+                            const dosage = typeof med === 'object' && med !== null ? med.dosage : undefined;
+                            const freq = typeof med === 'object' && med !== null ? med.frequency || med.freq : undefined;
+                            if (!name || name.trim() === '') return null;
+                            return (
+                              <div key={idx} className="text-xs text-slate-700 flex items-center justify-between bg-slate-50/70 px-2.5 py-1.5 rounded-lg border border-slate-100">
+                                <span className="font-semibold text-slate-800">{name}</span>
+                                <span className="text-slate-500 font-mono">{dosage} {freq ? `— ${freq}` : ''}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Past Surgeries */}
+                    {selectedPatient.surgeries && (Array.isArray(selectedPatient.surgeries) ? selectedPatient.surgeries.length > 0 : String(selectedPatient.surgeries).trim() !== "") && (
+                      <div className="space-y-1">
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Past Surgeries</h4>
+                        {Array.isArray(selectedPatient.surgeries) ? (
+                          <ul className="list-disc list-inside text-xs text-slate-700 space-y-1 pl-1">
+                            {selectedPatient.surgeries.map((surg: any, idx) => {
+                              const s = typeof surg === 'object' && surg !== null ? surg.name || surg.procedure : String(surg);
+                              if (!s || s.trim() === "") return null;
+                              return <li key={idx} className="text-slate-600">{s}</li>;
+                            })}
+                          </ul>
+                        ) : (
+                          <p className="text-xs text-slate-600 pl-1">{String(selectedPatient.surgeries)}</p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Family Medical History */}
+                    {((selectedPatient.familyHistory && selectedPatient.familyHistory.length > 0) || (selectedPatient.familyHistoryNotes && selectedPatient.familyHistoryNotes.trim() !== "")) && (
+                      <div className="space-y-1">
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Family Medical History</h4>
+                        {selectedPatient.familyHistory && selectedPatient.familyHistory.length > 0 && (
+                          <div className="space-y-1 pt-1 pl-1">
+                            {selectedPatient.familyHistory.map((fm: any, idx) => {
+                              const rel = typeof fm === 'object' && fm !== null ? fm.relation : '';
+                              const cond = typeof fm === 'object' && fm !== null ? fm.condition : String(fm);
+                              const age = typeof fm === 'object' && fm !== null ? fm.age : '';
+                              if (!cond || cond.trim() === "") return null;
+                              return (
+                                <div key={idx} className="text-xs text-slate-700">
+                                  <span className="font-medium text-indigo-650">{rel || "Relative"}:</span> <span className="text-slate-600">{cond}</span> {age ? <span className="text-slate-400 font-mono text-[10px]">(Age of Dx: {age})</span> : ''}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                        {selectedPatient.familyHistoryNotes && selectedPatient.familyHistoryNotes.trim() !== "" && (
+                          <p className="text-[10px] text-slate-500 italic pl-1 pt-0.5">Notes: {selectedPatient.familyHistoryNotes}</p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Gyn & Obs History (Female Patients only) */}
+                    {selectedPatient.gender?.toLowerCase() === 'female' && (selectedPatient.gynHistory || selectedPatient.obsHistory) && (
+                      <div className="space-y-2 pt-2 border-t border-slate-100">
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Obstetric & Gyn History</h4>
+                        
+                        {/* GTPAL Grid if we have obsHistory */}
+                        {selectedPatient.obsHistory && (
+                          selectedPatient.obsHistory.gravidity || selectedPatient.obsHistory.parity || selectedPatient.obsHistory.term
+                        ) && (
+                          <div className="bg-slate-55 border border-slate-200 rounded-lg p-2 bg-slate-50/50">
+                            <div className="grid grid-cols-6 gap-1 text-center mb-1 bg-white border border-slate-100 rounded p-1">
+                               <div className="text-[10px] font-bold text-slate-400">G</div>
+                               <div className="text-[10px] font-bold text-slate-400">P</div>
+                               <div className="text-[10px] font-bold text-slate-400">T</div>
+                               <div className="text-[10px] font-bold text-slate-400">Pa</div>
+                               <div className="text-[10px] font-bold text-slate-400">A</div>
+                               <div className="text-[10px] font-bold text-slate-400">L</div>
+                            </div>
+                            <div className="grid grid-cols-6 gap-1 text-center font-mono font-bold text-slate-800 text-xs">
+                              <div>{selectedPatient.obsHistory.gravidity || "0"}</div>
+                              <div>{selectedPatient.obsHistory.parity || "0"}</div>
+                              <div>{selectedPatient.obsHistory.term || "0"}</div>
+                              <div>{selectedPatient.obsHistory.preterm || "0"}</div>
+                              <div>{selectedPatient.obsHistory.abortions || "0"}</div>
+                              <div>{selectedPatient.obsHistory.living || "0"}</div>
+                            </div>
+                            {selectedPatient.obsHistory.modeOfDelivery && (
+                              <div className="text-[11px] text-slate-600 mt-1.5 pl-1">
+                                <span className="font-semibold text-slate-700">Delivery:</span> {selectedPatient.obsHistory.modeOfDelivery}
+                              </div>
+                            )}
+                            {selectedPatient.obsHistory.complicationNotes && (
+                              <div className="text-[10px] text-slate-500 italic mt-0.5 pl-1">
+                                <span className="font-semibold text-slate-600">Complications:</span> {selectedPatient.obsHistory.complicationNotes}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {selectedPatient.gynHistory && (
+                          <div className="text-xs space-y-1 pl-1 text-slate-700 font-sans">
+                            {selectedPatient.gynHistory.lmp && (
+                              <div>
+                                <span className="font-medium text-slate-600">LMP:</span> <span className="font-mono text-slate-800">{selectedPatient.gynHistory.lmp}</span>
+                              </div>
+                            )}
+                            {selectedPatient.gynHistory.cycleRegularity && (
+                              <div>
+                                <span className="font-medium text-slate-600">Cycles:</span> <span className="text-slate-800">{selectedPatient.gynHistory.cycleRegularity} {selectedPatient.gynHistory.cycleLength ? `(${selectedPatient.gynHistory.cycleLength} days)` : ''}</span>
+                              </div>
+                            )}
+                            {selectedPatient.gynHistory.menarcheAge && (
+                              <div>
+                                <span className="font-medium text-slate-600">Age at Menarche:</span> <span className="text-slate-800">{selectedPatient.gynHistory.menarcheAge} yr</span>
+                              </div>
+                            )}
+                            {selectedPatient.gynHistory.contraception && (
+                              <div>
+                                <span className="font-medium text-slate-600">Contraception:</span> <span className="text-slate-800">{selectedPatient.gynHistory.contraception}</span>
+                              </div>
+                            )}
+                            {selectedPatient.gynHistory.papSmear && (
+                              <div>
+                                <span className="font-medium text-slate-600">Last Pap:</span> <span className="text-slate-800">{selectedPatient.gynHistory.papSmear} {selectedPatient.gynHistory.papNotes ? `(${selectedPatient.gynHistory.papNotes})` : ''}</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Fallback if absolutely no positive medical history recorded at all */}
+                    {!clinicalData.chronicConditions?.length && 
+                     !selectedPatient.otherConditions?.trim() && 
+                     !selectedPatient.allergies?.length && 
+                     !selectedPatient.medications?.length && 
+                     !(selectedPatient.surgeries && (Array.isArray(selectedPatient.surgeries) ? selectedPatient.surgeries.length > 0 : String(selectedPatient.surgeries).trim() !== "")) && 
+                     !selectedPatient.familyHistory?.length && 
+                     !selectedPatient.familyHistoryNotes?.trim() && 
+                     !(selectedPatient.gender?.toLowerCase() === 'female' && (selectedPatient.gynHistory || selectedPatient.obsHistory)) && (
+                       <div className="text-xs text-slate-400 italic text-center py-4">
+                         No active medical history recorded for this patient.
+                       </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
 
             {/* Symptoms */}
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -1307,6 +1865,12 @@ export function FinalDiagnosis() {
               <button onClick={() => setEditingField(null)} className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-lg">Cancel</button>
               <button 
                 onClick={() => {
+                  if (editingField === 'chronicConditions' && selectedPatient) {
+                    db.patients.update(selectedPatient.id, {
+                      conditions: editingValue,
+                      lastModified: Date.now()
+                    });
+                  }
                   setClinicalData(prev => ({ ...prev, [editingField]: editingValue }));
                   setEditingField(null);
                   toast.success("Updated successfully");

@@ -11,6 +11,7 @@ import { clinicalAIRequest } from "@/services/aiWorkflowService";
 import { GoogleMap, useJsApiLoader, Marker } from '@react-google-maps/api';
 import { toast } from "sonner";
 import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface Pharmacy {
   id: number;
@@ -276,7 +277,7 @@ export function Pharmacies() {
                 </button>
               </div>
               <div className="markdown-body prose prose-sm max-w-none text-indigo-800 mb-4">
-                <Markdown>{aiResponse}</Markdown>
+                <Markdown remarkPlugins={[remarkGfm]}>{aiResponse}</Markdown>
               </div>
               {groundingChunks.length > 0 && (
                 <div className="space-y-2">
@@ -457,7 +458,7 @@ export function Pharmacies() {
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Pharmacy Name</label>
                 <input 
                   type="text" 
-                  value={formData.name}
+                  value={formData.name || ""}
                   onChange={(e) => setFormData({...formData, name: e.target.value})}
                   className="w-full p-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
                   placeholder="Enter pharmacy name"
@@ -467,7 +468,7 @@ export function Pharmacies() {
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Address</label>
                 <input 
                   type="text" 
-                  value={formData.address}
+                  value={formData.address || ""}
                   onChange={(e) => setFormData({...formData, address: e.target.value})}
                   className="w-full p-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
                   placeholder="Enter address"
@@ -478,7 +479,7 @@ export function Pharmacies() {
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Opening Time</label>
                   <input 
                     type="time" 
-                    value={formData.openingTime}
+                    value={formData.openingTime || ""}
                     onChange={(e) => setFormData({...formData, openingTime: e.target.value})}
                     className="w-full p-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
                   />
@@ -487,7 +488,7 @@ export function Pharmacies() {
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Closing Time</label>
                   <input 
                     type="time" 
-                    value={formData.closingTime}
+                    value={formData.closingTime || ""}
                     onChange={(e) => setFormData({...formData, closingTime: e.target.value})}
                     className="w-full p-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
                   />
@@ -497,7 +498,7 @@ export function Pharmacies() {
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Phone Number</label>
                 <input 
                   type="tel" 
-                  value={formData.phone}
+                  value={formData.phone || ""}
                   onChange={(e) => setFormData({...formData, phone: e.target.value})}
                   className="w-full p-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
                   placeholder="(555) 000-0000"

@@ -24,28 +24,31 @@ export function ClinicalIntelligencePanel({ patient, latestVitals }: Props) {
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <div className="p-3 bg-slate-50 dark:bg-slate-900 rounded-lg">
+        <div className="p-3 bg-slate-50 dark:bg-slate-900 rounded-lg" aria-label="Body Mass Index value">
           <p className="text-xs text-slate-500 font-bold uppercase">BMI</p>
-          <p className="text-xl font-bold font-mono">{bmi}</p>
+          <p className="text-xl font-bold font-mono" aria-live="polite">{bmi}</p>
         </div>
-        <div className="p-3 bg-slate-50 dark:bg-slate-900 rounded-lg">
+        <div className="p-3 bg-slate-50 dark:bg-slate-900 rounded-lg" aria-label="Estimated glomerular filtration rate value">
           <p className="text-xs text-slate-500 font-bold uppercase">eGFR</p>
-          <p className="text-xl font-bold font-mono">{eGFR}</p>
+          <p className="text-xl font-bold font-mono" aria-live="polite">{eGFR}</p>
         </div>
       </div>
 
-      <div className="p-4 bg-indigo-50 dark:bg-indigo-900/10 rounded-lg border border-indigo-100 dark:border-indigo-800">
+      <div className="p-4 bg-indigo-50 dark:bg-indigo-900/10 rounded-lg border border-indigo-100 dark:border-indigo-800" role="region" aria-labelledby="simulation-title">
         <div className="flex items-center gap-2 mb-2">
           <Zap className="w-4 h-4 text-indigo-600" />
-          <p className="text-sm font-bold text-indigo-900 dark:text-indigo-200">Patient Twin: ACEi Simulation</p>
+          <p id="simulation-title" className="text-sm font-bold text-indigo-900 dark:text-indigo-200">Patient Twin: ACEi Simulation</p>
         </div>
         <p className="text-sm text-indigo-800 dark:text-indigo-300">
-          Improvement Probability: <span className="font-bold">{(sim.improvementProb * 100).toFixed(0)}%</span>
+          Improvement Probability: <span className="font-bold" aria-label={`${(sim.improvementProb * 100).toFixed(0)} percent`}>{(sim.improvementProb * 100).toFixed(0)}%</span>
         </p>
         {sim.risks.length > 0 && (
-          <ul className="mt-2 text-xs text-amber-700 dark:text-amber-400">
-            {sim.risks.map((risk, i) => <li key={i}>⚠️ {risk}</li>)}
-          </ul>
+          <div className="mt-2 text-xs text-amber-700 dark:text-amber-400">
+            <p className="font-bold">Risks:</p>
+            <ul aria-label="Simulation risks">
+                {sim.risks.map((risk, i) => <li key={i}>⚠️ {risk}</li>)}
+            </ul>
+          </div>
         )}
       </div>
     </div>

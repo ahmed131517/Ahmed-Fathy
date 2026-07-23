@@ -47,5 +47,35 @@ export const DRUG_INTERACTIONS: DrugInteraction[] = [
     drugB: "Diuretics",
     severity: "Moderate",
     description: "Increased risk of hypotension and renal impairment."
+  },
+  {
+    drugA: "Metformin",
+    drugB: "Contrast Media",
+    severity: "Severe",
+    description: "Risk of lactic acidosis. Metformin should be withheld 48 hours before/after contrast study."
+  },
+  {
+    drugA: "Clopidogrel",
+    drugB: "Omeprazole",
+    severity: "Moderate",
+    description: "Omeprazole may reduce the antiplatelet effect of clopidogrel (CYP2C19 inhibition)."
+  },
+  {
+    drugA: "Digoxin",
+    drugB: "Amiodarone",
+    severity: "Severe",
+    description: "Amiodarone increases digoxin levels; digoxin dose should be reduced by 50%."
+  },
+  {
+    drugA: "Lithium",
+    drugB: "NSAIDs",
+    severity: "Severe",
+    description: "NSAIDs reduce renal lithium clearance, increasing risk of lithium toxicity."
+  },
+  {
+    drugA: "Azithromycin",
+    drugB: "Ondansetron",
+    severity: "Moderate",
+    description: "Additive effect on QT interval prolongation."
   }
 ];

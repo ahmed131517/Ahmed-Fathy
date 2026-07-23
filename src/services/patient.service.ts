@@ -20,6 +20,17 @@ const safeParse = (data: any, defaultValue: any = []) => {
   }
 };
 
+const safeParseObject = (data: any, defaultValue: any = null) => {
+  if (!data) return defaultValue;
+  if (typeof data !== 'string') return data;
+  try {
+    const parsed = JSON.parse(data);
+    return parsed;
+  } catch (e) {
+    return defaultValue;
+  }
+};
+
 const mapToUIPatient = (p: PatientRecord): Patient => ({
     id: p.id || String(p.localId),
     mrn: p.nationalId || p.id || String(p.localId),
@@ -41,6 +52,8 @@ const mapToUIPatient = (p: PatientRecord): Patient => ({
     familyHistory: safeParse(p.familyHistory),
     familyHistoryNotes: p.familyHistoryNotes,
     otherConditions: p.otherConditions,
+    gynHistory: safeParseObject(p.gynHistory, null),
+    obsHistory: safeParseObject(p.obsHistory, null),
     labResults: safeParse(p.labResults)
 });
 
@@ -50,14 +63,36 @@ export const PatientService = {
    */
   async getAllPatients(): Promise<Patient[]> {
     const patients = await db.patients.where('isDeleted').equals(0).toArray();
-    return patients.map(mapToUIPatient);
+    const mapped = patients.map(mapToUIPatient);
+    const seen = new Set<string>();
+    return mapped.filter(p => {
+      const id = p.id;
+      if (!id) return true;
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
   },
 
   /**
    * Fetches a single patient by ID.
+   * Supports both UUID (remote) and localId (numeric).
    */
   async getPatientById(id: string): Promise<Patient | null> {
-    const patient = await db.patients.where('id').equals(id).first();
+    console.log("PatientService: lookup id:", id);
+    // 1. Try to find by UUID (remote ID)
+    let patient = await db.patients.where('id').equals(id).first();
+    console.log("PatientService: Found by UUID:", !!patient);
+    
+    // 2. If not found, try to find by numeric localId
+    if (!patient) {
+      const numericId = parseInt(id, 10);
+      if (!isNaN(numericId)) {
+        patient = await db.patients.where('localId').equals(numericId).first();
+      }
+      console.log("PatientService: Found by localId:", !!patient);
+    }
+    
     return patient ? mapToUIPatient(patient) : null;
   }
 };

@@ -13,7 +13,8 @@ import {
   UserCircle,
   Stethoscope,
   ShieldCheck,
-  Briefcase
+  Briefcase,
+  Video
 } from "lucide-react";
 import { db, InternalMessage, User as StaffUser } from "@/lib/db";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -35,6 +36,35 @@ export function StaffCommunication() {
   const [newMessage, setNewMessage] = useState("");
   const [selectedPatientId, setSelectedPatientId] = useState<string>("");
   const [targetRole, setTargetRole] = useState<string>("all");
+  const [includeZoom, setIncludeZoom] = useState(false);
+
+  const getZoomDetails = (content: string) => {
+    const markerStart = "[ZOOM_MEETING_LINK]";
+    const markerEnd = "[/ZOOM_MEETING_LINK]";
+    if (content && content.includes(markerStart) && content.includes(markerEnd)) {
+      const startIndex = content.indexOf(markerStart);
+      const endIndex = content.indexOf(markerEnd);
+      const zoomUrl = content.substring(startIndex + markerStart.length, endIndex);
+      const cleanText = content.substring(0, startIndex) + content.substring(endIndex + markerEnd.length);
+
+      const idMatch = content.match(/Meeting ID:\s*([^\n]+)/i);
+      const pwdMatch = content.match(/Passcode:\s*([^\n]+)/i);
+      
+      const cleanedText = cleanText
+        .replace(/Meeting ID:\s*[^\n]+/gi, '')
+        .replace(/Passcode:\s*[^\n]+/gi, '')
+        .trim();
+
+      return {
+        isZoom: true,
+        zoomUrl,
+        cleanedText,
+        meetingId: idMatch ? idMatch[1].trim() : undefined,
+        passcode: pwdMatch ? pwdMatch[1].trim() : undefined
+      };
+    }
+    return { isZoom: false, cleanedText: content };
+  };
 
   const loadMore = () => {
     setLimit(prev => prev + 50);
@@ -55,13 +85,20 @@ export function StaffCommunication() {
     if (!newMessage.trim() || !currentUser) return;
 
     try {
+      let finalContent = newMessage;
+      if (includeZoom) {
+        const zoomId = Math.floor(1000000000 + Math.random() * 9000000000);
+        const passcode = Math.random().toString(36).slice(-6).toUpperCase();
+        finalContent += `\n\n[ZOOM_MEETING_LINK]https://zoom.us/j/${zoomId}?pwd=${passcode}[/ZOOM_MEETING_LINK]\nMeeting ID: ${zoomId}\nPasscode: ${passcode}`;
+      }
+
       const message: InternalMessage = {
         id: crypto.randomUUID(),
         senderId: currentUser.email || 'system',
         senderName: `${currentUser.firstName} ${currentUser.lastName}`,
         senderRole: currentUser.role,
         receiverRole: targetRole as any,
-        content: newMessage,
+        content: finalContent,
         type: activeTab,
         patientId: activeTab === 'handover' ? selectedPatientId : undefined,
         patientName: activeTab === 'handover' ? patients.find(p => p.id === selectedPatientId)?.name : undefined,
@@ -72,7 +109,12 @@ export function StaffCommunication() {
       await db.internal_messages.add(message);
       setNewMessage("");
       setSelectedPatientId("");
-      toast.success(activeTab === 'chat' ? "Message sent" : "Handover created");
+      setIncludeZoom(false);
+      toast.success(
+        includeZoom 
+          ? "Message sent with Zoom meeting!"
+          : (activeTab === 'chat' ? "Message sent" : "Handover created")
+      );
     } catch (error) {
       console.error("Failed to send message:", error);
       toast.error("Failed to send message");
@@ -215,7 +257,71 @@ export function StaffCommunication() {
                         <span className="text-xs font-bold uppercase tracking-wider">Handover: {m.patientName}</span>
                       </div>
                     )}
-                    <p className="whitespace-pre-wrap">{m.content}</p>
+                    {(() => {
+                      const zoomDetails = getZoomDetails(m.content);
+                      if (zoomDetails.isZoom) {
+                        return (
+                          <div className="space-y-2">
+                            {zoomDetails.cleanedText && (
+                              <p className="whitespace-pre-wrap">{zoomDetails.cleanedText}</p>
+                            )}
+                            <div className={cn(
+                              "mt-2 p-3 rounded-xl border flex flex-col gap-2.5 w-full sm:max-w-[280px]",
+                              m.senderId === currentUser?.email
+                                ? "bg-indigo-700/50 border-indigo-500/30 text-white"
+                                : "bg-white dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200"
+                            )}>
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5">
+                                  <div className="p-1 px-1.5 rounded bg-sky-500 text-white font-extrabold text-[10px] tracking-wider uppercase">
+                                    ZOOM
+                                  </div>
+                                  <span className="text-xs font-bold uppercase tracking-wider text-sky-500 dark:text-sky-450 flex items-center gap-1">
+                                    <Video className="w-3 h-3" /> Link
+                                  </span>
+                                </div>
+                                <span className="flex h-2 w-2 relative">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                </span>
+                              </div>
+                              
+                              <p className="text-[10px] font-medium opacity-85 leading-normal">
+                                Click below to launch the video consultation or joint huddle.
+                              </p>
+
+                              <div className="grid grid-cols-2 gap-3 text-[10px] font-mono bg-slate-955/40 p-2 rounded-lg bg-black/10 dark:bg-black/30">
+                                <div>
+                                  <span className="block text-[8px] uppercase tracking-wider opacity-60 mb-0.5">Meeting ID</span>
+                                  <span className="font-bold">{zoomDetails.meetingId || "N/A"}</span>
+                                </div>
+                                <div>
+                                  <span className="block text-[8px] uppercase tracking-wider opacity-60 mb-0.5">Passcode</span>
+                                  <span className="font-bold">{zoomDetails.passcode || "N/A"}</span>
+                                </div>
+                              </div>
+
+                              <a
+                                href={zoomDetails.zoomUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className={cn(
+                                  "w-full py-1.5 rounded-lg text-xs font-bold text-center flex items-center justify-center gap-1.5 transition-all duration-150 border",
+                                  m.senderId === currentUser?.email
+                                    ? "bg-white text-indigo-700 hover:bg-slate-100 border-transparent shadow"
+                                    : "bg-sky-600 text-white hover:bg-sky-700 border-sky-700 shadow"
+                                )}
+                              >
+                                <Video className="w-3.5 h-3.5" />
+                                Join Meeting Now
+                              </a>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      return <p className="whitespace-pre-wrap">{m.content}</p>;
+                    })()}
                   </div>
                   {m.receiverRole && m.receiverRole !== 'all' && (
                     <div className="mt-1 flex items-center gap-1 text-[8px] font-bold text-slate-400 uppercase">
@@ -270,6 +376,27 @@ export function StaffCommunication() {
                   </div>
                 </div>
               )}
+              <div className="flex items-center justify-between px-1">
+                <button
+                  type="button"
+                  onClick={() => setIncludeZoom(prev => !prev)}
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 border",
+                    includeZoom 
+                      ? "bg-sky-50 border-sky-305 text-sky-700 dark:bg-sky-950/40 dark:border-sky-800 dark:text-sky-450" 
+                      : "bg-white hover:bg-slate-100 border-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 dark:border-slate-700 text-slate-600 dark:text-slate-400 align-middle"
+                  )}
+                >
+                  <Video className={cn("w-3.5 h-3.5", includeZoom ? "text-sky-500 animate-pulse" : "text-slate-400")} />
+                  <span>{includeZoom ? "Zoom Meeting Toggle: ON" : "Schedule Zoom Link"}</span>
+                </button>
+                {includeZoom && (
+                  <span className="text-[10px] text-sky-600 dark:text-sky-400 font-medium animate-pulse flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                    Auto-generates fresh meeting secure ID & passcode
+                  </span>
+                )}
+              </div>
               <div className="flex gap-2">
                 <textarea 
                   value={newMessage}

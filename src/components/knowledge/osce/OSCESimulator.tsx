@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Square, Activity, FileText, ChevronRight, Send, User, ChevronDown, Plus, AlertCircle, HeartPulse, ShieldAlert, Award, Lightbulb, Zap, Wind } from 'lucide-react';
+import { Play, Square, Activity, FileText, ChevronRight, Send, User, ChevronDown, Plus, AlertCircle, HeartPulse, ShieldAlert, Award, Lightbulb, Zap, Wind, Trash2 } from 'lucide-react';
 import { cn } from "@/lib/utils";
 import { useAISettings } from '@/lib/AISettingsContext';
+import { toast } from "sonner";
 
 import { Scenario, ChatMessage, SimulationState, VitalSigns, PatientCondition } from './osceTypes';
 import { generatePatientResponse, evaluatePerformance, generateScenario, getClinicalHint, generateHandoverResponse } from './osceEngine';
@@ -9,9 +10,20 @@ import { SAMPLE_SCENARIOS } from './scenarioDatabase';
 import { VitalsSidebar } from './components/VitalsSidebar';
 import { ClinicalToolsSidebar } from './components/ClinicalToolsSidebar';
 
+interface SimulationHistoryItem {
+  id: string;
+  scenarioTitle: string;
+  specialty: string;
+  difficulty: string;
+  date: string;
+  score: number;
+}
+
 export function OSCESimulator() {
   const { settings: aiSettings } = useAISettings();
   const [activeScenario, setActiveScenario] = useState<Scenario | null>(null);
+  const [customScenarios, setCustomScenarios] = useState<Scenario[]>([]);
+  const [simulationHistory, setSimulationHistory] = useState<SimulationHistoryItem[]>([]);
   
   const [state, setState] = useState<SimulationState>({
     isActive: false,
@@ -43,6 +55,27 @@ export function OSCESimulator() {
   const [isGeneratingScenario, setIsGeneratingScenario] = useState(false);
   const [isGettingHint, setIsGettingHint] = useState(false);
   const [mentorHint, setMentorHint] = useState<string | null>(null);
+
+  // Load custom scenarios & history
+  useEffect(() => {
+    const saved = localStorage.getItem('osce_custom_scenarios');
+    if (saved) {
+      try {
+        setCustomScenarios(JSON.parse(saved));
+      } catch (e) {
+        console.error("Failed to parse custom scenarios", e);
+      }
+    }
+
+    const savedHistory = localStorage.getItem('osce_simulation_history');
+    if (savedHistory) {
+      try {
+        setSimulationHistory(JSON.parse(savedHistory));
+      } catch (e) {
+        console.error("Failed to parse simulation history", e);
+      }
+    }
+  }, []);
 
   const handleGetHint = async () => {
     if (!state.scenario || isGettingHint) return;
@@ -98,7 +131,9 @@ export function OSCESimulator() {
     setIsTyping(false);
   };
 
-  const filteredScenarios = SAMPLE_SCENARIOS.filter(sc => {
+  const allScenarios = [...SAMPLE_SCENARIOS, ...customScenarios];
+
+  const filteredScenarios = allScenarios.filter(sc => {
     const matchesSpecialty = selectedSpecialty === 'All' || sc.specialty === selectedSpecialty;
     const matchesDifficulty = selectedDifficulty === 'All' || sc.difficulty === selectedDifficulty;
     const matchesKeywords = !focusKeywords.trim() || 
@@ -150,9 +185,30 @@ export function OSCESimulator() {
     const newScenario = await generateScenario(selectedMode, selectedSpecialty, selectedDifficulty, focusKeywords, aiSettings);
     setIsGeneratingScenario(false);
     if (newScenario) {
+      const updated = [newScenario, ...customScenarios];
+      setCustomScenarios(updated);
+      localStorage.setItem('osce_custom_scenarios', JSON.stringify(updated));
+      toast.success("AI Scenario generated and saved successfully!");
       startScenario(newScenario);
     } else {
-      alert("Failed to generate scenario. Please try again.");
+      toast.error("Failed to generate scenario. Please try again.");
+    }
+  };
+
+  const deleteScenario = (id: string) => {
+    if (confirm("Are you sure you want to delete this custom scenario?")) {
+      const updated = customScenarios.filter(sc => sc.id !== id);
+      setCustomScenarios(updated);
+      localStorage.setItem('osce_custom_scenarios', JSON.stringify(updated));
+      toast.success("Custom scenario deleted.");
+    }
+  };
+
+  const clearSimulationHistory = () => {
+    if (confirm("Are you sure you want to clear your simulation history?")) {
+      setSimulationHistory([]);
+      localStorage.removeItem('osce_simulation_history');
+      toast.success("Simulation performance history cleared.");
     }
   };
 
@@ -200,6 +256,22 @@ export function OSCESimulator() {
     
     setState(s => ({ ...s, evaluation: evalResult }));
     setShowEvaluation(true);
+
+    if (evalResult) {
+      const historyItem: SimulationHistoryItem = {
+        id: `run-${Date.now()}`,
+        scenarioTitle: state.scenario.title,
+        specialty: state.scenario.specialty,
+        difficulty: state.scenario.difficulty,
+        date: new Date().toLocaleDateString(),
+        score: evalResult.score
+      };
+      
+      const updatedHistory = [historyItem, ...simulationHistory];
+      setSimulationHistory(updatedHistory);
+      localStorage.setItem('osce_simulation_history', JSON.stringify(updatedHistory));
+      toast.success("Simulation session performance saved successfully!");
+    }
   };
 
   const handleSendMessage = async (e?: React.FormEvent) => {
@@ -455,6 +527,37 @@ export function OSCESimulator() {
                 </>
               )}
             </button>
+
+            {simulationHistory.length > 0 && (
+              <div className="mt-6 pt-6 border-t border-slate-200">
+                <div className="flex justify-between items-center mb-3">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">History Log</h4>
+                  <button 
+                    onClick={clearSimulationHistory}
+                    className="text-[10px] text-red-500 hover:text-red-700 font-bold hover:underline"
+                  >
+                    Clear History
+                  </button>
+                </div>
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  {simulationHistory.map((item) => (
+                    <div key={item.id} className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 flex items-center justify-between text-xs">
+                      <div className="min-w-0 pr-2">
+                        <div className="font-extrabold text-slate-800 truncate" title={item.scenarioTitle}>
+                          {item.scenarioTitle}
+                        </div>
+                        <div className="text-[10px] text-slate-400 font-bold">
+                          {item.specialty} • {item.date}
+                        </div>
+                      </div>
+                      <div className="shrink-0 font-black text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
+                        {item.score}%
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </aside>
 
           {/* Scenarios Grid Area */}
@@ -482,9 +585,23 @@ export function OSCESimulator() {
                           <div className="flex flex-wrap gap-1.5">
                             <span className="bg-indigo-50 text-indigo-600 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded">{sc.specialty}</span>
                             <span className="bg-slate-50 text-slate-600 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border border-slate-100">{sc.difficulty}</span>
+                            {sc.id.startsWith('gen-') && (
+                              <span className="bg-amber-50 text-amber-600 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border border-amber-100">AI Generated</span>
+                            )}
                           </div>
-                          <div className="bg-slate-100 p-2 rounded-full group-hover:bg-indigo-100 transition-colors shrink-0">
-                            <Play className="w-4 h-4 text-slate-500 group-hover:text-indigo-600" />
+                          <div className="flex gap-1">
+                            {sc.id.startsWith('gen-') && (
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); deleteScenario(sc.id); }}
+                                className="p-2 bg-red-50 text-red-500 rounded-full hover:bg-red-100 transition-colors"
+                                title="Delete Custom Scenario"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                            <div className="bg-slate-100 p-2 rounded-full group-hover:bg-indigo-100 transition-colors shrink-0">
+                              <Play className="w-4 h-4 text-slate-500 group-hover:text-indigo-600" />
+                            </div>
                           </div>
                         </div>
                         <h3 className="text-lg font-bold text-slate-900 group-hover:text-indigo-600 transition-colors mb-2 leading-tight">{sc.title}</h3>

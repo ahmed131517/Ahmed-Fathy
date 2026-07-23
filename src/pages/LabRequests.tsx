@@ -10,6 +10,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Textarea } from "@/components/ui/textarea";
 import { usePatient } from "@/lib/PatientContext";
+import { useUser } from "@/lib/UserContext";
 import { LAB_REFERENCE_DATA, ALL_TESTS, LAB_TEMPLATES, LabTest, LabTemplate } from "@/data/labReferenceData";
 import { useAISettings } from '../lib/AISettingsContext';
 import { clinicalAIRequest } from '@/services/aiWorkflowService';
@@ -58,6 +59,7 @@ interface LabRequest {
   localId?: number;
   patientId: string;
   patientName: string;
+  clinicId: string;
   tests: SelectedTest[];
   priority: 'standard' | 'urgent';
   physician: string;
@@ -78,6 +80,7 @@ interface LabRequest {
 export function LabRequests() {
   const { settings: aiSettings } = useAISettings();
   const { selectedPatient } = usePatient();
+  const { profile } = useUser();
   const [activeTab, setActiveTab] = useState('new');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -129,7 +132,15 @@ export function LabRequests() {
     return Array.from(names);
   }, [historicalLabResults]);
 
-  const requests = useLiveQuery(() => db.lab_requests.toArray()) || [];
+  const allRequests = useLiveQuery(() => db.lab_requests.toArray()) || [];
+  
+  const requests = useMemo(() => {
+    console.log("Computing requests, selectedPatient:", selectedPatient?.id, "allRequests count:", allRequests.length);
+    if (!selectedPatient) return [];
+    const patientRequests = allRequests.filter(r => r.patientId === selectedPatient.id);
+    console.log("Filtered patientRequests:", patientRequests.length);
+    return patientRequests;
+  }, [allRequests, selectedPatient]);
 
   const filteredTests = useMemo(() => {
     if (searchQuery.length >= 2) {
@@ -176,8 +187,9 @@ export function LabRequests() {
       
       const suggestions = parseJsonResponse(responseText, []);
       setAiSuggestions(Array.isArray(suggestions) ? suggestions : []);
-    } catch (err) {
+    } catch (err: any) {
       console.error("AI Suggestions failed:", err);
+      toast.error(err.message || "AI Suggestions failed.");
     } finally {
       setIsSuggesting(false);
     }
@@ -278,6 +290,7 @@ export function LabRequests() {
       id: `REQ-${Math.floor(Math.random() * 10000)}`,
       patientId: selectedPatient.id,
       patientName: selectedPatient.name,
+      clinicId: profile.clinicId,
       tests: [...selectedTests],
       priority,
       physician,
@@ -292,7 +305,13 @@ export function LabRequests() {
       isSynced: 0
     };
 
-    await db.lab_requests.add(newRequest);
+    console.log("Submitting lab request:", newRequest);
+    await db.lab_requests.add(newRequest).then(() => {
+      console.log("Lab request added successfully");
+    }).catch((err) => {
+      console.error("Failed to add lab request:", err);
+      toast.error("Failed to add lab request.");
+    });
     setSelectedTests([]);
     setClinicalInfo("");
     setAdditionalNotes("");
@@ -354,6 +373,10 @@ export function LabRequests() {
         ${JSON.stringify(request.results, null, 2)}
         
         Please provide a structured analysis in Markdown format:
+        ### Summary of Clinical Approach
+        Generate a Markdown table summarizing the clinical approach, with columns for: 
+        | Investigation/Action | Clinical Reasoning | Priority |
+        
         ### 1. Summary of Abnormal Findings
         - [List abnormal findings here]
         
@@ -372,9 +395,9 @@ export function LabRequests() {
       );
       
       await db.lab_requests.update(request.localId!, { aiAnalysis: text });
-    } catch (error) {
+    } catch (error: any) {
       console.error("AI Analysis failed:", error);
-      toast.error("AI Analysis failed. Please try again.");
+      toast.error(error.message || "AI Analysis failed. Please try again.");
     } finally {
       setIsAnalyzing(false);
     }
@@ -866,9 +889,9 @@ export function LabRequests() {
             </div>
           ) : activeTab === 'pending' ? (
             <div className="space-y-6 animate-in fade-in duration-300">
-              {requests.filter(r => r.status !== 'completed').length > 0 ? (
+              {requests.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {requests.filter(r => r.status !== 'completed').map(req => (
+                  {requests.map(req => (
                     <div key={req.id} className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm hover:border-indigo-300 transition-all group">
                       <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 flex justify-between items-center">
                         <div className="flex flex-col">
@@ -1139,6 +1162,11 @@ export function LabRequests() {
               const status = validateResult(res.value, res.range);
               const showParentHeader = res.parentTest && (idx === 0 || resultsInput[idx-1].parentTest !== res.parentTest);
               
+              const isImaging = res.parentTest && [
+                "X-ray", "Ultrasound (US)", "CT Scan", "MRI", 
+                "PET Scan", "Fluoroscopy", "Interventional Radiology", "Doppler Studies"
+              ].includes(res.parentTest);
+
               return (
                 <div key={idx} className="space-y-4">
                   {showParentHeader && (
@@ -1156,7 +1184,7 @@ export function LabRequests() {
                         {res.test}
                         {res.isComponent && <ArrowRight className="w-3 h-3 text-slate-400" />}
                       </div>
-                      {res.value && (
+                      {res.value && !isImaging && (
                         <span className={cn(
                           "text-[10px] font-bold px-2 py-0.5 rounded-full uppercase",
                           status === 'normal' ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700 animate-pulse"
@@ -1166,39 +1194,59 @@ export function LabRequests() {
                       )}
                     </div>
                   
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase">Value</label>
-                      <Input 
-                        placeholder="Result value..."
-                        value={res.value}
-                        className={cn(
-                          "bg-white h-9 text-sm",
-                          res.value && status === 'abnormal' && "border-red-300 focus-visible:ring-red-500"
-                        )}
-                        onChange={(e) => {
-                          const newResults = [...resultsInput];
-                          newResults[idx].value = e.target.value;
-                          newResults[idx].status = validateResult(e.target.value, res.range);
-                          setResultsInput(newResults);
-                        }}
-                      />
+                  <div className={cn("grid gap-4", isImaging ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-3")}>
+                    <div className="space-y-1.5 col-span-1">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase">{isImaging ? "Details/Findings" : "Value"}</label>
+                      {isImaging ? (
+                        <Textarea 
+                          placeholder={`Enter details for ${res.test}...`}
+                          value={res.value}
+                          className={cn(
+                            "bg-white min-h-[80px] text-sm",
+                          )}
+                          onChange={(e) => {
+                            const newResults = [...resultsInput];
+                            newResults[idx].value = e.target.value;
+                            setResultsInput(newResults);
+                          }}
+                        />
+                      ) : (
+                        <Input 
+                          placeholder="Result value..."
+                          value={res.value}
+                          className={cn(
+                            "bg-white h-9 text-sm",
+                            res.value && status === 'abnormal' && "border-red-300 focus-visible:ring-red-500"
+                          )}
+                          onChange={(e) => {
+                            const newResults = [...resultsInput];
+                            newResults[idx].value = e.target.value;
+                            newResults[idx].status = validateResult(e.target.value, res.range);
+                            setResultsInput(newResults);
+                          }}
+                        />
+                      )}
                     </div>
                     
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase">Unit</label>
-                      <div className="h-9 px-3 flex items-center bg-white border border-slate-200 rounded-md text-sm text-slate-600">
-                        {res.unit || '--'}
-                      </div>
-                    </div>
-                    
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase">Ref. Range</label>
-                      <div className="h-9 px-3 flex items-center bg-white border border-slate-200 rounded-md text-sm text-slate-500 italic">
-                        {res.range || 'N/A'}
-                      </div>
-                    </div>
+                    {!isImaging && (
+                      <>
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-bold text-slate-500 uppercase">Unit</label>
+                          <div className="h-9 px-3 flex items-center bg-white border border-slate-200 rounded-md text-sm text-slate-600">
+                            {res.unit || '--'}
+                          </div>
+                        </div>
+                        
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-bold text-slate-500 uppercase">Ref. Range</label>
+                          <div className="h-9 px-3 flex items-center bg-white border border-slate-200 rounded-md text-sm text-slate-500 italic">
+                            {res.range || 'N/A'}
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
+[...lines truncated for safety, continuing as expected...]
 
                   {res.test.toLowerCase().includes('microbiology') || res.test.toLowerCase().includes('smear') || res.test.toLowerCase().includes('routine') ? (
                     <div className="mt-2 text-[10px] text-indigo-600 flex items-center gap-1">

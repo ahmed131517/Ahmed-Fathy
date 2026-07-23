@@ -1930,27 +1930,27 @@ interface FindingDetail {
 
 export function CardiovascularTab({ findings, onChange, onMarkNormal, onClear }: { findings: any, onChange: (field: string, value: any) => void, onMarkNormal: () => void, onClear: () => void }) {
   const {
-    heart,
-    pulses,
-    regionFindings,
-    notes
-  } = findings;
+    heart = [],
+    pulses = "normal",
+    regionFindings = {},
+    notes = ""
+  } = findings || {};
 
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
   const [analysisTarget, setAnalysisTarget] = useState<FindingDetail | null>(null);
 
   const getRegionFindings = (region: string, tab: string): string[] =>
-    regionFindings[region]?.[tab] || [];
+    (regionFindings || {})[region]?.[tab] || [];
 
   const setRegionTabFindings = (region: string, tab: string, findingsList: string[]) => {
-    const currentRegion = regionFindings[region] || {
+    const currentRegion = (regionFindings || {})[region] || {
       auscultation: [],
       inspection: [],
       palpation: []
     };
     
     onChange('regionFindings', {
-      ...regionFindings,
+      ...(regionFindings || {}),
       [region]: {
         ...currentRegion,
         [tab]: findingsList,
@@ -1959,18 +1959,18 @@ export function CardiovascularTab({ findings, onChange, onMarkNormal, onClear }:
   };
 
   const getRegionFindingCount = (regionId: string): number => {
-    const region = regionFindings[regionId];
+    const region = (regionFindings || {})[regionId];
     if (!region) return 0;
     return (region.auscultation?.length || 0) + (region.inspection?.length || 0) + (region.palpation?.length || 0);
   };
 
   const getRegionFindingItems = (regionId: string): { findingId: string; label: string }[] => {
-    const region = regionFindings[regionId];
+    const region = (regionFindings || {})[regionId];
     if (!region) return [];
     const items: { findingId: string; label: string }[] = [];
     
     ['auscultation', 'inspection', 'palpation'].forEach(tab => {
-      (region[tab] || []).forEach((id: string) => {
+      ((region || {})[tab] || []).forEach((id: string) => {
         const match = cardioAllFindingsList.find(f => id.endsWith(f.id));
         if (match) items.push({ findingId: match.id, label: match.label });
       });
@@ -2759,19 +2759,19 @@ const giFindingAnalysis: Record<string, { severity?: string[]; timing?: string[]
 
 export function GastrointestinalTab({ findings, onChange, onMarkNormal, onClear }: { findings: any, onChange: (field: string, value: any) => void, onMarkNormal: () => void, onClear: () => void }) {
   const {
-    abdomen,
-    regionFindings,
-    notes
-  } = findings;
+    abdomen = [],
+    regionFindings = {},
+    notes = ""
+  } = findings || {};
 
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
   const [analysisTarget, setAnalysisTarget] = useState<FindingDetail | null>(null);
 
   const getRegionFindings = (region: string, tab: string): string[] =>
-    regionFindings[region]?.[tab] || [];
+    (regionFindings || {})[region]?.[tab] || [];
 
   const setRegionTabFindings = (region: string, tab: string, findingsList: string[]) => {
-    const currentRegion = regionFindings[region] || {
+    const currentRegion = (regionFindings || {})[region] || {
       palpation: [],
       auscultation: [],
       percussion: [],
@@ -2779,7 +2779,7 @@ export function GastrointestinalTab({ findings, onChange, onMarkNormal, onClear 
     };
     
     onChange('regionFindings', {
-      ...regionFindings,
+      ...(regionFindings || {}),
       [region]: {
         ...currentRegion,
         [tab]: findingsList,
@@ -2788,18 +2788,18 @@ export function GastrointestinalTab({ findings, onChange, onMarkNormal, onClear 
   };
 
   const getRegionFindingCount = (regionId: string): number => {
-    const region = regionFindings[regionId];
+    const region = (regionFindings || {})[regionId];
     if (!region) return 0;
     return (region.palpation?.length || 0) + (region.auscultation?.length || 0) + (region.percussion?.length || 0) + (region.inspection?.length || 0);
   };
 
   const getRegionFindingItems = (regionId: string): { findingId: string; label: string }[] => {
-    const region = regionFindings[regionId];
+    const region = (regionFindings || {})[regionId];
     if (!region) return [];
     const items: { findingId: string; label: string }[] = [];
     
     ['palpation', 'auscultation', 'percussion', 'inspection'].forEach(tab => {
-      (region[tab] || []).forEach((id: string) => {
+      ((region || {})[tab] || []).forEach((id: string) => {
         const match = giAllFindingsList.find(f => id.endsWith(f.id));
         if (match) items.push({ findingId: match.id, label: match.label });
       });
@@ -3053,7 +3053,7 @@ export function PsychiatricTab({ findings, onChange, onMarkNormal, onClear }: { 
         <div className="space-y-4">
           <div className="space-y-1.5">
             <Label className="text-sm">Mood</Label>
-            <Select value={mood} onValueChange={(v) => onChange('mood', v)}>
+            <Select value={mood || ''} onValueChange={(v) => onChange('mood', v)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="euthymic">Euthymic (Normal)</SelectItem>
@@ -3067,7 +3067,7 @@ export function PsychiatricTab({ findings, onChange, onMarkNormal, onClear }: { 
 
           <div className="space-y-1.5">
             <Label className="text-sm">Affect</Label>
-            <Select value={affect} onValueChange={(v) => onChange('affect', v)}>
+            <Select value={affect || ''} onValueChange={(v) => onChange('affect', v)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="appropriate">Appropriate / Full Range</SelectItem>
@@ -3122,7 +3122,7 @@ export function PsychiatricTab({ findings, onChange, onMarkNormal, onClear }: { 
         <div className="space-y-4">
           <div className="space-y-1.5">
             <Label className="text-sm">Thought Process</Label>
-            <Select value={thoughtProcess} onValueChange={(v) => onChange('thoughtProcess', v)}>
+            <Select value={thoughtProcess || ''} onValueChange={(v) => onChange('thoughtProcess', v)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="linear">Linear / Goal-directed</SelectItem>
@@ -3151,7 +3151,7 @@ export function PsychiatricTab({ findings, onChange, onMarkNormal, onClear }: { 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label className="text-sm">Insight</Label>
-              <Select value={insight} onValueChange={(v) => onChange('insight', v)}>
+              <Select value={insight || ''} onValueChange={(v) => onChange('insight', v)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="good">Good</SelectItem>
@@ -3162,7 +3162,7 @@ export function PsychiatricTab({ findings, onChange, onMarkNormal, onClear }: { 
             </div>
             <div className="space-y-1.5">
               <Label className="text-sm">Judgment</Label>
-              <Select value={judgment} onValueChange={(v) => onChange('judgment', v)}>
+              <Select value={judgment || ''} onValueChange={(v) => onChange('judgment', v)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="good">Good</SelectItem>
@@ -3249,17 +3249,17 @@ export function GeriatricTab({ findings, onChange, onMarkNormal, onClear }: { fi
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label className="text-sm">MoCA Score</Label>
-              <Input type="number" placeholder="/30" value={moca} onChange={e => onChange('moca', e.target.value)} />
+              <Input type="number" placeholder="/30" value={moca || ''} onChange={e => onChange('moca', e.target.value)} />
             </div>
             <div className="space-y-1.5">
               <Label className="text-sm">MMSE Score</Label>
-              <Input type="number" placeholder="/30" value={mmse} onChange={e => onChange('mmse', e.target.value)} />
+              <Input type="number" placeholder="/30" value={mmse || ''} onChange={e => onChange('mmse', e.target.value)} />
             </div>
           </div>
 
           <div className="space-y-1.5">
             <Label className="text-sm">Clinical Frailty Scale</Label>
-            <Select value={frailty} onValueChange={(v) => onChange('frailty', v)}>
+            <Select value={frailty || ''} onValueChange={(v) => onChange('frailty', v)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="robust">1 - Very Fit (Robust)</SelectItem>
@@ -3275,7 +3275,7 @@ export function GeriatricTab({ findings, onChange, onMarkNormal, onClear }: { fi
 
           <div className="space-y-1.5">
             <Label className="text-sm">Gait & Balance</Label>
-            <Select value={gait} onValueChange={(v) => onChange('gait', v)}>
+            <Select value={gait || ''} onValueChange={(v) => onChange('gait', v)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="normal">Normal / Steady</SelectItem>
@@ -3407,7 +3407,11 @@ export function PhysicalExam() {
       case 'neurological':
         setNeurologicalFindings(prev => ({
           ...prev,
-          mental: ['Alert and oriented x4'],
+          mental: {
+            consciousLevel: 'alert',
+            alertness: 'awake',
+            orientation: ['person', 'place', 'time', 'situation']
+          },
           motorBulk: 'normal',
           motorTone: 'normal',
           plantarResponse: 'flexor',
@@ -3436,6 +3440,11 @@ export function PhysicalExam() {
           thoughtContent: ['normal-content'],
           insight: 'good',
           judgment: 'good',
+          appearance: ['well-groomed', 'appropriate'],
+          behavior: ['cooperative', 'normal'],
+          speech: ['normal', 'fluent'],
+          perception: ['normal'],
+          cognition: ['alert', 'normal'],
           notes: '',
           status: 'normal'
         });
@@ -3552,7 +3561,11 @@ export function PhysicalExam() {
         break;
       case 'neurological':
         setNeurologicalFindings({
-          mental: [],
+          mental: {
+            consciousLevel: '',
+            alertness: '',
+            orientation: []
+          },
           showCranial: false,
           showMotor: false,
           showSensory: false,
@@ -3600,6 +3613,11 @@ export function PhysicalExam() {
           thoughtContent: [],
           insight: 'good',
           judgment: 'good',
+          appearance: [],
+          behavior: [],
+          speech: [],
+          perception: [],
+          cognition: [],
           notes: '',
           status: 'untouched'
         });
@@ -3634,15 +3652,15 @@ export function PhysicalExam() {
         id: crypto.randomUUID(),
         patientId: selectedPatient.id,
         date: date,
-        bp_systolic: parseInt(vitals.bpSystolic) || undefined,
-        bp_diastolic: parseInt(vitals.bpDiastolic) || undefined,
-        hr: parseInt(vitals.pulse) || undefined,
-        temp: parseFloat(vitals.temperature) || undefined,
-        rr: parseInt(vitals.respiratoryRate) || undefined,
-        spo2: parseInt(vitals.oxygenSaturation) || undefined,
-        weight: parseFloat(vitals.weight) || undefined,
-        height: parseFloat(vitals.height) || undefined,
-        bmi: parseFloat(vitals.bmi) || undefined,
+        bp_systolic: isNaN(parseInt(vitals.bpSystolic)) ? null : parseInt(vitals.bpSystolic),
+        bp_diastolic: isNaN(parseInt(vitals.bpDiastolic)) ? null : parseInt(vitals.bpDiastolic),
+        hr: isNaN(parseInt(vitals.pulse)) ? null : parseInt(vitals.pulse),
+        temp: isNaN(parseFloat(vitals.temperature)) ? null : parseFloat(vitals.temperature),
+        rr: isNaN(parseInt(vitals.respiratoryRate)) ? null : parseInt(vitals.respiratoryRate),
+        spo2: isNaN(parseInt(vitals.oxygenSaturation)) ? null : parseInt(vitals.oxygenSaturation),
+        weight: isNaN(parseFloat(vitals.weight)) ? null : parseFloat(vitals.weight),
+        height: isNaN(parseFloat(vitals.height)) ? null : parseFloat(vitals.height),
+        bmi: isNaN(parseFloat(vitals.bmi)) ? null : parseFloat(vitals.bmi),
         oxygenType: vitals.oxygenType,
         oxygenDose: vitals.oxygenDose,
         oxygenInvasive: vitals.oxygenInvasive,
@@ -3657,8 +3675,12 @@ export function PhysicalExam() {
         isSynced: 0
       });
 
+      const sanitizedVitals = Object.fromEntries(
+        Object.entries(vitals).map(([key, value]) => [key, value === undefined ? null : value])
+      );
+
       const examData = {
-        vitals,
+        vitals: sanitizedVitals,
         symptoms: symptoms.map(s => s.label),
         generalFindings,
         heentFindings,
@@ -3716,8 +3738,12 @@ export function PhysicalExam() {
       const timestamp = Date.now();
       const date = new Date().toISOString().split('T')[0];
 
+      const sanitizedVitals = Object.fromEntries(
+        Object.entries(vitals).map(([key, value]) => [key, value === undefined ? null : value])
+      );
+
       const examData = {
-        vitals,
+        vitals: sanitizedVitals,
         generalFindings,
         heentFindings,
         sseFindings,
@@ -4182,7 +4208,7 @@ Format the output as a professional medical note under the heading "Physical Exa
             <div className="flex items-center gap-2">
               <input 
                 type="number" 
-                value={vitals.bpSystolic}
+                value={vitals.bpSystolic || ''}
                 onChange={(e) => handleVitalChange('bpSystolic', e.target.value)}
                 className={`w-full px-3 py-2 border rounded-lg text-sm outline-none transition-colors ${getVitalColor('bpSystolic', vitals.bpSystolic)}`}
                 placeholder="120" 
@@ -4190,7 +4216,7 @@ Format the output as a professional medical note under the heading "Physical Exa
               <span className="text-slate-400 font-medium">/</span>
               <input 
                 type="number" 
-                value={vitals.bpDiastolic}
+                value={vitals.bpDiastolic || ''}
                 onChange={(e) => handleVitalChange('bpDiastolic', e.target.value)}
                 className={`w-full px-3 py-2 border rounded-lg text-sm outline-none transition-colors ${getVitalColor('bpDiastolic', vitals.bpDiastolic)}`}
                 placeholder="80" 
@@ -4203,7 +4229,7 @@ Format the output as a professional medical note under the heading "Physical Exa
               <Heart className="w-4 h-4 absolute left-2.5 top-2.5 text-slate-400" />
               <input 
                 type="number" 
-                value={vitals.pulse}
+                value={vitals.pulse || ''}
                 onChange={(e) => handleVitalChange('pulse', e.target.value)}
                 className={`w-full pl-9 pr-3 py-2 border rounded-lg text-sm outline-none transition-colors ${getVitalColor('pulse', vitals.pulse)}`}
                 placeholder="72" 
@@ -4216,7 +4242,7 @@ Format the output as a professional medical note under the heading "Physical Exa
               <Thermometer className="w-4 h-4 absolute left-2.5 top-2.5 text-slate-400" />
               <input 
                 type="number" 
-                value={vitals.temperature}
+                value={vitals.temperature || ''}
                 onChange={(e) => handleVitalChange('temperature', e.target.value)}
                 className={`w-full pl-9 pr-3 py-2 border rounded-lg text-sm outline-none transition-colors ${getVitalColor('temperature', vitals.temperature)}`}
                 placeholder="37.2" 
@@ -4229,7 +4255,7 @@ Format the output as a professional medical note under the heading "Physical Exa
               <Droplets className="w-4 h-4 absolute left-2.5 top-2.5 text-slate-400" />
               <input 
                 type="number" 
-                value={vitals.rbs}
+                value={vitals.rbs || ''}
                 onChange={(e) => handleVitalChange('rbs', e.target.value)}
                 className={`w-full pl-9 pr-3 py-2 border rounded-lg text-sm outline-none transition-colors ${getVitalColor('rbs', vitals.rbs)}`}
                 placeholder="110" 
@@ -4242,7 +4268,7 @@ Format the output as a professional medical note under the heading "Physical Exa
               <Wind className="w-4 h-4 absolute left-2.5 top-2.5 text-slate-400" />
               <input 
                 type="number" 
-                value={vitals.respiratoryRate}
+                value={vitals.respiratoryRate || ''}
                 onChange={(e) => handleVitalChange('respiratoryRate', e.target.value)}
                 className={`w-full pl-9 pr-3 py-2 border rounded-lg text-sm outline-none transition-colors ${getVitalColor('respiratoryRate', vitals.respiratoryRate)}`}
                 placeholder="16" 
@@ -4255,7 +4281,7 @@ Format the output as a professional medical note under the heading "Physical Exa
               <Scale className="w-4 h-4 absolute left-2.5 top-2.5 text-slate-400" />
               <input 
                 type="number" 
-                value={vitals.weight}
+                value={vitals.weight || ''}
                 onChange={(e) => handleVitalChange('weight', e.target.value)}
                 className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" 
                 placeholder="70" 
@@ -4268,7 +4294,7 @@ Format the output as a professional medical note under the heading "Physical Exa
               <Ruler className="w-4 h-4 absolute left-2.5 top-2.5 text-slate-400" />
               <input 
                 type="number" 
-                value={vitals.height}
+                value={vitals.height || ''}
                 onChange={(e) => handleVitalChange('height', e.target.value)}
                 className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" 
                 placeholder="170" 
@@ -4279,7 +4305,7 @@ Format the output as a professional medical note under the heading "Physical Exa
             <label className="text-xs font-medium text-slate-600">BMI</label>
             <input 
               type="text" 
-              value={vitals.bmi}
+              value={vitals.bmi || ''}
               readOnly
               className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50 text-slate-500 outline-none" 
               placeholder="--" 
@@ -4291,7 +4317,7 @@ Format the output as a professional medical note under the heading "Physical Exa
               <Droplets className="w-4 h-4 absolute left-2.5 top-2.5 text-slate-400" />
               <input 
                 type="number" 
-                value={vitals.oxygenSaturation}
+                value={vitals.oxygenSaturation || ''}
                 onChange={(e) => handleVitalChange('oxygenSaturation', e.target.value)}
                 className={`w-full pl-9 pr-3 py-2 border rounded-lg text-sm outline-none transition-colors ${getVitalColor('oxygenSaturation', vitals.oxygenSaturation)}`}
                 placeholder="98" 
@@ -4301,7 +4327,7 @@ Format the output as a professional medical note under the heading "Physical Exa
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-slate-600">O2 Supply</label>
             <select
-              value={vitals.oxygenType}
+              value={vitals.oxygenType || ''}
               onChange={(e) => handleVitalChange('oxygenType', e.target.value)}
               className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
             >
@@ -4315,7 +4341,7 @@ Format the output as a professional medical note under the heading "Physical Exa
                 <label className="text-xs font-medium text-slate-600">O2 Dose</label>
                 <input 
                   type="text" 
-                  value={vitals.oxygenDose}
+                  value={vitals.oxygenDose || ''}
                   onChange={(e) => handleVitalChange('oxygenDose', e.target.value)}
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" 
                   placeholder="e.g. 2L/min" 
@@ -4324,7 +4350,7 @@ Format the output as a professional medical note under the heading "Physical Exa
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-slate-600">O2 Invasive</label>
                 <select
-                  value={vitals.oxygenInvasive}
+                  value={vitals.oxygenInvasive || ''}
                   onChange={(e) => handleVitalChange('oxygenInvasive', e.target.value)}
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
                 >
@@ -4338,7 +4364,7 @@ Format the output as a professional medical note under the heading "Physical Exa
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-slate-600">Mode Types</label>
                     <select
-                      value={vitals.oxygenDeviceType}
+                      value={vitals.oxygenDeviceType || ''}
                       onChange={(e) => handleVitalChange('oxygenDeviceType', e.target.value)}
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
                     >
@@ -4374,22 +4400,22 @@ Format the output as a professional medical note under the heading "Physical Exa
                     <div className="grid grid-cols-2 gap-2">
                       {vitals.oxygenInvasive === 'invasive' ? (
                         <>
-                          <input type="text" value={vitals.fio2} onChange={(e) => handleVitalChange('fio2', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="FiO2 (%)" />
-                          <input type="text" value={vitals.peep} onChange={(e) => handleVitalChange('peep', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="PEEP (cmH2O)" />
-                          <input type="text" value={vitals.pressureSupport} onChange={(e) => handleVitalChange('pressureSupport', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="PS (cmH2O)" />
-                          <input type="text" value={vitals.tidalVolume} onChange={(e) => handleVitalChange('tidalVolume', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="Vt (mL)" />
-                          <input type="text" value={vitals.pressureControl} onChange={(e) => handleVitalChange('pressureControl', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="PC (cmH2O)" />
-                          <input type="text" value={vitals.setRR} onChange={(e) => handleVitalChange('setRR', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="Set RR (bpm)" />
-                          <input type="text" value={vitals.ieRatio} onChange={(e) => handleVitalChange('ieRatio', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="I:E Ratio" />
-                          <input type="text" value={vitals.pip} onChange={(e) => handleVitalChange('pip', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="PIP (cmH2O)" />
+                          <input type="text" value={vitals.fio2 || ''} onChange={(e) => handleVitalChange('fio2', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="FiO2 (%)" />
+                          <input type="text" value={vitals.peep || ''} onChange={(e) => handleVitalChange('peep', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="PEEP (cmH2O)" />
+                          <input type="text" value={vitals.pressureSupport || ''} onChange={(e) => handleVitalChange('pressureSupport', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="PS (cmH2O)" />
+                          <input type="text" value={vitals.tidalVolume || ''} onChange={(e) => handleVitalChange('tidalVolume', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="Vt (mL)" />
+                          <input type="text" value={vitals.pressureControl || ''} onChange={(e) => handleVitalChange('pressureControl', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="PC (cmH2O)" />
+                          <input type="text" value={vitals.setRR || ''} onChange={(e) => handleVitalChange('setRR', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="Set RR (bpm)" />
+                          <input type="text" value={vitals.ieRatio || ''} onChange={(e) => handleVitalChange('ieRatio', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="I:E Ratio" />
+                          <input type="text" value={vitals.pip || ''} onChange={(e) => handleVitalChange('pip', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="PIP (cmH2O)" />
                         </>
                       ) : (
                         <>
-                          <input type="text" value={vitals.flowRate} onChange={(e) => handleVitalChange('flowRate', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="Flow Rate (L/min)" />
-                          <input type="text" value={vitals.fio2} onChange={(e) => handleVitalChange('fio2', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="FiO2 (%)" />
+                          <input type="text" value={vitals.flowRate || ''} onChange={(e) => handleVitalChange('flowRate', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="Flow Rate (L/min)" />
+                          <input type="text" value={vitals.fio2 || ''} onChange={(e) => handleVitalChange('fio2', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="FiO2 (%)" />
                         </>
                       )}
-                      <input type="text" value={vitals.notes} onChange={(e) => handleVitalChange('notes', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm col-span-2" placeholder="Additional notes" />
+                      <input type="text" value={vitals.notes || ''} onChange={(e) => handleVitalChange('notes', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm col-span-2" placeholder="Additional notes" />
                     </div>
                   </div>
                 </>

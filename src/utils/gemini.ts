@@ -219,7 +219,7 @@ export function parseJsonResponse<T>(text: string | undefined, defaultValue: T):
       }
     }
 
-    console.error("All JSON parsing attempts failed for text:", text);
+    console.warn("All JSON parsing attempts resolved with default value for text:", text);
     return defaultValue;
   }
 }

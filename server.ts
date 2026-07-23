@@ -2,19 +2,93 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import fs from "fs";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Modality } from "@google/genai";
+import dotenv from "dotenv";
+import helmet from "helmet";
+import { z } from "zod";
+
+dotenv.config();
+
+// Custom in-memory rate limiter to secure expensive AI endpoints from abuse
+const rateLimits = new Map<string, { count: number; resetTime: number }>();
+
+const customRateLimiter = (limit: number, windowMs: number) => {
+  return (req: any, res: any, next: any) => {
+    const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+    const now = Date.now();
+    const limitInfo = rateLimits.get(ip);
+
+    if (!limitInfo || now > limitInfo.resetTime) {
+      rateLimits.set(ip, { count: 1, resetTime: now + windowMs });
+      return next();
+    }
+
+    if (limitInfo.count >= limit) {
+      return res.status(429).json({ error: "Too many requests. Please try again later." });
+    }
+
+    limitInfo.count++;
+    next();
+  };
+};
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  app.use(helmet({
+    contentSecurityPolicy: false,
+    frameguard: false,
+  }));
+
+  const key = process.env.GEMINI_API_KEY;
+  if (key) {
+    const masked = key.length > 8 ? `${key.substring(0, 4)}...${key.substring(key.length - 4)}` : "too short";
+    console.log(`[API KEY] Loaded key: ${masked} (length: ${key.length})`);
+  } else {
+    console.log("[API KEY] No GEMINI_API_KEY environment variable found");
+  }
+
   const ai = process.env.GEMINI_API_KEY ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }) : null;
 
-  app.use(express.json());
+  const retryAI = async (fn: () => Promise<any>, maxRetries = 3) => {
+    let lastError: any;
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        return await fn();
+      } catch (error: any) {
+        lastError = error;
+        // Only retry on rate limits (429) or transient server errors (5xx)
+        const status = error.status || (error.response ? error.response.status : null);
+        if (status === 429 || (status >= 500 && status < 600)) {
+          const delay = Math.pow(2, i) * 1000 + Math.random() * 1000;
+          console.log(`[AI RETRY] Attempt ${i + 1} failed with status ${status}. Retrying in ${Math.round(delay)}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+        throw error;
+      }
+    }
+    throw lastError;
+  };
+
+  app.use(express.json({ limit: "1mb" })); // Mitigate Large Payload/DoS injection
  
   const settingsFilePath = path.join(process.cwd(), 'settings.json');
  
   // API routes
+  const SettingsSchema = z.object({
+    theme: z.string().max(50).optional(),
+    language: z.string().max(50).optional(),
+    fontSize: z.string().max(50).optional(),
+    fontFamily: z.string().max(50).optional(),
+    accentColor: z.string().max(50).optional(),
+    borderRadius: z.string().max(50).optional(),
+    compactMode: z.string().max(50).optional(),
+    density: z.string().max(50).optional(),
+    reducedMotion: z.string().max(50).optional(),
+  });
+
   app.get("/api/settings", (req, res) => {
     if (fs.existsSync(settingsFilePath)) {
       const settings = fs.readFileSync(settingsFilePath, 'utf-8');
@@ -25,13 +99,33 @@ async function startServer() {
   });
 
   app.post("/api/settings", (req, res) => {
-    const settings = req.body;
-    fs.writeFileSync(settingsFilePath, JSON.stringify(settings, null, 2));
+    const result = SettingsSchema.safeParse(req.body);
+    if (!result.success) {
+      return res.status(400).json({ error: "Invalid settings format", details: result.error });
+    }
+    
+    fs.writeFileSync(settingsFilePath, JSON.stringify(result.data, null, 2));
     res.json({ status: "success" });
   });
 
-  app.post("/api/ai/chat", async (req, res) => {
-    const { messages, provider, model, apiKey, systemInstruction } = req.body;
+  // Guard expensive AI Chat Endpoint with Rate Limiting (60 requests/min max)
+  const ChatSchema = z.object({
+    messages: z.array(z.object({
+      role: z.string(),
+      content: z.string(),
+    })),
+    provider: z.enum(['gemini', 'openrouter']),
+    model: z.string().optional(),
+    apiKey: z.string().optional(),
+    systemInstruction: z.string().optional(),
+  });
+
+  app.post("/api/clinical-workflow/analyze", customRateLimiter(60, 60 * 1000), async (req, res) => {
+    const validation = ChatSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({ error: "Invalid request body", details: validation.error });
+    }
+    const { messages, provider, model, apiKey, systemInstruction } = validation.data;
 
     if (provider === 'gemini') {
       if (!process.env.GEMINI_API_KEY) {
@@ -46,16 +140,52 @@ async function startServer() {
           parts: [{ text: m.content }]
         }));
 
-        const result = await genAI.models.generateContent({ 
-          model: model || 'gemini-1.5-flash',
-          contents,
-          systemInstruction: systemInstruction ? { parts: [{ text: systemInstruction }] } : undefined
-        } as any);
+        const result = await retryAI(async () => {
+          return await genAI.models.generateContent({ 
+            model: model || 'gemini-3.1-flash-lite',
+            contents,
+            config: {
+              systemInstruction: systemInstruction || undefined,
+            }
+          });
+        });
         
         res.json({ content: result.text || "" });
-      } catch (error) {
-        console.error("Gemini server error:", error);
-        res.status(500).json({ error: "Gemini processing failed" });
+      } catch (error: any) {
+        console.error("Gemini server error detail:", {
+          message: error.message,
+          stack: error.stack,
+          status: error.status,
+          code: error.code
+        });
+        
+        // Map provider-specific codes to user-friendly messages if possible
+        let userMessage = "Gemini processing failed.";
+        let status = error.status || (error.response ? error.response.status : null);
+        
+        // If status is not directly available, try parsing from message string
+        if (!status && typeof error.message === 'string' && error.message.includes('{')) {
+          try {
+            const match = error.message.match(/\{.*\}/s);
+            if (match) {
+              const parsed = JSON.parse(match[0]);
+              status = parsed.error?.code || parsed.code;
+            }
+          } catch (e) {}
+        }
+
+        if (status === 403 || status === 401) {
+          userMessage = "Authentication error with AI provider. Please check API key.";
+        } else if (status === 429) {
+          userMessage = "AI provider rate limit exceeded. Please try again in a few moments.";
+        } else if (error.message && error.message.includes("quota")) {
+          userMessage = "AI service quota exceeded.";
+        }
+
+        res.status(500).json({ 
+          error: userMessage,
+          details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
       }
     } else if (provider === 'openrouter') {
       const orApiKey = apiKey || process.env.OPENROUTER_API_KEY;
@@ -97,6 +227,45 @@ async function startServer() {
       }
     } else {
       res.status(400).json({ error: "Invalid AI provider" });
+    }
+  });
+
+  // Guard high-load Speech Synthesis with Rate Limiting (60 requests/min max)
+  app.post("/api/ai/tts", customRateLimiter(60, 60 * 1000), async (req, res) => {
+    const { text, voiceId } = req.body;
+    if (!text) {
+      return res.status(400).json({ error: "Text is required" });
+    }
+    if (!process.env.GEMINI_API_KEY) {
+      return res.status(500).json({ error: "Gemini API key is not configured on server" });
+    }
+    try {
+      const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      
+      const response = await retryAI(async () => {
+        return await genAI.models.generateContent({
+          model: "gemini-3.1-flash-tts-preview",
+          contents: [{ parts: [{ text }] }],
+          config: {
+            responseModalities: [Modality.AUDIO],
+            speechConfig: {
+              voiceConfig: {
+                prebuiltVoiceConfig: { voiceName: voiceId || 'Kore' },
+              },
+            },
+          },
+        } as any);
+      });
+
+      const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      if (!base64Audio) {
+        throw new Error("No audio data returned from Gemini TTS");
+      }
+
+      res.json({ base64Audio });
+    } catch (error: any) {
+      console.error("Gemini TTS server error:", error);
+      res.status(500).json({ error: error.message || "Failed to generate TTS" });
     }
   });
 

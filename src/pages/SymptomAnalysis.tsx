@@ -344,9 +344,9 @@ export function SymptomAnalysis() {
       
       setExpandedSymptomId(symptom.id);
       toast.success(`${symptom.label} analyzed by AI`);
-    } catch (err) {
+    } catch (err: any) {
       console.error("AI Analysis failed:", err);
-      toast.error("AI Analysis failed. Please try manual entry.");
+      toast.error(err.message || "AI Analysis failed. Please try manual entry.");
     } finally {
       setAiAnalyzingId(null);
     }
@@ -370,9 +370,9 @@ export function SymptomAnalysis() {
       );
       
       setConversation(prev => [...prev, { role: 'ai' as const, content: responseText || "No response." }]);
-    } catch (err) {
+    } catch (err: any) {
       console.error("AI chat failed:", err);
-      toast.error("Failed to get AI response. Please try again later.");
+      toast.error(err.message || "Failed to get AI response. Please try again later.");
     }
   };
 
@@ -405,9 +405,9 @@ export function SymptomAnalysis() {
       // Add IDs to diagnoses
       const diagnosesWithIds = diagnoses.map((d: any, index: number) => ({ ...d, id: `diag_${index}` }));
       setGeneratedDiagnoses(diagnosesWithIds);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error generating diagnoses:", error);
-      toast.error("Failed to generate possible causes.");
+      toast.error(error.message || "Failed to generate possible causes.");
     } finally {
       setIsAnalyzing(false);
     }
@@ -433,9 +433,9 @@ export function SymptomAnalysis() {
       sessionStorage.setItem('draft_soap_note', generatedNote);
       toast.success("SOAP note generated successfully");
       navigate('/soap-editor');
-    } catch (err) {
+    } catch (err: any) {
       console.error("SOAP generation failed:", err);
-      toast.error("Failed to generate SOAP note");
+      toast.error(err.message || "Failed to generate SOAP note");
     } finally {
       setIsGeneratingSOAP(false);
     }
@@ -471,7 +471,9 @@ export function SymptomAnalysis() {
           symptoms: newSymptoms,
           // Try to preserve vitals if they exist in the draft, 
           // or use latest vitals if they don't
-          vitals: existingDraft.data?.vitals || (latestVitals ? {
+          vitals: (existingDraft.data?.vitals != null ? Object.fromEntries(
+            Object.entries(existingDraft.data.vitals).map(([key, value]) => [key, value === undefined ? null : value])
+          ) : (latestVitals ? {
             temperature: latestVitals.temp?.toString() || '',
             bpSystolic: latestVitals.bp_systolic?.toString() || '',
             bpDiastolic: latestVitals.bp_diastolic?.toString() || '',
@@ -481,7 +483,7 @@ export function SymptomAnalysis() {
             weight: latestVitals.weight?.toString() || '',
             height: latestVitals.height?.toString() || '',
             bmi: latestVitals.bmi?.toString() || ''
-          } : undefined)
+          } : null))
         };
 
         await db.physical_exams.update(existingDraft.localId!, {
@@ -500,7 +502,7 @@ export function SymptomAnalysis() {
             weight: latestVitals.weight?.toString() || '',
             height: latestVitals.height?.toString() || '',
             bmi: latestVitals.bmi?.toString() || ''
-          } : undefined,
+          } : null,
           symptoms: newSymptoms,
           generalFindings: { appearance: '', mentalStatus: '', notes: '', status: 'untouched', detailed: {} },
           heentFindings: { heentState: {}, pupilSize: [3], notes: '', status: 'untouched' },

@@ -124,19 +124,19 @@ export function Profile() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-700 dark:text-slate-300">First Name</label>
-                  <input type="text" name="firstName" value={formData.firstName} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-lg focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-slate-900 dark:text-slate-200" />
+                  <input type="text" name="firstName" value={formData.firstName || ""} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-lg focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-slate-900 dark:text-slate-200" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Last Name</label>
-                  <input type="text" name="lastName" value={formData.lastName} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-lg focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-slate-900 dark:text-slate-200" />
+                  <input type="text" name="lastName" value={formData.lastName || ""} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-lg focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-slate-900 dark:text-slate-200" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Date of Birth</label>
-                  <input type="date" name="dob" value={formData.dob} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-lg focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-slate-900 dark:text-slate-200" />
+                  <input type="date" name="dob" value={formData.dob || ""} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-lg focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-slate-900 dark:text-slate-200" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Gender</label>
-                  <select name="gender" value={formData.gender} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-lg focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-slate-900 dark:text-slate-200">
+                  <select name="gender" value={formData.gender || ""} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-lg focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-slate-900 dark:text-slate-200">
                     <option value="female" className="dark:bg-slate-900">Female</option>
                     <option value="male" className="dark:bg-slate-900">Male</option>
                     <option value="other" className="dark:bg-slate-900">Other</option>
@@ -147,7 +147,7 @@ export function Profile() {
                     <Shield className="w-4 h-4 text-indigo-500" />
                     System Role (Testing)
                   </label>
-                  <select name="role" value={formData.role} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 rounded-lg focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-indigo-900 dark:text-indigo-200 font-medium">
+                  <select name="role" value={formData.role || ""} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 rounded-lg focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-indigo-900 dark:text-indigo-200 font-medium">
                     <option value="doctor" className="dark:bg-slate-900">Doctor</option>
                     <option value="pharmacist" className="dark:bg-slate-900">Pharmacist</option>
                     <option value="admin" className="dark:bg-slate-900">Admin</option>
@@ -167,19 +167,19 @@ export function Profile() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Specialty</label>
-                  <input type="text" name="specialty" value={formData.specialty} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-lg focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-slate-900 dark:text-slate-200" />
+                  <input type="text" name="specialty" value={formData.specialty || ""} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-lg focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-slate-900 dark:text-slate-200" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Medical License Number</label>
-                  <input type="text" name="licenseNumber" value={formData.licenseNumber} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-lg focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-slate-900 dark:text-slate-200" />
+                  <input type="text" name="licenseNumber" value={formData.licenseNumber || ""} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-lg focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-slate-900 dark:text-slate-200" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Years of Experience</label>
-                  <input type="number" name="experience" value={formData.experience} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-lg focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-slate-900 dark:text-slate-200" />
+                  <input type="number" name="experience" value={formData.experience || ""} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-lg focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-slate-900 dark:text-slate-200" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Education / Degree</label>
-                  <input type="text" name="education" value={formData.education} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-lg focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-slate-900 dark:text-slate-200" />
+                  <input type="text" name="education" value={formData.education || ""} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-lg focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-slate-900 dark:text-slate-200" />
                 </div>
               </div>
             </section>
@@ -195,23 +195,23 @@ export function Profile() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Email Address</label>
-                  <input type="email" name="email" value={formData.email} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-lg focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-slate-900 dark:text-slate-200" />
+                  <input type="email" name="email" value={formData.email || ""} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-lg focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-slate-900 dark:text-slate-200" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Phone Number</label>
-                  <input type="tel" name="phone" value={formData.phone} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-lg focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-slate-900 dark:text-slate-200" />
+                  <input type="tel" name="phone" value={formData.phone || ""} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-lg focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-slate-900 dark:text-slate-200" />
                 </div>
                 <div className="space-y-2 md:col-span-2">
                   <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Clinic Address</label>
-                  <input type="text" name="address" value={formData.address} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-lg focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-slate-900 dark:text-slate-200" />
+                  <input type="text" name="address" value={formData.address || ""} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-lg focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-slate-900 dark:text-slate-200" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-700 dark:text-slate-300">City</label>
-                  <input type="text" name="city" value={formData.city} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-lg focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-slate-900 dark:text-slate-200" />
+                  <input type="text" name="city" value={formData.city || ""} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-lg focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-slate-900 dark:text-slate-200" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Country</label>
-                  <select name="country" value={formData.country} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-lg focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-slate-900 dark:text-slate-200">
+                  <select name="country" value={formData.country || ""} onChange={handleInputChange} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-lg focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-slate-900 dark:text-slate-200">
                     <option value="us" className="dark:bg-slate-900">United States</option>
                     <option value="uk" className="dark:bg-slate-900">United Kingdom</option>
                     <option value="ca" className="dark:bg-slate-900">Canada</option>

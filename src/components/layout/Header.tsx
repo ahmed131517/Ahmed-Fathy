@@ -45,7 +45,7 @@ export function Header() {
   const notificationsRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
   const navigate = useNavigate();
-  const { profile } = useUser();
+  const { profile, switchClinic, logout } = useUser();
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
   const { patients, setSelectedPatient } = usePatient();
   const { language, updateSettings } = useSettings();
@@ -264,6 +264,36 @@ export function Header() {
         </div>
       </div>
       <div className={cn("flex items-center space-x-4", isRTL && "space-x-reverse")}>
+        {/* Multi-Clinic Selector */}
+        <div className="flex items-center gap-1.5 border border-slate-200 dark:border-slate-800 rounded-lg bg-slate-50 dark:bg-slate-950/40 px-3 py-1.5 animate-fade-in">
+          <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 capitalize hidden md:inline">Clinic:</span>
+          <select 
+            value={profile.clinicId || "clinic_a"}
+            onChange={(e) => {
+              const val = e.target.value;
+              const clinics = profile.joinedClinics || [];
+              const found = clinics.find(c => c.id === val);
+              if (found) {
+                switchClinic(found.id, found.name);
+              }
+            }}
+            className="text-sm bg-transparent text-[#2c3e50] dark:text-slate-200 font-semibold outline-none cursor-pointer border-0 p-0 pr-6 ring-0"
+          >
+            {(profile.joinedClinics && profile.joinedClinics.length > 0) ? (
+              profile.joinedClinics.map((clinic) => (
+                <option key={clinic.id} value={clinic.id} className="dark:bg-slate-900 font-medium">
+                  {clinic.name}
+                </option>
+              ))
+            ) : (
+              <>
+                <option value="clinic_a" className="dark:bg-slate-900 font-medium">Clinic A (Downtown)</option>
+                <option value="clinic_b" className="dark:bg-slate-900 font-medium">Clinic B (Northside)</option>
+              </>
+            )}
+          </select>
+        </div>
+
         <select 
           value={language}
           onChange={(e) => updateSettings({ language: e.target.value })}
@@ -311,7 +341,7 @@ export function Header() {
                 </div>
                 <div className="max-h-96 overflow-y-auto">
                   {notifications.length > 0 ? (
-                    notifications.map((notification) => (
+                    notifications.map((notification) => notification && (
                       <button 
                         key={notification.localId}
                         onClick={() => {
@@ -441,9 +471,9 @@ export function Header() {
                   </ul>
                   <div className="border-t border-slate-100 dark:border-slate-800 py-1">
                     <button 
-                      onClick={() => {
+                      onClick={async () => {
                         setIsProfileOpen(false);
-                        toast.success("Signed out successfully");
+                        await logout();
                       }}
                       role="menuitem" 
                       className="w-full text-left px-4 py-2.5 text-[15px] text-[#e74c3c] dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors flex items-center gap-3 focus:bg-red-50 dark:focus:bg-red-500/10 focus:outline-none"

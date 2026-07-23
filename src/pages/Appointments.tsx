@@ -6,17 +6,12 @@ import { NewAppointmentModal } from "@/components/modals/NewAppointmentModal";
 import { AppointmentDetailsModal } from "@/components/modals/AppointmentDetailsModal";
 import { useSettings } from "@/lib/SettingsContext";
 import { useTranslation } from "@/lib/i18n";
+import { toast } from "sonner";
 import { DndContext, DragOverlay, useDraggable, useDroppable, DragEndEvent, DragStartEvent } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { db } from "@/lib/db";
 import { useLiveQuery } from "dexie-react-hooks";
-
-const initialAppointments = [
-  { patientName: "John Doe", time: "09:00 AM", date: new Date().toISOString().split('T')[0], type: "Check-up", status: "scheduled", doctor: "Dr. Ahmed Fathy" },
-  { patientName: "Jane Smith", time: "10:00 AM", date: new Date(Date.now() + 86400000).toISOString().split('T')[0], type: "Follow-up", status: "completed", doctor: "Dr. Ahmed Fathy" },
-  { patientName: "Robert Johnson", time: "11:00 AM", date: new Date(Date.now() + 172800000).toISOString().split('T')[0], type: "Consultation", status: "scheduled", doctor: "Dr. Ahmed Fathy" },
-  { patientName: "Emily Davis", time: "02:00 PM", date: new Date(Date.now() + 172800000).toISOString().split('T')[0], type: "Emergency", status: "canceled", doctor: "Dr. Ahmed Fathy" },
-];
+import { initialAppointments } from "@/lib/seedData";
 
 interface DraggableAppointmentProps {
   appointment: any;
@@ -64,6 +59,7 @@ interface DroppableCellProps {
 }
 
 const DroppableCell: React.FC<DroppableCellProps> = ({ time, dayIndex, children, onAddClick }) => {
+  const { isRTL } = useTranslation();
   const { setNodeRef, isOver } = useDroppable({
     id: `cell-${dayIndex}-${time}`,
     data: { time, dayIndex },
@@ -73,12 +69,13 @@ const DroppableCell: React.FC<DroppableCellProps> = ({ time, dayIndex, children,
     <div 
       ref={setNodeRef}
       className={cn(
-        "p-1.5 border-r border-slate-100 dark:border-slate-800 last:border-r-0 relative transition-colors group min-h-[80px]",
+        "p-1.5 border-slate-100 dark:border-slate-800 relative transition-colors group min-h-[80px]",
+        isRTL ? "border-l last:border-l-0" : "border-r last:border-r-0",
         isOver ? "bg-indigo-50/50 dark:bg-indigo-500/10 ring-2 ring-inset ring-indigo-200 dark:ring-indigo-500/30" : "hover:bg-slate-50/50 dark:hover:bg-slate-800/30"
       )}
     >
       {children}
-      {!children && (
+      {React.Children.count(children) === 0 && (
         <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
           <button 
             onClick={onAddClick}
@@ -96,18 +93,27 @@ export function Appointments() {
   const { compactMode, showPatientIds } = useSettings();
   const { t, isRTL } = useTranslation();
   const [view, setView] = useState<"list" | "calendar">("list");
+  const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [doctorFilter, setDoctorFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
-  const [isNewModalOpen, setIsNewModalOpen] = useState(false);
+  const [appointmentData, setAppointmentData] = useState<{name: string, slots?: {label: string, date: string, time: string}[]} | null>(null);
   const [selectedAppointment, setSelectedAppointment] = useState<any>(null);
   const [currentWeekOffset, setCurrentWeekOffset] = useState(0);
   const [appointmentToDelete, setAppointmentToDelete] = useState<number | null>(null);
   const [activeDragItem, setActiveDragItem] = useState<any>(null);
 
-  const appointments = useLiveQuery(
-    () => db.appointments.where('isDeleted').equals(0).toArray(),
-    []
+  const filteredAppointments = useLiveQuery(
+    () => db.appointments
+      .where('isDeleted').equals(0)
+      .filter((app) => 
+        (statusFilter === "all" || (app.status && app.status.toLowerCase() === statusFilter.toLowerCase())) &&
+        (doctorFilter === "all" || app.doctor === doctorFilter) &&
+        (typeFilter === "all" || (app.type && app.type.toLowerCase() === typeFilter.toLowerCase())) &&
+        (!searchQuery || (app.patientName && app.patientName.toLowerCase().includes(searchQuery.toLowerCase())))
+      )
+      .toArray(),
+    [statusFilter, doctorFilter, typeFilter, searchQuery]
   ) || [];
 
   useEffect(() => {
@@ -131,12 +137,6 @@ export function Appointments() {
     seedData();
   }, []);
 
-  const filteredAppointments = appointments.filter(
-    (app) => (statusFilter === "all" || app.status === statusFilter) &&
-             (doctorFilter === "all" || app.doctor === doctorFilter) &&
-             (typeFilter === "all" || app.type === typeFilter)
-  );
-
   const handleDragStart = (event: DragStartEvent) => {
     setActiveDragItem(event.active.data.current);
   };
@@ -156,9 +156,24 @@ export function Appointments() {
         startOfWeek.setDate(today.getDate() - dayOfWeek + (currentWeekOffset * 7));
         const newDate = new Date(startOfWeek);
         newDate.setDate(startOfWeek.getDate() + dayIndex);
-        const dateString = newDate.toISOString().split('T')[0];
+        const year = newDate.getFullYear();
+        const month = String(newDate.getMonth() + 1).padStart(2, '0');
+        const day = String(newDate.getDate()).padStart(2, '0');
+        const dateString = `${year}-${month}-${day}`;
 
         if (activeId) {
+          const normalizeTime = (t: string) => t.replace(/^0/, '');
+          const existingAppts = await db.appointments
+            .where('isDeleted').equals(0)
+            .filter(app => app.date === dateString && normalizeTime(app.time || '') === normalizeTime(time))
+            .toArray();
+
+          if (existingAppts.length > 0 && existingAppts.some(app => app.localId !== activeId)) {
+            toast.error("This slot is already occupied");
+            setActiveDragItem(null);
+            return;
+          }
+
           await db.appointments.update(activeId, { 
             time, 
             date: dateString,
@@ -265,7 +280,7 @@ export function Appointments() {
         <aside className="w-full md:w-72 flex-shrink-0 space-y-6">
           <div className="space-y-3">
             <button 
-              onClick={() => setIsNewModalOpen(true)}
+              onClick={() => setAppointmentData({name: ""})}
               className="w-full flex items-center justify-center space-x-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-3 rounded-xl font-medium transition-colors shadow-sm"
             >
               <Plus className={cn("w-5 h-5", isRTL ? "ml-2" : "mr-2")} />
@@ -303,6 +318,8 @@ export function Appointments() {
                   <Search className={cn("absolute top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400", isRTL ? "right-3" : "left-3")} />
                   <input
                     type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder={t('nameOrId')}
                     className={cn(
                       "w-full py-2 text-sm bg-white dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all",
@@ -384,24 +401,36 @@ export function Appointments() {
               <h3 className="mono-label">{t('suggestedFollowUps')}</h3>
             </div>
             <div className="space-y-3 mt-3">
-              <div className="bg-white dark:bg-slate-900 p-3 rounded-lg border border-indigo-50 dark:border-indigo-900/30 shadow-sm">
+              <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-indigo-100 dark:border-indigo-900/50 shadow-sm hover:shadow-md transition-all">
                 <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">Sarah Connor</p>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Post-op checkup due (2 weeks)</p>
                 <button 
-                  onClick={() => setIsNewModalOpen(true)}
-                  className="mt-2 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 flex items-center gap-1"
+                  onClick={() => setAppointmentData({
+                    name: "Sarah Connor",
+                    slots: [
+                      { label: "Next Week, 10:00 AM", date: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0], time: "10:00" },
+                      { label: "Next Week, 2:00 PM", date: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0], time: "14:00" },
+                    ]
+                  })}
+                  className="mt-3 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all shadow-sm"
                 >
-                  <Plus className="w-3 h-3" /> {t('scheduleNow')}
+                  <Plus className="w-3.5 h-3.5" /> {t('scheduleNow')}
                 </button>
               </div>
-              <div className="bg-white dark:bg-slate-900 p-3 rounded-lg border border-indigo-50 dark:border-indigo-900/30 shadow-sm">
+              <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-indigo-100 dark:border-indigo-900/50 shadow-sm hover:shadow-md transition-all">
                 <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">Mike Ross</p>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Annual physical overdue</p>
                 <button 
-                  onClick={() => setIsNewModalOpen(true)}
-                  className="mt-2 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 flex items-center gap-1"
+                  onClick={() => setAppointmentData({
+                    name: "Mike Ross",
+                    slots: [
+                      { label: "Tomorrow, 9:00 AM", date: new Date(Date.now() + 86400000).toISOString().split('T')[0], time: "09:00" },
+                      { label: "Day After, 11:00 AM", date: new Date(Date.now() + 2 * 86400000).toISOString().split('T')[0], time: "11:00" },
+                    ]
+                  })}
+                  className="mt-3 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all shadow-sm"
                 >
-                  <Plus className="w-3 h-3" /> {t('scheduleNow')}
+                  <Plus className="w-3.5 h-3.5" /> {t('scheduleNow')}
                 </button>
               </div>
             </div>
@@ -560,8 +589,6 @@ export function Appointments() {
                           onClick={(e) => {
                             e.stopPropagation();
                             setSelectedAppointment(app);
-                            // In a real app, this would open edit mode directly
-                            setTimeout(() => setIsNewModalOpen(true), 100);
                           }}
                           className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors" 
                           title="Edit"
@@ -627,18 +654,20 @@ export function Appointments() {
             ) : (
               <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
                 <div className="flex flex-col h-full border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden bg-white dark:bg-slate-900">
-                  <div className="grid grid-cols-8 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50">
-                    <div className={cn("p-3 border-slate-200 dark:border-slate-800 text-center text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider", isRTL ? "border-l" : "border-r")}>{t('time')}</div>
-                    {weekDays.map(day => (
-                      <div key={day} className={cn("p-3 border-slate-200 dark:border-slate-800 text-center text-sm font-medium text-slate-700 dark:text-slate-300", isRTL ? "border-l last:border-l-0" : "border-r last:border-r-0")}>
-                        {day}
+                  <div className="overflow-x-auto flex-1 flex flex-col">
+                    <div className="min-w-[800px] flex-1 flex flex-col">
+                      <div className="grid grid-cols-8 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50 sticky top-0 z-10">
+                        <div className={cn("p-3 border-slate-200 dark:border-slate-800 text-center text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider sticky bg-slate-50 dark:bg-slate-950", isRTL ? "border-l right-0" : "border-r left-0")}>{t('time')}</div>
+                        {weekDays.map(day => (
+                          <div key={day} className={cn("p-3 border-slate-200 dark:border-slate-800 text-center text-sm font-medium text-slate-700 dark:text-slate-300", isRTL ? "border-l last:border-l-0" : "border-r last:border-r-0")}>
+                            {day}
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                  <div className="flex-1 overflow-y-auto">
-                    {['09:00 AM', '10:00 AM', '11:00 AM', '12:00 PM', '01:00 PM', '02:00 PM', '03:00 PM', '04:00 PM'].map(time => (
-                      <div key={time} className="grid grid-cols-8 border-b border-slate-100 dark:border-slate-800 last:border-b-0 min-h-[80px]">
-                        <div className={cn("p-3 border-slate-100 dark:border-slate-800 text-center text-xs font-medium text-slate-500 dark:text-slate-400 bg-slate-50/50 dark:bg-slate-950/30 flex items-center justify-center", isRTL ? "border-l" : "border-r")}>
+                      <div className="flex-1 overflow-y-auto">
+                        {['09:00 AM', '09:30 AM', '10:00 AM', '10:30 AM', '11:00 AM', '11:30 AM', '12:00 PM', '12:30 PM', '01:00 PM', '01:30 PM', '02:00 PM', '02:30 PM', '03:00 PM', '03:30 PM', '04:00 PM', '04:30 PM'].map(time => (
+                          <div key={time} className="grid grid-cols-8 border-b border-slate-100 dark:border-slate-800 last:border-b-0 min-h-[80px]">
+                            <div className={cn("p-3 border-slate-100 dark:border-slate-800 text-center text-xs font-medium text-slate-500 dark:text-slate-400 bg-slate-50/50 dark:bg-slate-950/30 flex items-center justify-center sticky z-10", isRTL ? "border-l right-0" : "border-r left-0")}>
                           {time}
                         </div>
                         {Array.from({ length: 7 }).map((_, dayIndex) => {
@@ -648,18 +677,22 @@ export function Appointments() {
                           startOfWeek.setDate(today.getDate() - dayOfWeek + (currentWeekOffset * 7));
                           const cellDate = new Date(startOfWeek);
                           cellDate.setDate(startOfWeek.getDate() + dayIndex);
-                          const cellDateString = cellDate.toISOString().split('T')[0];
+                          const year = cellDate.getFullYear();
+                          const month = String(cellDate.getMonth() + 1).padStart(2, '0');
+                          const day = String(cellDate.getDate()).padStart(2, '0');
+                          const cellDateString = `${year}-${month}-${day}`;
 
-                          const apptsInSlot = filteredAppointments.filter(app => app.date === cellDateString && app.time === time);
+                          const normalizeTime = (t: string) => t.replace(/^0/, '');
+                          const apptsInSlot = filteredAppointments.filter(app => app.date === cellDateString && normalizeTime(app.time || '') === normalizeTime(time));
                           
                           return (
                             <DroppableCell 
                               key={dayIndex} 
                               time={time} 
                               dayIndex={dayIndex}
-                              onAddClick={() => setIsNewModalOpen(true)}
+                              onAddClick={() => setAppointmentData({name: "", slots: [{ label: `${time}`, date: cellDateString, time: time }]})}
                             >
-                              {apptsInSlot.map(appt => (
+                              {apptsInSlot.slice(0, 1).map(appt => (
                                 <DraggableAppointment 
                                   key={appt.localId} 
                                   appointment={appt} 
@@ -671,6 +704,8 @@ export function Appointments() {
                         })}
                       </div>
                     ))}
+                  </div>
+                    </div>
                   </div>
                 </div>
                 <DragOverlay>
@@ -694,8 +729,10 @@ export function Appointments() {
       </div>
       
       <NewAppointmentModal 
-        isOpen={isNewModalOpen} 
-        onClose={() => setIsNewModalOpen(false)} 
+        isOpen={!!appointmentData} 
+        onClose={() => setAppointmentData(null)} 
+        initialPatientName={appointmentData?.name}
+        suggestedSlotsOverride={appointmentData?.slots}
       />
 
       <AppointmentDetailsModal
@@ -705,7 +742,7 @@ export function Appointments() {
         onEdit={() => {
           setSelectedAppointment(null);
           // In a real app, this would populate the form with the appointment data
-          setTimeout(() => setIsNewModalOpen(true), 100);
+          setTimeout(() => setAppointmentData({name: selectedAppointment.patientName}), 100);
         }}
         onDelete={() => setAppointmentToDelete(selectedAppointment?.localId)}
       />

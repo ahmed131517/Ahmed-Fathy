@@ -128,10 +128,12 @@ export function ActiveEncounter() {
                   <Pill className="w-5 h-5 text-purple-600" />
                   <h3 className="font-bold text-lg">Active Medications</h3>
                </div>
-               {Array.isArray(selectedPatient?.medications) && selectedPatient.medications.map((m: any, i:number) => {
-                 const label = typeof m === 'string' ? m : `${m.name || 'Unknown'} ${m.dosage ? '- ' + m.dosage : ''} ${m.frequency || ''}`.trim();
-                 return <div key={i} className="text-sm p-2 bg-purple-50 dark:bg-purple-900/10 rounded mb-2">{label}</div>
-               })}
+               <div className="max-h-[250px] overflow-y-auto custom-scrollbar pr-2 space-y-2">
+                 {Array.isArray(selectedPatient?.medications) && selectedPatient.medications.map((m: any, i:number) => {
+                   const label = typeof m === 'string' ? m : `${m.name || 'Unknown'} ${m.dosage ? '- ' + m.dosage : ''} ${m.frequency || ''}`.trim();
+                   return <div key={i} className="text-sm p-2 bg-purple-50 dark:bg-purple-900/10 rounded">{label}</div>
+                 })}
+               </div>
             </div>
             <ClinicalIntelligencePanel patient={selectedPatient} latestVitals={vitals[0]} />
          </div>

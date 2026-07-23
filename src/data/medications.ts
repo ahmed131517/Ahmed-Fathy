@@ -1,3 +1,252 @@
+export function enrichDrug(med: any, categoryName?: string) {
+  if (!med) return med;
+  const genericName = med.generic_name || med.name || "Unknown Medication";
+  const forms = med.forms || [];
+  const formNames = forms.map((f: any) => typeof f === 'string' ? f : f?.name || "").join(", ");
+
+  const rawBrands = Array.isArray(med.brand_names_egypt) && med.brand_names_egypt.length > 0
+    ? med.brand_names_egypt
+    : Array.isArray(med.brands) && med.brands.length > 0
+    ? med.brands
+    : null;
+
+  const brandsList = rawBrands
+    ? rawBrands.map((b: any) => (typeof b === 'string' ? b : b?.brand_name || b?.name || String(b)))
+    : [`${genericName} (Egyptian Brand)`, `${genericName} Pharma`];
+
+  const rawSideEffects = med.side_effects || med.sideEffects;
+  const sideEffectsList = Array.isArray(rawSideEffects) && rawSideEffects.length > 0
+    ? rawSideEffects.map((s: any) => (typeof s === 'string' ? s : s?.side_effect || s?.name || String(s)))
+    : ["Nausea", "Mild GI Upset", "Headache"];
+
+  const rawInteractions = med.drug_interactions || med.interactions;
+  const interactionsList = Array.isArray(rawInteractions) && rawInteractions.length > 0
+    ? rawInteractions.map((i: any) => (typeof i === 'string' ? i : i?.description || i?.name || String(i)))
+    : ["Monitor co-administered drugs"];
+
+  const rawContra = med.contraindications;
+  const contraindicationsList = Array.isArray(rawContra) && rawContra.length > 0
+    ? rawContra.map((c: any) => (typeof c === 'string' ? c : c?.condition || c?.description || c?.name || String(c)))
+    : ["Hypersensitivity to active compound"];
+
+  return {
+    ...med,
+    id: med.id || `med_${Math.random().toString(36).substr(2, 9)}`,
+    name: genericName,
+    generic_name: genericName,
+    brand_names_egypt: brandsList,
+    strength: med.strength || (forms.length > 0 && forms[0]?.name ? forms[0].name.split(" ")[0] : "Standard Strength"),
+    dosage_form: med.dosage_form || (forms.length > 0 && forms[0]?.name ? forms[0].name.split(" ").slice(1).join(" ") : "Oral Tablet / Capsule"),
+    route: med.route || (formNames.toLowerCase().includes("injection") || formNames.toLowerCase().includes("iv") ? "Parenteral (IV/IM)" : formNames.toLowerCase().includes("topical") || formNames.toLowerCase().includes("cream") ? "Topical" : formNames.toLowerCase().includes("drop") ? "Ophthalmic/Otic" : "Oral"),
+    drug_class: med.drug_class || categoryName || "Therapeutic Agent",
+    mechanism_of_action: med.mechanism_of_action || `Pharmacological action via selective pathway/receptor target modulation for ${genericName}.`,
+    indications: Array.isArray(med.indications) ? med.indications.map((ind: any) => typeof ind === 'string' ? ind : String(ind)) : med.indications_list || [`Clinical management of conditions indicated for ${genericName}`],
+    contraindications: contraindicationsList,
+    adult_dose: med.adult_dose || (forms.length > 0 && forms[0]?.name ? `Standard adult dose: ${forms[0].name}` : "As prescribed by physician"),
+    pediatric_dose: med.pediatric_dose || "Weight-based dosing as recommended in pediatric guidelines",
+    renal_dose: med.renal_dose || "Adjust dosage based on creatinine clearance (CrCl / eGFR)",
+    hepatic_dose: med.hepatic_dose || "Use with caution in moderate to severe hepatic impairment",
+    pregnancy_category: med.pregnancy_category || "Category C (Consult prescribing information)",
+    lactation: med.lactation || "Use with caution during lactation; monitor infant",
+    sideEffects: sideEffectsList,
+    side_effects: sideEffectsList,
+    interactions: interactionsList,
+    drug_interactions: interactionsList,
+    food_interactions: Array.isArray(med.food_interactions) ? med.food_interactions.map((f: any) => typeof f === 'string' ? f : String(f)) : ["Take with or without food as indicated"],
+    monitoring_parameters: Array.isArray(med.monitoring_parameters) ? med.monitoring_parameters.map((p: any) => typeof p === 'string' ? p : String(p)) : ["Vital signs", "Clinical response", "Adverse reaction monitoring"],
+    lab_tests: Array.isArray(med.lab_tests) ? med.lab_tests.map((l: any) => typeof l === 'string' ? l : String(l)) : ["Baseline LFTs and Renal Function Panel where appropriate"],
+    storage: med.storage || "Store at controlled room temperature (15-30°C) away from moisture and light",
+    patient_counseling: Array.isArray(med.patient_counseling) ? med.patient_counseling.map((pc: any) => typeof pc === 'string' ? pc : String(pc)) : [
+      "Take medication exactly as prescribed by your physician",
+      "Do not alter dose or stop treatment abruptly",
+      "Report any adverse events or unexpected symptoms promptly"
+    ],
+    references: Array.isArray(med.references) ? med.references.map((r: any) => typeof r === 'string' ? r : String(r)) : ["OpenFDA labeling", "DailyMed package insert", "RxNorm", "Egyptian Drug Authority (EDA)"],
+    forms: forms.length > 0 ? forms : [{ id: "form_default", name: "Standard Form" }]
+  };
+}
+
+export function deriveMedicationDefaults(medName: string, form: any, fullMed?: any) {
+  const isCustom = typeof form !== 'object' || form === null;
+  const formName = isCustom ? (typeof form === 'string' ? form : 'Tablet') : (form.name || 'Tablet');
+
+  const med = fullMed || {};
+  const lowerName = (medName + " " + formName + " " + (med.dosage_form || "") + " " + (med.route || "")).toLowerCase();
+  const drugClass = (med.drug_class || "").toLowerCase();
+  const adultDoseText = (med.adult_dose || "").toLowerCase();
+  const foodInteractions = Array.isArray(med.food_interactions) 
+    ? med.food_interactions.join(" ") 
+    : String(med.food_interactions || "");
+  const patientCounseling = Array.isArray(med.patient_counseling) ? med.patient_counseling : [];
+
+  // 1. CONCENTRATION
+  let concentration = "";
+  if (!isCustom && form.concentration) {
+    concentration = form.concentration;
+  } else if (med.strength) {
+    concentration = med.strength;
+  } else {
+    const match = (formName + " " + medName).match(/\b\d+(\.\d+)?\s*(mg|g|mcg|i\.?u\.?|ml|%|mg\/ml)\b/i);
+    if (match) {
+      concentration = match[0];
+    } else if (med.dosage_form) {
+      concentration = med.dosage_form;
+    } else {
+      concentration = formName;
+    }
+  }
+
+  // 2. DOSAGE
+  let dosage = "";
+  if (!isCustom && form.dosage) {
+    dosage = form.dosage;
+  } else if (lowerName.includes("suppos") || lowerName.includes("pessary") || lowerName.includes("ovule") || lowerName.includes("rectal") || lowerName.includes("urethral")) {
+    if (lowerName.includes("pessary")) {
+      dosage = "1 pessary";
+    } else if (lowerName.includes("ovule")) {
+      dosage = "1 ovule";
+    } else {
+      dosage = "1 suppository";
+    }
+  } else if (lowerName.includes("enema")) {
+    dosage = "1 enema";
+  } else if (lowerName.includes("syrup") || lowerName.includes("suspension") || lowerName.includes("liquid") || lowerName.includes("solution") || lowerName.includes("elixir") || lowerName.includes("mixture")) {
+    dosage = "5 ml";
+  } else if (lowerName.includes("oral drop") || lowerName.includes("pediatric drop")) {
+    dosage = "5 - 10 drops";
+  } else if (lowerName.includes("drop") || lowerName.includes("ophthalmic") || lowerName.includes("otic") || lowerName.includes("eye") || lowerName.includes("ear")) {
+    dosage = "1 - 2 drops";
+  } else if (lowerName.includes("injection") || lowerName.includes("vial") || lowerName.includes("ampoule") || lowerName.includes("iv") || lowerName.includes("im") || lowerName.includes("subcutaneous")) {
+    dosage = "1 ampoule";
+  } else if (lowerName.includes("inhaler") || lowerName.includes("puff") || lowerName.includes("aerosol") || lowerName.includes("evohaler")) {
+    dosage = "1 - 2 puffs";
+  } else if (lowerName.includes("spray") || lowerName.includes("nasal")) {
+    dosage = "1 - 2 sprays";
+  } else if (lowerName.includes("cream") || lowerName.includes("ointment") || lowerName.includes("gel") || lowerName.includes("lotion") || lowerName.includes("topical")) {
+    dosage = "Apply thin layer";
+  } else if (lowerName.includes("patch") || lowerName.includes("transdermal")) {
+    dosage = "1 patch";
+  } else if (lowerName.includes("lozenge") || lowerName.includes("troche") || lowerName.includes("pastille")) {
+    dosage = "1 lozenge";
+  } else if (lowerName.includes("sachet") || lowerName.includes("powder") || lowerName.includes("granule")) {
+    dosage = "1 sachet in water";
+  } else if (lowerName.includes("chewable")) {
+    dosage = "1 chewable tablet";
+  } else if (lowerName.includes("sublingual") || lowerName.includes("orodispersible")) {
+    dosage = "1 sublingual tablet";
+  } else if (lowerName.includes("capsule") || lowerName.includes("cap")) {
+    dosage = "1 capsule";
+  } else if (adultDoseText.includes("suppository") || adultDoseText.includes("supp")) {
+    dosage = "1 suppository";
+  } else if (adultDoseText.includes("1-2 tab") || adultDoseText.includes("1 to 2 tab")) {
+    dosage = "1 - 2 tablets";
+  } else if (adultDoseText.includes("500mg") || adultDoseText.includes("1 tab") || adultDoseText.includes("tablet")) {
+    dosage = "1 tablet";
+  } else {
+    dosage = "1 tablet";
+  }
+
+  // 3. FREQUENCY
+  let frequency = "";
+  if (!isCustom && form.frequency) {
+    frequency = form.frequency;
+  } else if (adultDoseText.includes("q6h") || adultDoseText.includes("4 times") || adultDoseText.includes("qid")) {
+    frequency = "QID (Every 6 hours)";
+  } else if (adultDoseText.includes("q8h") || adultDoseText.includes("3 times") || adultDoseText.includes("tid") || adultDoseText.includes("every 8")) {
+    frequency = "TID (Every 8 hours)";
+  } else if (adultDoseText.includes("q12h") || adultDoseText.includes("twice") || adultDoseText.includes("bid") || adultDoseText.includes("every 12")) {
+    frequency = "BID (Every 12 hours)";
+  } else if (adultDoseText.includes("once daily") || adultDoseText.includes("qd") || adultDoseText.includes("at bedtime") || adultDoseText.includes("q24h") || adultDoseText.includes("daily")) {
+    frequency = "OD (Once daily)";
+  } else if (adultDoseText.includes("as needed") || adultDoseText.includes("prn")) {
+    frequency = "PRN (As needed)";
+  } else {
+    if (lowerName.includes("suppos") || lowerName.includes("urethral") || lowerName.includes("erectile")) {
+      frequency = "PRN (As needed / 30-60 min prior)";
+    } else if (drugClass.includes("antibiotic") || drugClass.includes("analgesic") || lowerName.includes("paracetamol") || lowerName.includes("amoxicillin") || lowerName.includes("ibuprofen")) {
+      frequency = "TID (Every 8 hours)";
+    } else if (drugClass.includes("antihypertensive") || drugClass.includes("diabetic") || drugClass.includes("ppi") || drugClass.includes("statin") || drugClass.includes("thyroid") || drugClass.includes("antidepressant")) {
+      frequency = "OD (Once daily in the morning)";
+    } else if (drugClass.includes("antihistamine") || lowerName.includes("loratadine") || lowerName.includes("cetirizine") || drugClass.includes("sedative")) {
+      frequency = "OD (Once daily at bedtime)";
+    } else {
+      frequency = "BID (Every 12 hours)";
+    }
+  }
+
+  // 4. DURATION
+  let duration = "";
+  if (!isCustom && form.duration) {
+    duration = form.duration;
+  } else if (lowerName.includes("suppos") || lowerName.includes("prn") || lowerName.includes("urethral") || lowerName.includes("erectile")) {
+    duration = "As needed";
+  } else if (drugClass.includes("antibiotic") || lowerName.includes("cillin") || lowerName.includes("mycin") || lowerName.includes("floxin") || lowerName.includes("cef")) {
+    duration = "7 days";
+  } else if (drugClass.includes("analgesic") || drugClass.includes("nsaid") || lowerName.includes("pain") || lowerName.includes("ibuprofen")) {
+    duration = "5 days";
+  } else if (drugClass.includes("cough") || drugClass.includes("cold") || drugClass.includes("antihistamine") || drugClass.includes("decongestant")) {
+    duration = "5 - 7 days";
+  } else if (drugClass.includes("ppi") || drugClass.includes("antacid") || drugClass.includes("antifungal")) {
+    duration = "14 days";
+  } else if (drugClass.includes("hypertension") || drugClass.includes("cardiovascular") || drugClass.includes("diabetic") || drugClass.includes("thyroid") || drugClass.includes("lipid") || drugClass.includes("chronic")) {
+    duration = "30 days";
+  } else {
+    duration = "7 days";
+  }
+
+  // 5. CLINICAL INSTRUCTIONS
+  let instructions = "";
+  if (!isCustom && form.instructions) {
+    instructions = form.instructions;
+  } else {
+    const customAdvice: string[] = [];
+    if (lowerName.includes("suppos") || lowerName.includes("pessary") || lowerName.includes("ovule") || lowerName.includes("urethral")) {
+      if (lowerName.includes("urethral")) {
+        customAdvice.push("Insert 1 urethral suppository as directed prior to activity");
+      } else if (lowerName.includes("vaginal") || lowerName.includes("pessary") || lowerName.includes("ovule")) {
+        customAdvice.push("Insert 1 pessary/suppository vaginally at bedtime");
+      } else {
+        customAdvice.push("Insert 1 suppository rectally as directed");
+      }
+    } else if (lowerName.includes("cream") || lowerName.includes("ointment") || lowerName.includes("gel") || lowerName.includes("topical")) {
+      customAdvice.push("Apply thin layer to affected area after washing & drying skin");
+    } else if (lowerName.includes("ophthalmic") || lowerName.includes("eye drop")) {
+      customAdvice.push("Instill into affected eye(s) and keep tip sterile");
+    } else if (lowerName.includes("otic") || lowerName.includes("ear drop")) {
+      customAdvice.push("Instill into affected ear canal and lie still for 2 minutes");
+    } else if (lowerName.includes("inhaler") || lowerName.includes("puff")) {
+      customAdvice.push("Inhale deeply and rinse mouth with water after use");
+    } else if (foodInteractions.toLowerCase().includes("empty stomach") || foodInteractions.toLowerCase().includes("before meals")) {
+      customAdvice.push("Take on an empty stomach 1 hour before or 2 hours after meals");
+    } else if (foodInteractions.toLowerCase().includes("food") || foodInteractions.toLowerCase().includes("meal")) {
+      customAdvice.push("Take after meals with plenty of water");
+    } else {
+      customAdvice.push("Take after meals with a full glass of water");
+    }
+
+    if (patientCounseling.length > 0) {
+      const selectedCounseling = patientCounseling.find((c: any) => typeof c === 'string' && !c.toLowerCase().includes("exact"));
+      if (selectedCounseling) {
+        customAdvice.push(selectedCounseling);
+      }
+    }
+
+    if (drugClass.includes("antibiotic")) {
+      customAdvice.push("Complete full therapeutic course as directed by physician");
+    }
+
+    instructions = customAdvice.slice(0, 2).join(". ");
+  }
+
+  return {
+    concentration,
+    dosage,
+    frequency,
+    duration,
+    instructions
+  };
+}
+
 export const medicationsDatabase: Record<string, any[]> = {
   antibiotics: [
     {

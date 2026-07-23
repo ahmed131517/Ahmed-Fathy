@@ -1,28 +1,24 @@
-import { GoogleGenAI, Modality } from "@google/genai";
-
 export const generateSpeech = async (text: string, voiceId?: string): Promise<string> => {
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
-    
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash-preview-tts",
-      contents: [{ parts: [{ text }] }],
-      config: {
-        responseModalities: [Modality.AUDIO],
-        speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: { voiceName: voiceId || 'Kore' },
-            },
-        },
+    const response = await fetch("/api/ai/tts", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
       },
+      body: JSON.stringify({ text, voiceId }),
     });
 
-    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (!base64Audio) {
+    if (!response.ok) {
+      const errData = await response.json();
+      throw new Error(errData.error || "TTS generation failed");
+    }
+
+    const data = await response.json();
+    if (!data.base64Audio) {
       throw new Error("No audio data returned from Gemini TTS");
     }
 
-    return base64Audio;
+    return data.base64Audio;
   } catch (error) {
     console.error("TTS service error:", error);
     throw error;

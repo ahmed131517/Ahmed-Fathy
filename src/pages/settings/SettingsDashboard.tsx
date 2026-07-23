@@ -15,7 +15,8 @@ import {
   ArrowRight,
   ShieldCheck,
   Zap,
-  Database
+  Database,
+  Building
 } from "lucide-react";
 import { Link } from "react-router-dom";
 
@@ -32,6 +33,7 @@ export function SettingsDashboard() {
     { 
       title: "Staff & Operations", 
       items: [
+        { name: "Workspaces & Clinics", path: "/settings/workspaces", icon: Building, desc: "Manage multi-tenant clinic branches" },
         { name: "Staff Management", path: "/settings/users", icon: Users, desc: "Manage roles and permissions" },
         { name: "Pharmacy Operations", path: "/settings/pharmacy", icon: Stethoscope, desc: "Pharmacy-specific workflows" },
         { name: "System Configuration", path: "/settings/system", icon: SettingsIcon, desc: "Advanced system parameters" },

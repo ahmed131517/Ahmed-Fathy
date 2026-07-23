@@ -23,7 +23,8 @@ export const ClinicalService = {
    * Scans a treatment plan against existing patient medications for potential DDIs.
    */
   async checkMedicationInteractions(plan: string, existingMedications: any[]): Promise<ClinicalInteraction[]> {
-    if (!plan.trim() || !existingMedications?.length) {
+    const trimmed = plan.trim();
+    if (!trimmed || trimmed.length < 15 || !/[a-zA-Z]{3,}/.test(trimmed) || !existingMedications?.length) {
       return [];
     }
 
@@ -60,7 +61,8 @@ export const ClinicalService = {
    * Extracts actionable clinical tasks from a treatment plan.
    */
   async extractTasksFromPlan(plan: string): Promise<SuggestedTask[]> {
-    if (!plan.trim()) {
+    const trimmed = plan.trim();
+    if (!trimmed || trimmed.length < 15 || !/[a-zA-Z]{3,}/.test(trimmed)) {
       return [];
     }
 

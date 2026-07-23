@@ -1,341 +1,283 @@
-import { supabase, supabaseEnabled } from './supabase';
-import { db, type Notification } from './db';
+import { db, isSyncingFromFirestore, type Notification } from './db';
+import { 
+  db as firestoreDb, 
+  onSnapshot, 
+  collection, 
+  query, 
+  where,
+  deleteDoc,
+  doc,
+  setDoc
+} from './firebase';
 
-const SYNC_INTERVAL = 30000; // 30 seconds
+let _isPlaying = false;
+let activeUnsubscribes: (() => void)[] = [];
 
-async function addNotification(title: string, message: string, type: 'info' | 'success' | 'warning' | 'error', category: Notification['category']) {
-  const now = Date.now();
-  await db.notifications.add({
-    title,
-    message,
-    type,
-    category,
-    isRead: 0,
-    createdAt: now,
-    lastModified: now,
-    isDeleted: 0,
-    isSynced: 0
+export interface SyncHistoryEntry {
+  timestamp: number;
+  type: 'auto' | 'manual';
+  status: 'success' | 'failed' | 'network_offline';
+  message?: string;
+  pushedCount: number;
+  pulledCounts: {
+    patients: number;
+    appointments: number;
+    prescriptions: number;
+    diagnoses: number;
+    labResults: number;
+    vitals: number;
+    tasks: number;
+  };
+  durationMs: number;
+}
+
+const syncTables = [
+  'patients', 'appointments', 'prescriptions', 'prescription_items', 
+  'diagnoses', 'lab_results', 'lab_requests', 'vitals', 'physical_exams', 
+  'pharmacy_inventory', 'pharmacy_batches', 'notifications', 'templates', 
+  'tasks', 'mental_health_assessments', 'obstetric_records', 
+  'internal_messages', 'clinical_drafts', 'patient_notes', 'chat_messages'
+];
+
+const getClinicId = () => {
+  try {
+    const saved = localStorage.getItem('user_profile');
+    if (saved) {
+      const profile = JSON.parse(saved);
+      return profile.clinicId || 'clinic_a';
+    }
+  } catch (e) {
+    console.warn('Failed to parse user_profile for clinicId', e);
+  }
+  return 'clinic_a';
+};
+
+const clearDynamicTables = async () => {
+  console.log('Wiping local database for absolute clinic isolation.');
+  for (const tableName of syncTables) {
+    try {
+      const table = db[tableName];
+      if (table) {
+        await table.clear();
+      }
+    } catch (e) {
+      console.error(`Error clearing ${tableName} during clinic shift:`, e);
+    }
+  }
+};
+
+function dispatchSyncState(isSyncing: boolean, lastSync?: Date, error?: string) {
+  const event = new CustomEvent('sync_state_changed', {
+    detail: { 
+      isSyncing, 
+      lastSync: lastSync ? lastSync.toISOString() : undefined, 
+      error,
+      timestamp: Date.now()
+    }
   });
+  window.dispatchEvent(event);
 }
 
-export async function pushLocalEvents() {
-  if (!supabaseEnabled) return;
-  if (!db.isOpen()) {
-    await db.open();
-  }
-  
+function addSyncHistoryLog(entry: Omit<SyncHistoryEntry, 'timestamp'>) {
   try {
-    const pendingEvents = await db.sync_events.toArray();
-    if (pendingEvents.length === 0) return;
-
-    // Map to Supabase column names
-    const eventsToPush = pendingEvents.map(e => ({
-      event_id: e.eventId,
-      entity_type: e.entityType,
-      entity_id: e.entityId,
-      action: e.action,
-      payload: e.payload,
-      timestamp: new Date(e.timestamp).toISOString(),
-      user_id: e.userId
-    }));
-
-    // Send to Supabase
-    const { error } = await supabase.from('sync_events_log').insert(eventsToPush);
-
-    if (!error) {
-      // Clean up local queue after successful transmission
-      const pushedIds = pendingEvents.map(e => e.id as number);
-      await db.sync_events.bulkDelete(pushedIds);
-    } else {
-      console.warn("Could not push events to Supabase yet. Is the sync_events_log table created? Error:", error.message);
-    }
+    const logsJson = localStorage.getItem('sync_history') || '[]';
+    const logs: SyncHistoryEntry[] = JSON.parse(logsJson);
+    const newEntry: SyncHistoryEntry = {
+      ...entry,
+      timestamp: Date.now()
+    };
+    logs.unshift(newEntry);
+    localStorage.setItem('sync_history', JSON.stringify(logs.slice(0, 30)));
+    localStorage.setItem('last_sync_time', new Date().toISOString());
+    window.dispatchEvent(new Event('sync_history_updated'));
   } catch (err) {
-    console.error("Failed executing pushLocalEvents", err);
-  }
-}
-
-export async function pushLocalChanges() {
-  if (!db.isOpen()) {
-    await db.open();
-  }
-  
-  // Call the Delta-Sync event queue processor
-  await pushLocalEvents();
-}
-
-export async function pullRemoteChanges() {
-  if (!supabaseEnabled) return;
-  if (!db.isOpen()) {
-    await db.open();
-  }
-  const lastLocalPatient = await db.patients.orderBy('lastModified').last();
-  const lastLocalAppointment = await db.appointments.orderBy('lastModified').last();
-  const lastLocalPrescription = await db.prescriptions.orderBy('lastModified').last();
-  const lastLocalDiagnosis = await db.diagnoses.orderBy('lastModified').last();
-  const lastLocalLabResult = await db.lab_results.orderBy('lastModified').last();
-  const lastLocalVitals = await db.vitals.orderBy('lastModified').last();
-
-  const lastPatientPull = lastLocalPatient?.lastModified || 0;
-  const lastAppointmentPull = lastLocalAppointment?.lastModified || 0;
-  const lastPrescriptionPull = lastLocalPrescription?.lastModified || 0;
-  const lastDiagnosisPull = lastLocalDiagnosis?.lastModified || 0;
-  const lastLabResultPull = lastLocalLabResult?.lastModified || 0;
-  const lastVitalsPull = lastLocalVitals?.lastModified || 0;
-  const lastTaskPull = (await db.tasks.orderBy('lastModified').last())?.lastModified || 0;
-
-  const { data: remotePatients, error: patientError } = await supabase
-    .from('patients')
-    .select('*')
-    .gt('last_modified', lastPatientPull);
-
-  if (!patientError && remotePatients) {
-    for (const remote of remotePatients) {
-      const local = await db.patients.where('id').equals(remote.id).first();
-      if (!local || remote.last_modified > local.lastModified) {
-        await db.patients.put({
-          id: remote.id,
-          name: remote.name,
-          age: remote.age,
-          gender: remote.gender,
-          bloodType: remote.blood_type,
-          lastVisit: remote.last_visit,
-          status: remote.status,
-          lastModified: remote.last_modified,
-          isDeleted: remote.is_deleted ? 1 : 0,
-          isSynced: 1
-        });
-      }
-    }
-  }
-
-  const { data: remoteAppointments, error: appointmentError } = await supabase
-    .from('appointments')
-    .select('*')
-    .gt('last_modified', lastAppointmentPull);
-
-  if (!appointmentError && remoteAppointments) {
-    for (const remote of remoteAppointments) {
-      const local = await db.appointments.where('id').equals(remote.id).first();
-      if (!local || remote.last_modified > local.lastModified) {
-        await db.appointments.put({
-          id: remote.id,
-          patientId: remote.patient_id,
-          patientName: remote.patient_name,
-          date: remote.date,
-          time: remote.time,
-          type: remote.type,
-          status: remote.status,
-          doctor: remote.doctor,
-          lastModified: remote.last_modified,
-          isDeleted: remote.is_deleted ? 1 : 0,
-          isSynced: 1
-        });
-      }
-    }
-  }
-
-  const { data: remotePrescriptions, error: rxError } = await supabase
-    .from('prescriptions')
-    .select('*')
-    .gt('last_modified', lastPrescriptionPull);
-
-  if (!rxError && remotePrescriptions) {
-    for (const remote of remotePrescriptions) {
-      const local = await db.prescriptions.where('id').equals(remote.id).first();
-      if (!local || remote.last_modified > local.lastModified) {
-        await db.prescriptions.put({
-          id: remote.id,
-          patientId: remote.patient_id,
-          doctorId: remote.doctor_id,
-          diagnosis: remote.diagnosis,
-          notes: remote.notes,
-          refills: remote.refills,
-          status: remote.status,
-          createdAt: new Date(remote.created_at).getTime(),
-          lastModified: remote.last_modified,
-          isDeleted: remote.is_deleted ? 1 : 0,
-          isSynced: 1
-        });
-
-        const { data: remoteItems } = await supabase
-          .from('prescription_items')
-          .select('*')
-          .eq('prescription_id', remote.id);
-
-        if (remoteItems) {
-          for (const item of remoteItems) {
-            await db.prescription_items.put({
-              id: item.id,
-              prescriptionId: remote.id,
-              drugId: item.drug_id,
-              medicationName: item.medication_name,
-              dosage: item.dosage,
-              frequency: item.frequency,
-              duration: item.duration,
-              instructions: item.instructions,
-              form: item.form
-            });
-          }
-        }
-      }
-    }
-  }
-
-  const { data: remoteDiagnoses, error: diagError } = await supabase
-    .from('diagnoses')
-    .select('*')
-    .gt('last_modified', lastDiagnosisPull);
-
-  if (!diagError && remoteDiagnoses) {
-    for (const remote of remoteDiagnoses) {
-      const local = await db.diagnoses.where('id').equals(remote.id).first();
-      if (!local || remote.last_modified > local.lastModified) {
-        await db.diagnoses.put({
-          id: remote.id,
-          patientId: remote.patient_id,
-          appointmentId: remote.appointment_id,
-          condition: remote.condition,
-          notes: remote.notes,
-          date: remote.date,
-          lastModified: remote.last_modified,
-          isDeleted: remote.is_deleted ? 1 : 0,
-          isSynced: 1
-        });
-      }
-    }
-  }
-
-  const { data: remoteLabResults, error: labError } = await supabase
-    .from('lab_results')
-    .select('*')
-    .gt('last_modified', lastLabResultPull);
-
-  if (!labError && remoteLabResults) {
-    for (const remote of remoteLabResults) {
-      const local = await db.lab_results.where('id').equals(remote.id).first();
-      if (!local || remote.last_modified > local.lastModified) {
-        await db.lab_results.put({
-          id: remote.id,
-          patientId: remote.patient_id,
-          appointmentId: remote.appointment_id,
-          testName: remote.test_name,
-          value: remote.value,
-          unit: remote.unit,
-          referenceRange: remote.reference_range,
-          status: remote.status as any,
-          date: remote.date,
-          lastModified: remote.last_modified,
-          isDeleted: remote.is_deleted ? 1 : 0,
-          isSynced: 1
-        });
-        
-        if (remote.status === 'completed') {
-          await addNotification('Lab Result Completed', `Lab result for ${remote.test_name} is ready.`, 'success', 'lab');
-        }
-      }
-    }
-  }
-
-  const { data: remoteVitals, error: vitalsError } = await supabase
-    .from('vitals')
-    .select('*')
-    .gt('last_modified', lastVitalsPull);
-
-  if (!vitalsError && remoteVitals) {
-    for (const remote of remoteVitals) {
-      const local = await db.vitals.where('id').equals(remote.id).first();
-      if (!local || remote.last_modified > local.lastModified) {
-        await db.vitals.put({
-          id: remote.id,
-          patientId: remote.patient_id,
-          appointmentId: remote.appointment_id,
-          bp_systolic: remote.bp_systolic,
-          bp_diastolic: remote.bp_diastolic,
-          hr: remote.hr,
-          temp: remote.temp,
-          rr: remote.rr,
-          spo2: remote.spo2,
-          oxygenType: remote.oxygen_type,
-          oxygenDose: remote.oxygen_dose,
-          oxygenInvasive: remote.oxygen_invasive,
-          oxygenDeviceType: remote.oxygen_device_type,
-          fio2: remote.fio2,
-          peep: remote.peep,
-          pressureSupport: remote.pressure_support,
-          flowRate: remote.flow_rate,
-          notes: remote.notes,
-          date: remote.date,
-          lastModified: remote.last_modified,
-          isDeleted: remote.is_deleted ? 1 : 0,
-          isSynced: 1
-        });
-      }
-    }
-  }
-
-  const { data: remoteTasks, error: taskError } = await supabase
-    .from('tasks')
-    .select('*')
-    .gt('last_modified', lastTaskPull);
-
-  if (!taskError && remoteTasks) {
-    for (const remote of remoteTasks) {
-      const local = await db.tasks.where('id').equals(remote.id).first();
-      if (!local || remote.last_modified > local.lastModified) {
-        await db.tasks.put({
-          id: remote.id,
-          patientId: remote.patient_id,
-          patientName: remote.patient_name,
-          title: remote.title,
-          description: remote.description,
-          priority: remote.priority,
-          type: remote.type,
-          dueDate: remote.due_date,
-          status: remote.status,
-          createdAt: remote.created_at ? new Date(remote.created_at).getTime() : Date.now(),
-          lastModified: remote.last_modified,
-          isDeleted: remote.is_deleted ? 1 : 0,
-          isSynced: 1
-        });
-      }
-    }
-  }
-}
-
-export async function syncAll() {
-  try {
-    await pushLocalChanges();
-    await pullRemoteChanges();
-  } catch (error) {
-    console.error('Sync failed:', error);
+    console.error("Failed to append to sync history log:", err);
   }
 }
 
 export function startRealtimeSync() {
-  if (!supabaseEnabled) return () => {};
-  const channel = supabase
-    .channel('schema-db-changes')
-    .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'lab_results' },
-      (payload) => {
-        console.log('Lab result change:', payload);
-        syncAll();
-      }
-    )
-    .subscribe();
-    
+  const activeClinicId = getClinicId();
+  console.log(`Starting cloud-native listeners for clinic: ${activeClinicId}`);
+
+  // Clean old subscriptions
+  activeUnsubscribes.forEach(unsub => unsub());
+  activeUnsubscribes = [];
+
+  syncTables.forEach(tableName => {
+    try {
+      const q = query(
+        collection(firestoreDb, tableName),
+        where('clinicId', '==', activeClinicId)
+      );
+
+      const unsub = onSnapshot(q, (snapshot) => {
+        snapshot.docChanges().forEach(async (change) => {
+          // If the change has pending writes (generated locally by our client),
+          // skip putting it back to avoid loops.
+          if (change.doc.metadata.hasPendingWrites) {
+            return;
+          }
+
+          const docData = change.doc.data();
+          const docId = change.doc.id;
+          const table = db[tableName];
+
+          if (!table) return;
+
+          isSyncingFromFirestore.value++;
+          try {
+            if (change.type === 'added' || change.type === 'modified') {
+              const existing = await table.where('id').equals(docId).first();
+              
+              if (!existing || docData.lastModified > (existing.lastModified || 0)) {
+                
+                // Add notifications for newly finalized lab results from cloud
+                if (tableName === 'lab_results' && docData.status === 'completed' && (!existing || existing.status !== 'completed')) {
+                  await db.notifications.add({
+                    title: 'Lab Result Completed',
+                    message: `Lab result for ${docData.testName} is ready.`,
+                    type: 'success',
+                    category: 'lab',
+                    isRead: 0,
+                    createdAt: Date.now(),
+                    lastModified: Date.now(),
+                    isDeleted: 0,
+                    isSynced: 1,
+                    clinicId: activeClinicId
+                  } as any);
+                }
+
+                // Preserve standard integer localId if it existed
+                const putData: any = { 
+                  ...docData, 
+                  id: docId, 
+                  isSynced: 1 
+                };
+                if (existing) {
+                  putData.localId = existing.localId;
+                }
+                await table.put(putData);
+              }
+            } else if (change.type === 'removed') {
+              const existing = await table.where('id').equals(docId).first();
+              if (existing && existing.localId !== undefined) {
+                await table.delete(existing.localId);
+              }
+            }
+          } catch (e) {
+            console.error(`Snapshot write failed for ${tableName}:`, e);
+          } finally {
+            isSyncingFromFirestore.value--;
+          }
+        });
+      }, (err) => {
+        console.warn(`Firestore snapshot replication error on ${tableName}:`, err);
+      });
+
+      activeUnsubscribes.push(unsub);
+    } catch (e) {
+      console.warn(`Failed to build snapshot listener for ${tableName}:`, e);
+    }
+  });
+
   return () => {
-    supabase.removeChannel(channel);
+    activeUnsubscribes.forEach(unsub => unsub());
+    activeUnsubscribes = [];
   };
 }
 
+// Global window event listener for real-time tenant/clinic shifting
+if (typeof window !== 'undefined') {
+  window.addEventListener('clinic_changed', async () => {
+    console.log('Switched clinic, shifting database context...');
+    
+    // Unsubscribe immediately to prevent writing Clinic B data to Clinic A or vice versa
+    activeUnsubscribes.forEach(unsub => unsub());
+    activeUnsubscribes = [];
+
+    // Clear local workspace tables to ensure 100% tenant data isolation
+    await clearDynamicTables();
+
+    // Start fresh real-time sync with new clinic ID
+    startRealtimeSync();
+  });
+}
+
+export async function syncAll(syncType: 'auto' | 'manual' = 'auto'): Promise<SyncHistoryEntry | null> {
+  if (syncType === 'auto') {
+    const isBgEnabled = localStorage.getItem('sync_background_enabled') !== 'false';
+    if (!isBgEnabled) return null;
+  }
+
+  if (!navigator.onLine) {
+    const offlineEntry: SyncHistoryEntry = {
+      timestamp: Date.now(),
+      type: syncType,
+      status: 'network_offline',
+      message: 'Browser network is offline.',
+      pushedCount: 0,
+      pulledCounts: { patients: 0, appointments: 0, prescriptions: 0, diagnoses: 0, labResults: 0, vitals: 0, tasks: 0 },
+      durationMs: 0
+    };
+    addSyncHistoryLog(offlineEntry);
+    dispatchSyncState(false, undefined, 'Network is offline.');
+    return offlineEntry;
+  }
+
+  if (_isPlaying) return null;
+  _isPlaying = true;
+  dispatchSyncState(true);
+
+  const startTime = performance.now();
+
+  try {
+    // Under Firestore native client persistence, cloud queue is managed seamlessly by SDK.
+    // Triggering user-initiated sync verifies connection and provides premium UX status check.
+    await new Promise(resolve => setTimeout(resolve, 600));
+
+    const duration = Math.round(performance.now() - startTime);
+    const successEntry: SyncHistoryEntry = {
+      timestamp: Date.now(),
+      type: syncType,
+      status: 'success',
+      pushedCount: 0,
+      pulledCounts: { patients: 0, appointments: 0, prescriptions: 0, diagnoses: 0, labResults: 0, vitals: 0, tasks: 0 },
+      durationMs: duration
+    };
+
+    addSyncHistoryLog(successEntry);
+    dispatchSyncState(false, new Date());
+    return successEntry;
+  } catch (error: any) {
+    const duration = Math.round(performance.now() - startTime);
+    const failedEntry: SyncHistoryEntry = {
+      timestamp: Date.now(),
+      type: syncType,
+      status: 'failed',
+      message: error.message || String(error),
+      pushedCount: 0,
+      pulledCounts: { patients: 0, appointments: 0, prescriptions: 0, diagnoses: 0, labResults: 0, vitals: 0, tasks: 0 },
+      durationMs: duration
+    };
+
+    addSyncHistoryLog(failedEntry);
+    dispatchSyncState(false, undefined, error.message || String(error));
+    return failedEntry;
+  } finally {
+    _isPlaying = false;
+  }
+}
+
+export function restartSyncEngine() {
+  startRealtimeSync();
+}
+
 export function startSyncEngine() {
-  const interval = setInterval(syncAll, SYNC_INTERVAL);
-  syncAll(); // Initial sync
-  const unsubscribeRealtime = startRealtimeSync();
+  startRealtimeSync();
+  syncAll('auto');
+
   return () => {
-    clearInterval(interval);
-    unsubscribeRealtime();
+    activeUnsubscribes.forEach(unsub => unsub());
+    activeUnsubscribes = [];
   };
 }

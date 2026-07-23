@@ -6,9 +6,11 @@ import { db } from "../lib/db";
 import { useLiveQuery } from "dexie-react-hooks";
 import { PatientHistoryService } from "../services/PatientHistoryService";
 import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { Link } from 'react-router-dom';
 
 import { ClinicalTrends } from '../components/ClinicalTrends';
+import { getPatientStatusTags, getStatusTagClass, getCriticalFinding } from '../utils/patientUtils';
 
 import { clinicalAIRequest } from "../services/aiWorkflowService";
 import { useAISettings } from "../lib/AISettingsContext";
@@ -38,10 +40,11 @@ export function ClinicalOverview() {
     try {
       const prompt = `Analyze the complete medical history of this patient: ${JSON.stringify(records)}. 
       Provide a comprehensive clinical summary including:
-      1. Key Diagnoses
-      2. Chronic Conditions
-      3. Recent Trends (Labs/Vitals)
-      4. Outstanding Items/Risks
+      1. Summary of Clinical Approach (ORGANIZED IN A MARKDOWN TABLE with columns: | Aspect | Details | Priority |)
+      2. Key Diagnoses
+      3. Chronic Conditions
+      4. Recent Trends (Labs/Vitals)
+      5. Outstanding Items/Risks
       
       Format the response with professional clinical headings and bullet points. Use markdown bolding for key terms.`;
       
@@ -89,17 +92,37 @@ export function ClinicalOverview() {
           <div className="flex flex-col">
             <span className="text-[10px] text-slate-500 font-bold uppercase tracking-tighter">Current Status</span>
             <div className="flex gap-3 mt-1 text-xs font-bold">
-               <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded">Stable</span>
-               <span className="px-2 py-1 bg-amber-100 text-amber-700 rounded">Follow-up Pending</span>
+               {getPatientStatusTags(selectedPatient, timelineEvents).map((tag) => (
+                 <span key={tag} className={getStatusTagClass(tag)}>
+                   {tag}
+                 </span>
+               ))}
             </div>
           </div>
           <div className="h-10 w-px bg-outline-variant/30"></div>
-          <div className="flex flex-col">
-            <span className="text-[10px] text-error font-bold uppercase tracking-tighter flex items-center gap-1">
-              <span className="material-symbols-outlined text-[12px]">warning</span> Critical Findings
-            </span>
-            <p className="text-sm font-bold text-error mt-1">HbA1c: 8.4% (Elevated)</p>
-          </div>
+          {(() => {
+            const finding = getCriticalFinding(selectedPatient, timelineEvents);
+            const isNormal = finding === "No critical findings reported." || finding === "No patient selected";
+            return (
+              <div className="flex flex-col">
+                {isNormal ? (
+                  <>
+                    <span className="text-[10px] text-emerald-600 font-bold uppercase tracking-tighter flex items-center gap-1">
+                      <span className="material-symbols-outlined text-[12px]">check_circle</span> No Alerts
+                    </span>
+                    <p className="text-sm font-bold text-emerald-600 mt-1">{finding}</p>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-[10px] text-error font-bold uppercase tracking-tighter flex items-center gap-1">
+                      <span className="material-symbols-outlined text-[12px]">warning</span> Critical Findings
+                    </span>
+                    <p className="text-sm font-bold text-error mt-1">{finding}</p>
+                  </>
+                )}
+              </div>
+            );
+          })()}
         </div>
       </div>
 
@@ -157,7 +180,7 @@ export function ClinicalOverview() {
             ) : (
               <div className="prose prose-blue max-w-none prose-sm md:prose-base dark:prose-invert">
                 {summary ? (
-                  <Markdown>{summary}</Markdown>
+                  <Markdown remarkPlugins={[remarkGfm]}>{summary}</Markdown>
                 ) : (
                   <p className="text-slate-500 italic">No summary generated yet. Click regenerate to analyze patient history.</p>
                 )}

@@ -8,8 +8,11 @@ import {
 import { SpeakButton } from "../components/SpeakButton";
 import { playSpeech } from "../services/ttsService";
 import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { PatientSelection } from "../components/PatientSelection";
 import { usePatient } from "../lib/PatientContext";
+import { PatientService } from "../services/patient.service";
+import { PatientHistoryService } from "../services/PatientHistoryService";
 import { useAISettings } from "../lib/AISettingsContext";
 import { clinicalAIRequest } from "@/services/aiWorkflowService";
 import { db, ChatMessage } from "../lib/db";
@@ -124,31 +127,44 @@ export function AskAI() {
   // Load full patient context from Dexie
   const patientData = useLiveQuery(
     async () => {
-      if (!selectedPatient?.id) return null;
+      if (!selectedPatient?.id) {
+        console.log("AskAI: Selected patient ID is undefined or null");
+        return null;
+      }
+      console.log("AskAI: Fetching patient data for:", selectedPatient.id);
       
-      const [diagnoses, vitals, labs, prescriptions, physicalExams, mentalHealth] = await Promise.all([
+      const [diagnoses, vitals, labs, prescriptions, physicalExams, mentalHealth, history] = await Promise.all([
         db.diagnoses.where('patientId').equals(selectedPatient.id).sortBy('date'),
         db.vitals.where('patientId').equals(selectedPatient.id).sortBy('date'),
         db.lab_results.where('patientId').equals(selectedPatient.id).sortBy('date'),
         db.prescriptions.where('patientId').equals(selectedPatient.id).toArray(),
         db.physical_exams.where('patientId').equals(selectedPatient.id).sortBy('date'),
-        db.mental_health_assessments.where('patientId').equals(selectedPatient.id).sortBy('date')
+        db.mental_health_assessments.where('patientId').equals(selectedPatient.id).sortBy('date'),
+        PatientHistoryService.getPatientHistory(selectedPatient.id)
       ]);
 
+      console.log("AskAI: Data fetched - Diagnoses count:", diagnoses?.length);
+      console.log("AskAI: Data fetched - Vitals count:", vitals?.length);
+      console.log("AskAI: Data fetched - History events:", history?.length);
+      
       // Fetch prescription items for each prescription
       const prescriptionsWithItems = await Promise.all((prescriptions || []).map(async (p) => {
         const items = await db.prescription_items.where('prescriptionId').equals(p.id || '').toArray();
         return { ...p, items };
       }));
 
-      return {
+      const data = {
         diagnoses: diagnoses || [],
         vitals: vitals || [],
         labs: labs || [],
         prescriptions: prescriptionsWithItems || [],
         physicalExams: physicalExams || [],
-        mentalHealth: mentalHealth || []
+        mentalHealth: mentalHealth || [],
+        history: history || []
       };
+      
+      console.log("AskAI: Final patientData object:", data);
+      return data;
     },
     [selectedPatient?.id]
   );
@@ -170,17 +186,26 @@ export function AskAI() {
   const livePatient = useLiveQuery(
     () => {
       if (!selectedPatient?.id) return null;
-      // In Dexie id string is often 'id', but localId is numeric. 
-      // The context selectedPatient usually has the 'id' (UUID) from the remote sync or local.
-      return db.patients.where('id').equals(selectedPatient.id).first();
+      return PatientService.getPatientById(selectedPatient.id);
     },
     [selectedPatient?.id]
   );
 
   const patientContext = React.useMemo(() => {
     // Build exhaustive patient context from all categorical data
+    // Important: Wait for patientData to be loaded only if a patient is selected
+    if (selectedPatient && !patientData) {
+      return "Loading patient context...";
+    }
+    
+    if (!selectedPatient) {
+      return "No patient selected. The user is asking a general medical query.";
+    }
+    
     let context = "";
     const activePatient = livePatient || selectedPatient;
+
+    console.log("AskAI: Building patientContext for:", activePatient);
 
     if (activePatient) {
       const patientName = settings.anonymizePHI ? "Patient A" : (activePatient.firstName ? `${activePatient.firstName} ${activePatient.lastName}` : activePatient.name);
@@ -189,6 +214,7 @@ export function AskAI() {
       context += `[CATEGORY: PERSONAL DETAILS]\n`;
       context += `Name: ${patientName}\nAge: ${activePatient.age || 'Unknown'}\nGender: ${activePatient.gender || 'Unknown'}\nBlood Type: ${activePatient.bloodType || 'Unknown'}\nActive Status: ${activePatient.status || 'Unknown'}\n\n`;
       
+      // ... (rest of the context building)
       // Category 2: Medical & Surgical History
       context += `[CATEGORY: MEDICAL & SURGICAL HISTORY]\n`;
       const chronicConditions = (activePatient as any).chronicConditions || [];
@@ -223,8 +249,10 @@ export function AskAI() {
         // Latest Vitals
         if (patientData.vitals && patientData.vitals.length > 0) {
           const latest = patientData.vitals[patientData.vitals.length - 1];
+          console.log("AskAI: Found latest vitals:", latest);
           context += `Latest Vital Signs (${latest.date}): BP: ${latest.bp_systolic}/${latest.bp_diastolic}, HR: ${latest.hr}, Temp: ${latest.temp}°C, RR: ${latest.rr}, SpO2: ${latest.spo2}%, Weight: ${latest.weight}kg, BMI: ${latest.bmi}\n`;
         } else {
+          console.log("AskAI: No vitals found, patientData.vitals:", patientData.vitals);
           context += `Vital Signs: No latest records found.\n`;
         }
 
@@ -283,11 +311,19 @@ export function AskAI() {
         } else {
           context += `No active prescriptions currently recorded.`;
         }
-        context += `\n`;
+        context += `\n\n`;
+      }
+
+      // Category 9: CLINICAL HISTORY TIMELINE EVENTS
+      if (patientData && patientData.history && patientData.history.length > 0) {
+        context += `[CATEGORY: CLINICAL HISTORY TIMELINE EVENTS]\n`;
+        context += patientData.history.map((h: any) => `- [${h.date}] ${h.type}: ${h.title} (Provider: ${h.provider}) - ${h.description}`).join('\n');
+        context += `\n\n`;
       }
     }
+    console.log("AskAI: Built patientContext:", context);
     return context;
-  }, [selectedPatient, patientData, settings.anonymizePHI]);
+  }, [selectedPatient, livePatient, patientData, settings.anonymizePHI]);
 
   useEffect(() => {
     if (chatHistory && chatHistory.length > 0) {
@@ -444,6 +480,12 @@ export function AskAI() {
     ]);
 
     try {
+      console.log("AskAI: handleSubmit called with patientContext:", patientContext);
+      if (patientContext.includes("Loading patient context")) {
+        toast.error("Please wait for the patient context to load.");
+        setIsLoading(false);
+        return;
+      }
       const systemInstruction = getAskAiSystemInstruction(settings, patientContext);
 
       const responseText = await clinicalAIRequest(
@@ -512,8 +554,10 @@ export function AskAI() {
           <div>
             <h1 className="text-base font-bold text-slate-900 dark:text-white leading-tight">Ask AI Assistant</h1>
             <div className="flex items-center gap-2">
-              <span className="flex h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400">System Ready • Gemini 3.1 Pro</span>
+              <span className={cn("flex h-1.5 w-1.5 rounded-full", patientData ? "bg-emerald-500" : "bg-amber-500")} />
+              <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400">
+                {patientData ? `System Ready • Context Loaded for ${selectedPatient?.name}` : "System Ready • Waiting for Patient Context"}
+              </span>
             </div>
           </div>
         </div>
@@ -581,6 +625,51 @@ export function AskAI() {
                       </div>
                     </div>
                   )}
+
+                  {/* Realtime Medical Record Sync Block */}
+                  <div className="pt-3 mt-3 border-t border-slate-200 dark:border-slate-700/60">
+                    <div className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                      <CheckCircle className="w-3.5 h-3.5 text-emerald-500 animate-pulse" /> Auto-Synchronized
+                    </div>
+                    <div className="space-y-1.5 text-[11px] text-slate-600 dark:text-slate-400">
+                      <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-1">
+                          <History className="w-3 h-3 text-indigo-500 dark:text-indigo-400" />
+                          <span>Clinical History:</span>
+                        </span>
+                        <span className="font-semibold bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 rounded text-[10px]">
+                          {patientData?.history?.length || 0} events
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-1">
+                          <Activity className="w-3 h-3 text-indigo-500 dark:text-indigo-400" />
+                          <span>Latest Labs:</span>
+                        </span>
+                        <span className="font-semibold bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 rounded text-[10px]">
+                          {patientData?.labs?.length || 0} tests
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-1">
+                          <Clipboard className="w-3 h-3 text-indigo-500 dark:text-indigo-400" />
+                          <span>Vitals Recorded:</span>
+                        </span>
+                        <span className="font-semibold bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 rounded text-[10px]">
+                          {patientData?.vitals?.length || 0} entries
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-1">
+                          <Pill className="w-3 h-3 text-indigo-500 dark:text-indigo-400" />
+                          <span>Active Prescriptions:</span>
+                        </span>
+                        <span className="font-semibold bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 rounded text-[10px]">
+                          {patientData?.prescriptions?.filter((p: any) => p.status === 'active' || p.status === 'filled').reduce((sum: number, p: any) => sum + (p.items?.length || 0), 0) || 0} meds
+                        </span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             ) : (
@@ -733,6 +822,7 @@ export function AskAI() {
                         <div className="flex flex-col">
                           <div className="markdown-body text-sm md:text-base leading-relaxed space-y-4 prose prose-slate dark:prose-invert max-w-none">
                             <Markdown
+                              remarkPlugins={[remarkGfm]}
                               components={{
                                 p: ({node, ...props}) => <p className="mb-4 last:mb-0" {...props} />,
                                 ul: ({node, ...props}) => <ul className="list-disc pl-6 mb-4 space-y-2" {...props} />,

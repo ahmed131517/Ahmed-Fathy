@@ -1,4 +1,8 @@
 import Dexie, { type Table } from 'dexie';
+import { db as firestoreDb, doc, setDoc, deleteDoc } from './firebase';
+import fakeIndexedDB, { IDBKeyRange as FDBKeyRange } from 'fake-indexeddb';
+
+export const isSyncingFromFirestore = { value: 0 };
 
 export interface PatientRecord {
   id?: string;
@@ -34,6 +38,8 @@ export interface PatientRecord {
   surgeries?: string;
   familyHistory?: any; // Replaced JSON string with native array/object support
   familyHistoryNotes?: string;
+  gynHistory?: any;
+  obsHistory?: any;
   photo?: string;
   signature?: string;
   consentTreatment?: boolean;
@@ -291,6 +297,7 @@ export interface User {
   name: string;
   email: string;
   role: 'doctor' | 'nurse' | 'pharmacist' | 'receptionist' | 'admin';
+  clinicId?: string;
   lastModified: number;
   isDeleted: number;
   isSynced: number;
@@ -301,6 +308,7 @@ export interface LabRequest {
   localId?: number;
   patientId: string;
   patientName: string;
+  clinicId: string; // Add this
   tests: any[]; // Native array of tests
   priority: 'standard' | 'urgent';
   physician: string;
@@ -521,8 +529,8 @@ export class AppDatabase extends Dexie {
   drug_side_effects!: Table<DrugSideEffect>;
   drug_indications!: Table<DrugIndication>;
 
-  constructor() {
-    super('MedicalAppDB');
+  constructor(options?: { indexedDB?: any; IDBKeyRange?: any }) {
+    super('MedicalAppDB', options);
     this.version(19).stores({
       patients: '++localId, id, name, lastModified, isDeleted, isSynced',
       appointments: '++localId, id, patientId, date, lastModified, isDeleted, isSynced',
@@ -566,9 +574,28 @@ export class AppDatabase extends Dexie {
       drug_indications: '++id, drug_id, disease'
     });
 
-    // Audit and Sync Hooks
-    const tablesToAudit = ['patients', 'appointments', 'prescriptions', 'diagnoses', 'lab_results', 'vitals', 'physical_exams'];
-    
+    // All collections to replicate to Firestore
+    const tablesToReplicate = [
+      'patients', 'appointments', 'prescriptions', 'prescription_items', 
+      'diagnoses', 'lab_results', 'lab_requests', 'vitals', 'physical_exams', 
+      'pharmacy_inventory', 'pharmacy_batches', 'notifications', 'templates', 
+      'tasks', 'mental_health_assessments', 'obstetric_records', 
+      'internal_messages', 'clinical_drafts', 'patient_notes', 'chat_messages'
+    ];
+
+    const getClinicId = () => {
+      try {
+        const saved = localStorage.getItem('user_profile');
+        if (saved) {
+          const profile = JSON.parse(saved);
+          return profile.clinicId || 'clinic_a';
+        }
+      } catch (e) {
+        console.warn('Failed to parse user_profile for clinicId', e);
+      }
+      return 'clinic_a';
+    };
+
     const getCurrentUser = () => {
       try {
         const saved = localStorage.getItem('user_profile');
@@ -587,74 +614,127 @@ export class AppDatabase extends Dexie {
       return 'system';
     };
 
-    tablesToAudit.forEach(tableName => {
+    tablesToReplicate.forEach(tableName => {
       const table = (this as any)[tableName] as Table;
       if (!table) return;
 
       table.hook('creating', (primKey: any, obj: any) => {
-        // Use Dexie.ignoreTransaction to safely write outside the current transaction scope
-        Dexie.ignoreTransaction(() => {
-          this.audit_logs.add({
-            userId: getCurrentUser(),
-            action: 'create',
-            entity: tableName,
-            entityId: String(obj.id || primKey || 'new'),
-            timestamp: Date.now()
-          }).catch(err => console.error('Audit log (creating) failed:', err));
-          
-          this.sync_events.add({
-            eventId: crypto.randomUUID(),
-            entityType: tableName,
-            entityId: String(obj.id || primKey),
-            action: 'CREATE',
-            payload: obj,
-            timestamp: Date.now(),
-            userId: getCurrentUser()
-          }).catch(err => console.error('Sync Event log (creating) failed:', err));
+        if (isSyncingFromFirestore.value > 0) return;
+
+        // Ensure global id
+        if (!obj.id) {
+          obj.id = crypto.randomUUID();
+        }
+        // Ensure clinicId
+        if (!obj.clinicId) {
+          obj.clinicId = getClinicId();
+        }
+        // Ensure modified dates
+        obj.lastModified = obj.lastModified || Date.now();
+        obj.isSynced = 1;
+
+        Dexie.ignoreTransaction(async () => {
+          try {
+            // Replicate to audit logs locally
+            await this.audit_logs.add({
+              userId: getCurrentUser(),
+              action: 'create',
+              entity: tableName,
+              entityId: String(obj.id),
+              timestamp: Date.now()
+            });
+          } catch (err: any) {
+            console.error('Audit log failed (create):', err);
+            if (err?.name === 'QuotaExceededError' || err?.message?.includes('FILE_ERROR_NO_SPACE') || err?.message?.includes('QuotaExceeded')) {
+              switchToFake();
+            }
+          }
+
+          try {
+            // Sanitize object for Firestore (replace undefined with null)
+            const sanitizedObj = Object.fromEntries(
+              Object.entries(obj).map(([key, value]) => [key, value === undefined ? null : value])
+            );
+
+            // Write directly to Firestore (utilizing native offline cache)
+            const docId = obj.id;
+            const docRef = doc(firestoreDb, tableName, docId);
+            await setDoc(docRef, sanitizedObj);
+          } catch (e) {
+            console.warn(`Firestore background replication error (${tableName}):`, e);
+          }
         });
       });
 
       table.hook('updating', (modifications: any, primKey: any, obj: any) => {
-        Dexie.ignoreTransaction(() => {
-          this.audit_logs.add({
-            userId: getCurrentUser(),
-            action: 'update',
-            entity: tableName,
-            entityId: String(obj.id || primKey),
-            timestamp: Date.now()
-          }).catch(err => console.error('Audit log (updating) failed:', err));
+        if (isSyncingFromFirestore.value > 0) return;
 
-          this.sync_events.add({
-            eventId: crypto.randomUUID(),
-            entityType: tableName,
-            entityId: String(obj.id || primKey),
-            action: 'UPDATE',
-            payload: modifications,
-            timestamp: Date.now(),
-            userId: getCurrentUser()
-          }).catch(err => console.error('Sync Event log (updating) failed:', err));
+        const updatedObj = { ...obj, ...modifications };
+        updatedObj.lastModified = Date.now();
+        updatedObj.isSynced = 1;
+        
+        // Ensure clinicId exists
+        if (!updatedObj.clinicId) {
+          updatedObj.clinicId = getClinicId();
+        }
+
+        Dexie.ignoreTransaction(async () => {
+          try {
+            await this.audit_logs.add({
+              userId: getCurrentUser(),
+              action: 'update',
+              entity: tableName,
+              entityId: String(obj.id || primKey),
+              timestamp: Date.now()
+            });
+          } catch (err: any) {
+            console.error('Audit log failed (update):', err);
+            if (err?.name === 'QuotaExceededError' || err?.message?.includes('FILE_ERROR_NO_SPACE') || err?.message?.includes('QuotaExceeded')) {
+              switchToFake();
+            }
+          }
+
+          try {
+            // Sanitize object for Firestore (replace undefined with null)
+            const sanitizedObj = Object.fromEntries(
+              Object.entries(updatedObj).map(([key, value]) => [key, value === undefined ? null : value])
+            );
+
+            const docId = obj.id || String(primKey);
+            const docRef = doc(firestoreDb, tableName, docId);
+            await setDoc(docRef, sanitizedObj);
+          } catch (e) {
+            console.warn(`Firestore background replication update error (${tableName}):`, e);
+          }
         });
       });
 
       table.hook('deleting', (primKey: any, obj: any) => {
-        Dexie.ignoreTransaction(() => {
-          this.audit_logs.add({
-            userId: getCurrentUser(),
-            action: 'delete',
-            entity: tableName,
-            entityId: String(primKey),
-            timestamp: Date.now()
-          }).catch(err => console.error('Audit log (deleting) failed:', err));
+        if (isSyncingFromFirestore.value > 0) return;
 
-          this.sync_events.add({
-            eventId: crypto.randomUUID(),
-            entityType: tableName,
-            entityId: String(obj?.id || primKey),
-            action: 'DELETE',
-            payload: { id: obj?.id || primKey, isDeleted: 1 },
-            timestamp: Date.now(),
-            userId: getCurrentUser()
-          }).catch(err => console.error('Sync Event log (deleting) failed:', err));
+        Dexie.ignoreTransaction(async () => {
+          try {
+            await this.audit_logs.add({
+              userId: getCurrentUser(),
+              action: 'delete',
+              entity: tableName,
+              entityId: String(obj?.id || primKey),
+              timestamp: Date.now()
+            });
+          } catch (err: any) {
+            console.error('Audit log failed (delete):', err);
+            if (err?.name === 'QuotaExceededError' || err?.message?.includes('FILE_ERROR_NO_SPACE') || err?.message?.includes('QuotaExceeded')) {
+              switchToFake();
+            }
+          }
+
+          try {
+            const docId = obj?.id || String(primKey);
+            const docRef = doc(firestoreDb, tableName, docId);
+            await deleteDoc(docRef);
+          } catch (e) {
+            console.warn(`Firestore background replication delete error (${tableName}):`, e);
+          }
         });
       });
     });
@@ -665,16 +745,343 @@ export class AppDatabase extends Dexie {
 
     this.on('ready', () => {
       console.log('Dexie database is ready');
+      // Seed default patients if database is empty
+      setTimeout(async () => {
+        try {
+          const count = await this.patients.count();
+          if (count === 0) {
+            console.log('Clinic database is empty. Seeding initial patient profiles for clinical reference...');
+            const seedPatients = [
+              {
+                id: "P-1001",
+                name: "Sarah Johnson",
+                firstName: "Sarah",
+                lastName: "Johnson",
+                dob: "1985-04-12",
+                age: 39,
+                nationalId: "NID-850412-98",
+                email: "sarah.j@gmail.com",
+                phone: "+1 (555) 123-4567",
+                address: "123 Elm Street, Metropolis",
+                gender: "female",
+                bloodType: "O+",
+                hasConditions: "yes",
+                conditions: ["Hypertension", "Asthma"],
+                otherConditions: "",
+                hasAllergies: "yes",
+                allergies: [{ id: 1, name: "Penicillin", severity: "Severe" }],
+                hasMedications: "yes",
+                medications: [{ id: 1, name: "Lisinopril", dosage: "10mg", frequency: "Daily" }, { id: 2, name: "Albuterol inhaler", dosage: "90mcg", frequency: "As needed" }],
+                hasSurgeries: "yes",
+                surgeries: "Appendectomy (2015)",
+                familyHistory: [{ id: 1, relation: "Mother", condition: "Breast Cancer", age: "52" }],
+                familyHistoryNotes: "Maternal side has strong history of cardiovascular disease.",
+                gynHistory: {
+                  menarcheAge: "12",
+                  lmp: "2026-05-20",
+                  cycleRegularity: "Regular",
+                  cycleLength: "28",
+                  contraception: "Oral Contraceptive Pill",
+                  papSmear: "Normal",
+                  papNotes: "Last smear in May 2025"
+                },
+                obsHistory: {
+                  gravidity: "2",
+                  parity: "2",
+                  term: "2",
+                  preterm: "0",
+                  abortions: "0",
+                  living: "2",
+                  modeOfDelivery: "Vaginal",
+                  complicationNotes: "None"
+                },
+                lastVisit: "2023-10-15",
+                status: "Stable",
+                lastModified: Date.now(),
+                isDeleted: 0,
+                isSynced: 0,
+                clinicId: "clinic_a"
+              },
+              {
+                id: "P-1002",
+                name: "Michael Chen",
+                firstName: "Michael",
+                lastName: "Chen",
+                dob: "1972-11-08",
+                age: 51,
+                nationalId: "NID-721108-41",
+                email: "m.chen@yahoo.com",
+                phone: "+1 (555) 987-6543",
+                address: "456 Oak Lane, Metropolis",
+                gender: "male",
+                bloodType: "A-",
+                hasConditions: "yes",
+                conditions: ["Hypertension"],
+                otherConditions: "Mild hyperlipidemia managed by diet",
+                hasAllergies: "no",
+                allergies: [],
+                hasMedications: "yes",
+                medications: [{ id: 1, name: "Amlodipine", dosage: "5mg", frequency: "Daily" }],
+                hasSurgeries: "no",
+                surgeries: "None",
+                familyHistory: [{ id: 1, relation: "Father", condition: "Hypertension", age: "65" }],
+                familyHistoryNotes: "Paternal history of high blood pressure.",
+                lastVisit: "2023-11-02",
+                status: "Stable",
+                lastModified: Date.now(),
+                isDeleted: 0,
+                isSynced: 0,
+                clinicId: "clinic_a"
+              },
+              {
+                id: "P-1003",
+                name: "Emily Davis",
+                firstName: "Emily",
+                lastName: "Davis",
+                dob: "1990-08-24",
+                age: 33,
+                nationalId: "NID-900824-32",
+                email: "emily.davis@outlook.com",
+                phone: "+1 (555) 456-7890",
+                address: "789 Pine Road, Metropolis",
+                gender: "female",
+                bloodType: "A+",
+                hasConditions: "yes",
+                conditions: ["Diabetes", "Thyroid Disorder"],
+                otherConditions: "",
+                hasAllergies: "yes",
+                allergies: [{ id: 1, name: "Sulfa Drugs", severity: "Moderate" }],
+                hasMedications: "yes",
+                medications: [{ id: 1, name: "Metformin", dosage: "500mg", frequency: "Daily" }, { id: 2, name: "Levothyroxine", dosage: "50mcg", frequency: "Daily" }],
+                hasSurgeries: "yes",
+                surgeries: "Gallbladder removal (2021)",
+                familyHistory: [{ id: 1, relation: "Father", condition: "Type 2 Diabetes", age: "48" }],
+                familyHistoryNotes: "Father and grandfather both have Type 2 Diabetes.",
+                gynHistory: {
+                  menarcheAge: "13",
+                  lmp: "2026-05-15",
+                  cycleRegularity: "Irregular",
+                  cycleLength: "35",
+                  contraception: "IUD",
+                  papSmear: "Normal",
+                  papNotes: ""
+                },
+                obsHistory: {
+                  gravidity: "3",
+                  parity: "2",
+                  term: "1",
+                  preterm: "1",
+                  abortions: "1",
+                  living: "2",
+                  modeOfDelivery: "C-Section",
+                  complicationNotes: "Preeclampsia during second pregnancy"
+                },
+                lastVisit: "2023-09-28",
+                status: "Stable",
+                lastModified: Date.now(),
+                isDeleted: 0,
+                isSynced: 0,
+                clinicId: "clinic_a"
+              },
+              {
+                id: "P-1004",
+                name: "James Wilson",
+                firstName: "James",
+                lastName: "Wilson",
+                dob: "1965-02-15",
+                age: 59,
+                nationalId: "NID-650215-77",
+                email: "jwilson@gmail.com",
+                phone: "+1 (555) 321-0987",
+                address: "101 Maple Avenue, Metropolis",
+                gender: "male",
+                bloodType: "O-",
+                hasConditions: "yes",
+                conditions: ["Heart Disease"],
+                otherConditions: "Mild osteoarthritis of the knee",
+                hasAllergies: "yes",
+                allergies: [{ id: 1, name: "Aspirin", severity: "Moderate" }],
+                hasMedications: "yes",
+                medications: [{ id: 1, name: "Atorvastatin", dosage: "20mg", frequency: "Daily" }],
+                hasSurgeries: "yes",
+                surgeries: "Knee Arthroscopy (2018)",
+                familyHistory: [{ id: 1, relation: "Father", condition: "Myocardial Infarction", age: "58" }],
+                familyHistoryNotes: "Paternal line has premature coronary artery disease.",
+                lastVisit: "2023-11-10",
+                status: "Stable",
+                lastModified: Date.now(),
+                isDeleted: 0,
+                isSynced: 0,
+                clinicId: "clinic_a"
+              },
+              {
+                id: "P-1005",
+                name: "Maria Garcia",
+                firstName: "Maria",
+                lastName: "Garcia",
+                dob: "1988-06-30",
+                age: 35,
+                nationalId: "NID-880630-15",
+                email: "maria.g@gmail.com",
+                phone: "+1 (555) 789-0123",
+                address: "202 Cedar Way, Metropolis",
+                gender: "female",
+                bloodType: "B+",
+                hasConditions: "yes",
+                conditions: ["Depression/Anxiety"],
+                otherConditions: "",
+                hasAllergies: "no",
+                allergies: [],
+                hasMedications: "yes",
+                medications: [{ id: 1, name: "Sertraline", dosage: "50mg", frequency: "Daily" }],
+                hasSurgeries: "no",
+                surgeries: "None",
+                familyHistory: [],
+                familyHistoryNotes: "",
+                gynHistory: {
+                  menarcheAge: "12",
+                  lmp: "2026-05-28",
+                  cycleRegularity: "Regular",
+                  cycleLength: "28",
+                  contraception: "None",
+                  papSmear: "Normal"
+                },
+                obsHistory: {
+                  gravidity: "1",
+                  parity: "1",
+                  term: "1",
+                  preterm: "0",
+                  abortions: "0",
+                  living: "1",
+                  modeOfDelivery: "Vaginal"
+                },
+                lastVisit: "2023-10-05",
+                status: "Stable",
+                lastModified: Date.now(),
+                isDeleted: 0,
+                isSynced: 0,
+                clinicId: "clinic_a"
+              }
+            ];
+            await this.patients.bulkPut(seedPatients);
+            console.log('Successfully seeded default patients into database!');
+          }
+        } catch (e) {
+          console.error('Failed to seed default patients', e);
+        }
+      }, 500);
     });
 
-    // Try to open the database and handle errors
-    this.open().catch(err => {
-      console.error('Failed to open Dexie database:', err);
-      if (err.name === 'UnknownError') {
-        console.error('IndexedDB Internal Error detected. This may require a browser restart or clearing site data.');
+    // Try to open the database and handle errors manually on instantiation
+  }
+
+  // Override open to catch backing store or iframe-sandboxed IndexedDB errors, and retry on the fallback database
+  override open(): any {
+    return super.open().catch((err: any) => {
+      console.warn('AppDatabase.open() failed:', err);
+      // Handle the case where IndexedDB is completely unusable (e.g. sandboxed or out of space)
+      if (
+        err.name === 'UnknownError' ||
+        err.name === 'SecurityError' ||
+        err.name === 'DatabaseClosedError' ||
+        err.name === 'QuotaExceededError' ||
+        err.message?.includes('backing store') ||
+        err.message?.includes('IndexedDB') ||
+        err.message?.includes('open') ||
+        err.message?.includes('FILE_ERROR_NO_SPACE') ||
+        err.message?.includes('IO error')
+      ) {
+        console.warn('Handling IndexedDB backing store / sandboxing / space failure. Redirecting to fallback in-memory DB...');
+        switchToFake();
+        return activeDbInstance.open();
       }
+      throw err;
     });
   }
 }
 
-export const db = new AppDatabase();
+let useFakeDefault = false;
+try {
+  if (typeof window !== 'undefined') {
+    // 1. Check if sessionStorage is blocked entirely (throws SecurityError on access)
+    // 2. Or check if we have already flagged IndexedDB as failed in sessionStorage
+    if (!window.sessionStorage) {
+      useFakeDefault = true;
+    } else if (window.sessionStorage.getItem('indexedDB_failed') === 'true') {
+      useFakeDefault = true;
+    }
+  }
+} catch (e) {
+  // If accessing sessionStorage throws a SecurityError, we are almost certainly inside a strict sandbox where native storage is disabled
+  useFakeDefault = true;
+}
+
+let activeDbInstance: AppDatabase;
+let isFallbackActive = false;
+
+function switchToFake() {
+  if (isFallbackActive) return;
+  isFallbackActive = true;
+  console.warn('Switching activeDbInstance to fakeIndexedDB (in-memory fallback database).');
+  try {
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      window.sessionStorage.setItem('indexedDB_failed', 'true');
+    }
+  } catch (e) {}
+
+  const fallbackDb = new AppDatabase({
+    indexedDB: fakeIndexedDB,
+    IDBKeyRange: FDBKeyRange
+  });
+  activeDbInstance = fallbackDb;
+}
+
+if (useFakeDefault) {
+  console.log('Skipping standard IndexedDB on load due to detected sandbox restrictions or previous failure.');
+  activeDbInstance = new AppDatabase({
+    indexedDB: fakeIndexedDB,
+    IDBKeyRange: FDBKeyRange
+  });
+  isFallbackActive = true;
+} else {
+  activeDbInstance = new AppDatabase();
+}
+
+// Perform a proactive background probe of standard IndexedDB
+if (!useFakeDefault && typeof window !== 'undefined' && window.indexedDB) {
+  try {
+    const probeRequest = window.indexedDB.open('MedicalAppDB_probe', 1);
+    probeRequest.onerror = (event) => {
+      console.warn('Asynchronous IndexedDB probe failed. Switching fallback on background.');
+      switchToFake();
+    };
+    probeRequest.onsuccess = () => {
+      try {
+        const pDb = probeRequest.result;
+        pDb.close();
+        window.indexedDB.deleteDatabase('MedicalAppDB_probe');
+      } catch (e) {}
+    };
+  } catch (e) {
+    console.warn('Synchronous throw during IndexedDB probe. Switching fallback.');
+    switchToFake();
+  }
+}
+
+// Also trigger open on the active instance to let the override handle anything that slips through
+activeDbInstance.open().catch((err: any) => {
+  console.warn('Initial database open failed outside normal path:', err);
+});
+
+export const db = new Proxy({}, {
+  get(target, prop) {
+    const val = Reflect.get(activeDbInstance, prop);
+    if (typeof val === 'function') {
+      return val.bind(activeDbInstance);
+    }
+    return val;
+  },
+  set(target, prop, value) {
+    return Reflect.set(activeDbInstance, prop, value);
+  }
+}) as unknown as AppDatabase;

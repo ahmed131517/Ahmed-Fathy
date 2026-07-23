@@ -133,6 +133,7 @@ export const WhatsNextModal = ({ open, onOpenChange, symptoms, patientData }: Wh
   }, [open, symptoms, fetched, loading]);
 
   const grouped = recommendations.reduce((acc, r) => {
+    if (!r || !r.type) return acc;
     if (!acc[r.type]) acc[r.type] = [];
     acc[r.type].push(r);
     return acc;

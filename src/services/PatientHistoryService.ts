@@ -84,7 +84,8 @@ export class PatientHistoryService {
     // 4. Fetch Lab Results
     const labResults = await db.lab_results.where('patientId').equals(patientId).toArray();
     // Group lab results by date and appointmentId
-    const groupedLabs = labResults.reduce((acc: any, curr) => {
+    const groupedLabs = (labResults || []).reduce((acc: any, curr) => {
+      if (!curr) return acc;
       const key = `${curr.date}_${curr.appointmentId || 'no_appt'}`;
       if (!acc[key]) {
         acc[key] = {
@@ -114,6 +115,7 @@ export class PatientHistoryService {
     }, {});
     
     Object.values(groupedLabs).forEach((labGroup: any) => {
+      if (!labGroup) return;
       events.push({
         id: labGroup.id,
         date: labGroup.date,

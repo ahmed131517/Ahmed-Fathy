@@ -15,6 +15,9 @@ export function GeneralSettings() {
     practiceZip: globalPracticeZip,
     practicePhone: globalPracticePhone,
     practiceLogo: globalPracticeLogo,
+    practiceLogoShape: globalPracticeLogoShape,
+    practiceLogoSize: globalPracticeLogoSize,
+    practiceLogoPosition: globalPracticeLogoPosition,
     patientIdPrefix: globalPatientIdPrefix,
     doctorName: globalDoctorName,
     doctorQualifications: globalDoctorQualifications,
@@ -41,6 +44,9 @@ export function GeneralSettings() {
   const [practiceZip, setPracticeZip] = useState(globalPracticeZip);
   const [practicePhone, setPracticePhone] = useState(globalPracticePhone);
   const [practiceLogo, setPracticeLogo] = useState(globalPracticeLogo);
+  const [practiceLogoShape, setPracticeLogoShape] = useState(globalPracticeLogoShape);
+  const [practiceLogoSize, setPracticeLogoSize] = useState(globalPracticeLogoSize || 96);
+  const [practiceLogoPosition, setPracticeLogoPosition] = useState<'left' | 'center' | 'right'>(globalPracticeLogoPosition || 'center');
   const [patientIdPrefix, setPatientIdPrefix] = useState(globalPatientIdPrefix);
   
   const [doctorName, setDoctorName] = useState(globalDoctorName);
@@ -139,6 +145,9 @@ export function GeneralSettings() {
       practiceZip,
       practicePhone,
       practiceLogo,
+      practiceLogoShape,
+      practiceLogoSize,
+      practiceLogoPosition,
       patientIdPrefix,
       doctorName,
       doctorQualifications,
@@ -226,33 +235,144 @@ export function GeneralSettings() {
             <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Patient ID Prefix</label>
             <input type="text" value={patientIdPrefix} onChange={(e) => setPatientIdPrefix(e.target.value)} className="w-full p-2 border rounded-lg dark:bg-slate-800 dark:border-slate-700" placeholder="e.g. PAT" />
           </div>
-          <div className="col-span-1 md:col-span-2 space-y-2 pt-2">
+          <div className="col-span-1 md:col-span-2 space-y-4 pt-2">
             <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Practice Logo</label>
-            <div className="flex items-center gap-4">
-              <div className="w-20 h-20 rounded-full border-2 border-slate-200 dark:border-slate-800 flex items-center justify-center overflow-hidden bg-slate-50 dark:bg-slate-900">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-6 bg-slate-50/50 dark:bg-slate-900/30 p-4 border border-slate-100 dark:border-slate-800 rounded-xl">
+              <div 
+                className={cn(
+                  "flex items-center justify-center overflow-hidden transition-all duration-200 select-none shrink-0",
+                  practiceLogoShape === 'circle' && "rounded-full border-2 border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900",
+                  practiceLogoShape === 'rounded' && "rounded-xl border-2 border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900",
+                  practiceLogoShape === 'square' && "rounded-none border-2 border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900",
+                  practiceLogoShape === 'none' && (practiceLogo ? "border-0 bg-transparent" : "rounded-lg border-2 border-dashed border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900")
+                )}
+                style={{
+                  width: `${practiceLogoSize}px`,
+                  height: `${practiceLogoSize}px`,
+                  maxWidth: '100%',
+                  maxHeight: '100%'
+                }}
+              >
                 {practiceLogo ? (
                   <img src={practiceLogo} alt="Logo" className="w-full h-full object-cover" />
                 ) : (
-                  <span className="text-xs text-slate-400">No Logo</span>
+                  <span className="text-xs text-slate-400 font-medium font-sans">No Logo</span>
                 )}
               </div>
-              <div className="flex-1">
-                <input 
-                  type="file" 
-                  accept="image/*" 
-                  onChange={handleLogoUpload} 
-                  className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" 
-                />
-                <p className="text-xs text-slate-500 mt-1">Recommended: Square image, at least 200x200px.</p>
+              <div className="flex-1 space-y-3">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <input 
+                    type="file" 
+                    accept="image/*" 
+                    onChange={handleLogoUpload} 
+                    className="text-sm text-slate-500 file:mr-4 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 dark:file:bg-indigo-900/20 dark:file:text-indigo-300 transition-colors cursor-pointer" 
+                  />
+                  {practiceLogo && (
+                    <button 
+                      type="button"
+                      onClick={() => setPracticeLogo('')}
+                      className="text-xs text-red-650 hover:text-red-700 dark:text-red-450 dark:hover:text-red-400 font-bold hover:underline transition-colors"
+                    >
+                      Remove Logo
+                    </button>
+                  )}
+                </div>
+                <p className="text-xs text-slate-500">Recommended: Square image, at least 200x200px.</p>
+                
+                {/* Shape Selector Option */}
+                <div className="space-y-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800/80">
+                  <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Logo Container Shape</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { value: 'circle', label: 'Circle' },
+                      { value: 'rounded', label: 'Rounded Square' },
+                      { value: 'square', label: 'Sharp Square' },
+                      { value: 'none', label: 'No Shape / Borderless' },
+                    ].map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setPracticeLogoShape(option.value as any)}
+                        className={cn(
+                          "px-2.5 py-1 rounded-md text-xs font-semibold transition-all border cursor-pointer",
+                          practiceLogoShape === option.value
+                            ? "bg-indigo-650 border-indigo-650 text-white shadow-sm dark:bg-indigo-600 dark:border-indigo-600"
+                            : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50"
+                        )}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Logo Position / Alignment Control */}
+                <div className="space-y-1.5 pt-3 border-t border-slate-100 dark:border-slate-800/80">
+                  <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Logo Alignment</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { value: 'left', label: 'Left Aligned' },
+                      { value: 'center', label: 'Center (Standard)' },
+                      { value: 'right', label: 'Right Aligned' },
+                    ].map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setPracticeLogoPosition(option.value as any)}
+                        className={cn(
+                          "px-2.5 py-1 rounded-md text-xs font-semibold transition-all border cursor-pointer",
+                          practiceLogoPosition === option.value
+                            ? "bg-indigo-650 border-indigo-650 text-white shadow-sm dark:bg-indigo-600 dark:border-indigo-600"
+                            : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50"
+                        )}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Logo Size Control */}
+                <div className="space-y-1.5 pt-3 border-t border-slate-100 dark:border-slate-800/80">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Logo Size</span>
+                    <span className="text-xs font-bold text-indigo-650 dark:text-indigo-400 font-mono">{practiceLogoSize}px</span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <input
+                      type="range"
+                      min="40"
+                      max="200"
+                      step="4"
+                      value={practiceLogoSize}
+                      onChange={(e) => setPracticeLogoSize(Number(e.target.value))}
+                      className="flex-1 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-600 dark:accent-indigo-400"
+                    />
+                    <div className="flex gap-1 shrink-0">
+                      {[
+                        { label: 'S (64)', value: 64 },
+                        { label: 'M (96)', value: 96 },
+                        { label: 'L (128)', value: 128 },
+                        { label: 'XL (160)', value: 160 }
+                      ].map((preset) => (
+                        <button
+                          key={preset.value}
+                          type="button"
+                          onClick={() => setPracticeLogoSize(preset.value)}
+                          className={cn(
+                            "px-1.5 py-0.5 rounded text-[10px] font-bold transition-all border cursor-pointer",
+                            practiceLogoSize === preset.value
+                              ? "bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-900/30 dark:border-indigo-800 dark:text-indigo-300"
+                              : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-50"
+                          )}
+                        >
+                          {preset.label.split(' ')[0]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               </div>
-              {practiceLogo && (
-                <button 
-                  onClick={() => setPracticeLogo('')}
-                  className="text-xs text-red-600 hover:text-red-700 font-medium"
-                >
-                  Remove
-                </button>
-              )}
             </div>
           </div>
         </div>

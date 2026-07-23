@@ -49,14 +49,17 @@ export const ClinicalScoresWidget: React.FC<ClinicalScoresWidgetProps> = ({ symp
       </div>
       <div className="divide-y divide-slate-100">
         {scores.map((score) => (
-          <div key={score.name} className="p-4">
+          <div key={score.name} className="p-4" role="region" aria-labelledby={`score-title-${score.name.replace(/\s+/g, '-')}`}>
             <div 
               className="flex items-center justify-between cursor-pointer group"
               onClick={() => setExpandedScore(expandedScore === score.name ? null : score.name)}
+              role="button"
+              aria-expanded={expandedScore === score.name}
+              aria-controls={`score-details-${score.name.replace(/\s+/g, '-')}`}
             >
               <div className="flex-1">
                 <div className="flex items-center gap-2">
-                  <h4 className="text-sm font-bold text-slate-700">{score.name}</h4>
+                  <h4 id={`score-title-${score.name.replace(/\s+/g, '-')}`} className="text-sm font-bold text-slate-700">{score.name}</h4>
                   <span className={cn(
                     "text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider",
                     score.riskLevel === 'Low' ? "bg-emerald-100 text-emerald-700" :
@@ -70,13 +73,13 @@ export const ClinicalScoresWidget: React.FC<ClinicalScoresWidgetProps> = ({ symp
                   Score: <span className="font-bold text-slate-700">{score.score}</span>
                 </div>
               </div>
-              <div className="text-slate-400 group-hover:text-slate-600 transition-colors">
+              <div className="text-slate-400 group-hover:text-slate-600 transition-colors" aria-hidden="true">
                 {expandedScore === score.name ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
               </div>
             </div>
 
             {expandedScore === score.name && (
-              <div className="mt-4 space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
+              <div id={`score-details-${score.name.replace(/\s+/g, '-')}`} className="mt-4 space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
                 <div className={cn(
                   "p-3 rounded-lg text-xs flex gap-2",
                   score.riskLevel === 'Low' ? "bg-emerald-50 text-emerald-800 border border-emerald-100" :
@@ -87,12 +90,12 @@ export const ClinicalScoresWidget: React.FC<ClinicalScoresWidgetProps> = ({ symp
                   <p className="font-medium">{score.interpretation}</p>
                 </div>
 
-                <div className="space-y-1.5">
+                <div className="space-y-1.5" role="list" aria-label="Criteria breakdown">
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Criteria Breakdown</p>
                   {score.criteria.map((c, i) => (
-                    <div key={i} className="flex items-center justify-between text-xs py-1 border-b border-slate-50 last:border-0">
+                    <div key={i} className="flex items-center justify-between text-xs py-1 border-b border-slate-50 last:border-0" role="listitem">
                       <span className={cn(c.met ? "text-slate-800 font-medium" : "text-slate-400")}>{c.label}</span>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2" aria-label={c.met ? `Criteria met with ${c.points} points` : `Criteria not met`}>
                         <span className={cn("font-mono", c.met ? "text-indigo-600 font-bold" : "text-slate-300")}>
                           {c.points > 0 ? `+${c.points}` : c.points}
                         </span>

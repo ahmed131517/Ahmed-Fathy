@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { User, CreditCard, Calendar, Clock, Users, Mail, Phone, MapPin, Shield, FileText, Map, UserCheck, Heart, Activity, Scissors, Plus, X, Camera, Upload, RotateCcw, Check, Eye, QrCode, Image as ImageIcon } from "lucide-react";
+import { User, CreditCard, Calendar, Clock, Users, Mail, Phone, MapPin, Shield, FileText, Map, UserCheck, Heart, Activity, Scissors, Plus, X, Camera, Upload, RotateCcw, Check, Eye, QrCode, Image as ImageIcon, Search, ChevronDown, Baby } from "lucide-react";
 import { cn } from "@/lib/utils";
 import SignatureCanvas from 'react-signature-canvas';
 import { QRCodeSVG } from 'qrcode.react';
@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useNotifications } from "@/lib/NotificationContext";
 import { useTranslation } from "@/lib/i18n";
 import { useSettings } from "@/lib/SettingsContext";
+import { usePatient } from "../lib/PatientContext";
 
 export function NewPatient() {
   const navigate = useNavigate();
@@ -57,6 +58,25 @@ export function NewPatient() {
       email: false,
       sms: false,
       phone: false
+    },
+    gynHistory: {
+      menarcheAge: "",
+      lmp: "",
+      cycleRegularity: "",
+      cycleLength: "",
+      contraception: "",
+      papSmear: "",
+      papNotes: ""
+    },
+    obsHistory: {
+      gravidity: "",
+      parity: "",
+      term: "",
+      preterm: "",
+      abortions: "",
+      living: "",
+      modeOfDelivery: "",
+      complicationNotes: ""
     }
   });
 
@@ -76,6 +96,123 @@ export function NewPatient() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const sigCanvas = useRef<SignatureCanvas>(null);
 
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const { patients } = usePatient();
+
+  const filteredPatients = (patients || []).filter(p => {
+    const query = searchQuery.toLowerCase();
+    const nameMatch = p.name ? p.name.toLowerCase().includes(query) : false;
+    const idMatch = p.id ? p.id.toLowerCase().includes(query) : false;
+    return nameMatch || idMatch;
+  });
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  const handleSelectPreviousPatient = (patientId: string) => {
+    if (!patientId) return;
+    const p = patients.find((pat) => pat.id === patientId) as any;
+    if (!p) return;
+
+    const parseList = (list: any, defaultVal: any) => {
+      if (!list) return defaultVal;
+      if (Array.isArray(list)) return list;
+      try {
+        const parsed = typeof list === 'string' ? JSON.parse(list) : list;
+        return Array.isArray(parsed) ? parsed : defaultVal;
+      } catch (e) {
+        return defaultVal;
+      }
+    };
+
+    const defaultGyn = {
+      menarcheAge: "",
+      lmp: "",
+      cycleRegularity: "",
+      cycleLength: "",
+      contraception: "",
+      papSmear: "",
+      papNotes: ""
+    };
+    const defaultObs = {
+      gravidity: "",
+      parity: "",
+      term: "",
+      preterm: "",
+      abortions: "",
+      living: "",
+      modeOfDelivery: "",
+      complicationNotes: ""
+    };
+
+    const parseObj = (obj: any, defaultVal: any) => {
+      if (!obj) return defaultVal;
+      try {
+        const parsed = typeof obj === 'string' ? JSON.parse(obj) : obj;
+        return { ...defaultVal, ...parsed };
+      } catch (e) {
+        return defaultVal;
+      }
+    };
+
+    setFormData({
+      patientId: p.id || `PAT-${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
+      firstName: p.firstName || p.name?.split(" ")[0] || "",
+      lastName: p.lastName || p.name?.split(" ").slice(1).join(" ") || "",
+      nationalId: p.nationalId || "",
+      dob: p.dob || "",
+      gender: p.gender || "",
+      bloodType: p.bloodType || "",
+      email: p.email || "",
+      phone: p.phone || "",
+      address: p.address || "",
+      referralSource: p.referralSource || "",
+      insuranceProvider: p.insuranceProvider || "",
+      policyNumber: p.policyNumber || "",
+      groupNumber: p.groupNumber || "",
+      insuranceFront: p.insuranceFront || null,
+      insuranceBack: p.insuranceBack || null,
+      emergencyName: p.emergencyName || "",
+      emergencyPhone: p.emergencyPhone || "",
+      emergencyRelation: p.emergencyRelationship || "",
+      hasAllergies: p.hasAllergies || "no",
+      allergies: parseList(p.allergies, [{ id: 1, name: "", reaction: "" }]),
+      hasConditions: p.hasConditions || "no",
+      conditions: parseList(p.conditions, []),
+      otherConditions: p.otherConditions || "",
+      hasMedications: p.hasMedications || "no",
+      medications: parseList(p.medications, [{ id: 1, name: "", dosage: "", frequency: "" }]),
+      familyHistory: parseList(p.familyHistory, [{ id: 1, relation: "", condition: "", age: "" }]),
+      surgeries: p.surgeries || p.hasSurgeries || "",
+      familyHistoryText: p.familyHistoryNotes || "",
+      photo: p.photo || null,
+      signature: p.signature || null,
+      consentTreatment: p.consentTreatment || false,
+      consentPrivacy: p.consentPrivacy || false,
+      consentFinancial: p.consentFinancial || false,
+      communication: p.communication || {
+        email: false,
+        sms: false,
+        phone: false
+      },
+      gynHistory: parseObj(p.gynHistory, defaultGyn),
+      obsHistory: parseObj(p.obsHistory, defaultObs)
+    });
+
+    toast.success(`Loaded all clinical & personal details for ${p.name}`);
+  };
+
   useEffect(() => {
     localStorage.setItem('newPatientDraft', JSON.stringify(formData));
   }, [formData]);
@@ -94,6 +231,26 @@ export function NewPatient() {
 
   const updateField = (field: string, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const updateGynField = (subfield: string, value: any) => {
+    setFormData(prev => ({
+      ...prev,
+      gynHistory: {
+        ...((prev as any).gynHistory || {}),
+        [subfield]: value
+      }
+    }));
+  };
+
+  const updateObsField = (subfield: string, value: any) => {
+    setFormData(prev => ({
+      ...prev,
+      obsHistory: {
+        ...((prev as any).obsHistory || {}),
+        [subfield]: value
+      }
+    }));
   };
 
   const startCamera = async (target: 'photo' | 'insuranceFront' | 'insuranceBack') => {
@@ -196,6 +353,83 @@ export function NewPatient() {
         >
           <RotateCcw className="w-4 h-4" /> {t('clearDraft')}
         </button>
+      </div>
+
+      {/* Existing/Previous Patient Selector */}
+      <div ref={dropdownRef} className="bg-white dark:bg-slate-905 rounded-xl border border-slate-200 dark:border-slate-800 p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="space-y-1">
+          <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+            <Users className="w-4 h-4 text-indigo-500" />
+            Load from Previous/Existing Patient
+          </h3>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Select an existing patient to auto-fill their details into corresponding fields instantly.
+          </p>
+        </div>
+        <div className="relative w-full md:w-80">
+          <div className="flex items-center border border-slate-200 dark:border-slate-800 rounded-lg bg-slate-50 dark:bg-slate-950/50 px-3 py-2 text-sm">
+            <Search className="w-4 h-4 text-slate-400 mr-2 shrink-0 animate-pulse" />
+            <input 
+              type="text"
+              placeholder="Type to search previous patient..."
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setIsDropdownOpen(true);
+              }}
+              onFocus={() => setIsDropdownOpen(true)}
+              className="w-full bg-transparent border-none outline-none text-slate-900 dark:text-slate-100 placeholder-slate-400 text-xs"
+            />
+            {searchQuery && (
+              <button 
+                onClick={() => {
+                  setSearchQuery("");
+                  setIsDropdownOpen(false);
+                }} 
+                className="hover:bg-slate-200 dark:hover:bg-slate-800 p-0.5 rounded-full"
+              >
+                <X className="w-3 h-3 text-slate-400" />
+              </button>
+            )}
+            <button 
+              onClick={() => setIsDropdownOpen(prev => !prev)}
+              className="ml-1 text-slate-400 hover:text-slate-600 focus:outline-none"
+            >
+              <ChevronDown className="w-4 h-4" />
+            </button>
+          </div>
+
+          {isDropdownOpen && (
+            <div className="absolute z-50 left-0 right-0 mt-1 max-h-60 overflow-y-auto rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-lg text-sm divide-y divide-slate-100 dark:divide-slate-800">
+              {filteredPatients.length > 0 ? (
+                filteredPatients.map(p => (
+                  <button
+                    key={p.id}
+                    onClick={() => {
+                      handleSelectPreviousPatient(p.id || "");
+                      setSearchQuery(p.name || "");
+                      setIsDropdownOpen(false);
+                    }}
+                    className="w-full text-left px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors flex flex-col gap-0.5 pointer-events-auto"
+                  >
+                    <span className="font-semibold text-slate-900 dark:text-slate-100">{p.name}</span>
+                    <span className="text-[10px] text-slate-500 font-mono flex items-center gap-2">
+                      <span>ID: {p.id}</span>
+                      <span>•</span>
+                      <span>DOB: {p.dob || "N/A"}</span>
+                      <span>•</span>
+                      <span className="capitalize">Gender: {p.gender || "N/A"}</span>
+                    </span>
+                  </button>
+                ))
+              ) : (
+                <div className="p-3 text-center text-xs text-slate-500 dark:text-slate-400">
+                  No patients found matching &quot;{searchQuery}&quot;
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden card-panel p-0">
@@ -919,6 +1153,271 @@ export function NewPatient() {
                   )}
                 </div>
 
+                {/* Gynecological & Obstetrical History (Female Patients Only) */}
+                {formData.gender === 'female' && (
+                  <div className="space-y-6 pt-6 border-t border-slate-100 dark:border-slate-800 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                    <div className="flex items-center gap-2">
+                      <Baby className="w-5 h-5 text-indigo-500" />
+                      <h4 className="text-md font-semibold text-slate-800 dark:text-slate-100">
+                        {isRTL ? "التاريخ السريري للقطاع النسائي والتوليد" : "Gynecological & Obstetrical History"}
+                      </h4>
+                    </div>
+                    <p className="text-xs text-indigo-600 dark:text-indigo-400 font-medium bg-indigo-50 dark:bg-indigo-950/20 px-3 py-1.5 rounded-lg border border-indigo-100/30 dark:border-indigo-900/20 inline-block">
+                      {isRTL ? "* يظهر هذا القسم فقط لأن جنس المريضة أنثى" : "* This section is visible because the selected patient is female."}
+                    </p>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* Gynecological History Card */}
+                      <div className="bg-slate-50 dark:bg-slate-950/20 p-5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-4 shadow-sm">
+                        <h5 className="text-sm font-semibold text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5 border-b border-indigo-100/50 dark:border-indigo-950/50 pb-2">
+                          <Activity className="w-4 h-4 text-indigo-500" />
+                          {isRTL ? "التاريخ النسائي (Gyn History)" : "Gynecological History"}
+                        </h5>
+
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-1.5">
+                            <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                              {isRTL ? "سن بدء الطمث (Menarche)" : "Age of Menarche (years)"}
+                            </label>
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="e.g. 12"
+                              value={formData.gynHistory?.menarcheAge || ""}
+                              onChange={(e) => updateGynField("menarcheAge", e.target.value)}
+                              className="w-full px-3 py-1.5 border border-slate-200 dark:border-slate-800 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-xs bg-white dark:bg-slate-950/50 text-slate-900 dark:text-slate-100"
+                            />
+                          </div>
+                          
+                          <div className="space-y-1.5">
+                            <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                              {isRTL ? "آخر دورة شهرية (LMP)" : "Last Menstrual Period (LMP)"}
+                            </label>
+                            <input
+                              type="date"
+                              value={formData.gynHistory?.lmp || ""}
+                              onChange={(e) => updateGynField("lmp", e.target.value)}
+                              className="w-full px-3 py-1.5 border border-slate-200 dark:border-slate-800 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-xs bg-white dark:bg-slate-950/50 text-slate-900 dark:text-slate-100"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-1.5">
+                            <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                              {isRTL ? "انتظام الدورة" : "Cycle Regularity"}
+                            </label>
+                            <select
+                              value={formData.gynHistory?.cycleRegularity || ""}
+                              onChange={(e) => updateGynField("cycleRegularity", e.target.value)}
+                              className="w-full px-3 py-1.5 border border-slate-200 dark:border-slate-800 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-xs bg-white dark:bg-slate-950/50 text-slate-900 dark:text-slate-100"
+                            >
+                              <option value="">Select</option>
+                              <option value="Regular">Regular</option>
+                              <option value="Irregular">Irregular</option>
+                              <option value="Amenorrhea">Amenorrhea</option>
+                              <option value="Menopause">Menopause</option>
+                            </select>
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                              {isRTL ? "طول الدورة (أيام)" : "Cycle Length (Days)"}
+                            </label>
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="e.g. 28"
+                              value={formData.gynHistory?.cycleLength || ""}
+                              onChange={(e) => updateGynField("cycleLength", e.target.value)}
+                              className="w-full px-3 py-1.5 border border-slate-200 dark:border-slate-800 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-xs bg-white dark:bg-slate-950/50 text-slate-900 dark:text-slate-100"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                            {isRTL ? "وسيلة منع الحمل المستخدمة" : "Active Contraception Method"}
+                          </label>
+                          <select
+                            value={formData.gynHistory?.contraception || ""}
+                            onChange={(e) => updateGynField("contraception", e.target.value)}
+                            className="w-full px-3 py-1.5 border border-slate-200 dark:border-slate-800 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-xs bg-white dark:bg-slate-950/50 text-slate-900 dark:text-slate-100"
+                          >
+                            <option value="">Select</option>
+                            <option value="None">None (Trying or not active)</option>
+                            <option value="OCP">Oral Contraceptive Pill (OCP)</option>
+                            <option value="IUD">Intrauterine Device (IUD)</option>
+                            <option value="Barrier">Barrier / Condoms</option>
+                            <option value="Implant">Subdermal Implant</option>
+                            <option value="Injection">Injection (e.g. Depo)</option>
+                            <option value="Tubal Ligation">Tubal Ligation</option>
+                            <option value="Other">Other Method</option>
+                          </select>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-3">
+                          <div className="space-y-1.5">
+                            <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                              {isRTL ? "مسحة عنق الرحم (Pap Smear)" : "Last Pap Smear Result"}
+                            </label>
+                            <select
+                              value={formData.gynHistory?.papSmear || ""}
+                              onChange={(e) => updateGynField("papSmear", e.target.value)}
+                              className="w-full px-3 py-1.5 border border-slate-200 dark:border-slate-800 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-xs bg-white dark:bg-slate-950/50 text-slate-900 dark:text-slate-100"
+                            >
+                              <option value="">Select</option>
+                              <option value="Normal">Normal</option>
+                              <option value="Abnormal">Abnormal</option>
+                              <option value="Inconclusive">Inconclusive</option>
+                              <option value="Never done">Never Done</option>
+                            </select>
+                          </div>
+                          
+                          <div className="space-y-1.5">
+                            <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                              {isRTL ? "ملاحظات مسحة عنق الرحم" : "Pap Smear Notes & Dates"}
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="e.g. Last pap was Jan 2025"
+                              value={formData.gynHistory?.papNotes || ""}
+                              onChange={(e) => updateGynField("papNotes", e.target.value)}
+                              className="w-full px-3 py-1.5 border border-slate-200 dark:border-slate-800 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-xs bg-white dark:bg-slate-950/50 text-slate-900 dark:text-slate-100"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Obstetrical History Card */}
+                      <div className="bg-slate-50 dark:bg-slate-950/20 p-5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-4 shadow-sm">
+                        <h5 className="text-sm font-semibold text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5 border-b border-indigo-100/50 dark:border-indigo-950/50 pb-2">
+                          <Baby className="w-4 h-4 text-indigo-500" />
+                          {isRTL ? "التاريخ التوليدي (Obs History - GTPAL)" : "Obstetrical History (GTPAL)"}
+                        </h5>
+
+                        <div className="grid grid-cols-6 gap-2 bg-white dark:bg-slate-950/30 p-3 rounded-lg border border-slate-200/50 dark:border-slate-800/50">
+                          <div className="text-center space-y-1 text-xs">
+                            <label className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 block" title="Gravidity (Total Pregnancies)">
+                              G
+                            </label>
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="0"
+                              value={formData.obsHistory?.gravidity || ""}
+                              onChange={(e) => updateObsField("gravidity", e.target.value)}
+                              className="w-full text-center px-1 py-1 border border-slate-200 dark:border-slate-800 rounded focus:ring-1 focus:ring-indigo-500 outline-none text-xs bg-slate-50 dark:bg-slate-950/20 text-slate-900 dark:text-slate-100"
+                            />
+                          </div>
+
+                          <div className="text-center space-y-1 text-xs">
+                            <label className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 block" title="Parity (Births > 20 weeks)">
+                              P
+                            </label>
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="0"
+                              value={formData.obsHistory?.parity || ""}
+                              onChange={(e) => updateObsField("parity", e.target.value)}
+                              className="w-full text-center px-1 py-1 border border-slate-200 dark:border-slate-800 rounded focus:ring-1 focus:ring-indigo-500 outline-none text-xs bg-slate-50 dark:bg-slate-950/20 text-slate-900 dark:text-slate-100"
+                            />
+                          </div>
+
+                          <div className="text-center space-y-1 text-xs">
+                            <label className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 block" title="Term Deliveries">
+                              T
+                            </label>
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="0"
+                              value={formData.obsHistory?.term || ""}
+                              onChange={(e) => updateObsField("term", e.target.value)}
+                              className="w-full text-center px-1 py-1 border border-slate-200 dark:border-slate-800 rounded focus:ring-1 focus:ring-indigo-500 outline-none text-xs bg-slate-50 dark:bg-slate-950/20 text-slate-900 dark:text-slate-100"
+                            />
+                          </div>
+
+                          <div className="text-center space-y-1 text-xs">
+                            <label className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 block" title="Preterm Deliveries">
+                              Pr
+                            </label>
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="0"
+                              value={formData.obsHistory?.preterm || ""}
+                              onChange={(e) => updateObsField("preterm", e.target.value)}
+                              className="w-full text-center px-1 py-1 border border-slate-200 dark:border-slate-800 rounded focus:ring-1 focus:ring-indigo-500 outline-none text-xs bg-slate-50 dark:bg-slate-950/20 text-slate-900 dark:text-slate-100 font-mono"
+                            />
+                          </div>
+
+                          <div className="text-center space-y-1 text-xs">
+                            <label className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 block" title="Abortions / Miscarriages">
+                              A
+                            </label>
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="0"
+                              value={formData.obsHistory?.abortions || ""}
+                              onChange={(e) => updateObsField("abortions", e.target.value)}
+                              className="w-full text-center px-1 py-1 border border-slate-200 dark:border-slate-800 rounded focus:ring-1 focus:ring-indigo-500 outline-none text-xs bg-slate-50 dark:bg-slate-950/20 text-slate-900 dark:text-slate-100"
+                            />
+                          </div>
+
+                          <div className="text-center space-y-1 text-xs">
+                            <label className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 block" title="Living Children">
+                              L
+                            </label>
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="0"
+                              value={formData.obsHistory?.living || ""}
+                              onChange={(e) => updateObsField("living", e.target.value)}
+                              className="w-full text-center px-1 py-1 border border-slate-200 dark:border-slate-800 rounded focus:ring-1 focus:ring-indigo-500 outline-none text-xs bg-slate-50 dark:bg-slate-950/20 text-slate-900 dark:text-slate-100"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                            {isRTL ? "طريقة الولادة المعتادة" : "Mode of Delivery"}
+                          </label>
+                          <select
+                            value={formData.obsHistory?.modeOfDelivery || ""}
+                            onChange={(e) => updateObsField("modeOfDelivery", e.target.value)}
+                            className="w-full px-3 py-1.5 border border-slate-200 dark:border-slate-800 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-xs bg-white dark:bg-slate-950/50 text-slate-900 dark:text-slate-100"
+                          >
+                            <option value="">Select</option>
+                            <option value="Vaginal">Normal Vaginal Delivery (NVD)</option>
+                            <option value="C-Section">Cesarean Section (C-Section)</option>
+                            <option value="Assisted">Assisted (Forceps / Vacuum)</option>
+                            <option value="VBAC">Vaginal Birth After Cesarean (VBAC)</option>
+                            <option value="Mixed">Mixed Modes (For previous multiple pregnancies)</option>
+                            <option value="N/A">Not Applicable</option>
+                          </select>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                            {isRTL ? "مضاعفات الحمل السابقة" : "Pregnancy / Delivery Complications"}
+                          </label>
+                          <textarea
+                            rows={3}
+                            placeholder="e.g. Gestational Diabetes, Preeclampsia, Postpartum Hemorrhage, or None"
+                            value={formData.obsHistory?.complicationNotes || ""}
+                            onChange={(e) => updateObsField("complicationNotes", e.target.value)}
+                            className="w-full px-3 py-1.5 border border-slate-200 dark:border-slate-800 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-xs bg-white dark:bg-slate-905 text-slate-900 dark:text-slate-100 resize-none"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Family Medical History */}
                 <div className="space-y-4 pt-4 border-t border-slate-100">
                   <h4 className="text-md font-semibold text-slate-800 flex items-center gap-2">
@@ -1170,8 +1669,23 @@ export function NewPatient() {
                 <div className="space-y-6">
                   <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 relative overflow-hidden">
                     <div className={cn("absolute top-4 text-center", isRTL ? "left-4" : "right-4")}>
-                      <QRCodeSVG value={formData.patientId} size={64} />
-                      <p className="text-[8px] font-mono mt-1 text-slate-400">{formData.patientId}</p>
+                      <QRCodeSVG value={JSON.stringify({
+                        id: formData.patientId,
+                        name: `${formData.firstName} ${formData.lastName}`,
+                        dob: formData.dob,
+                        gender: formData.gender,
+                        nationalId: formData.nationalId,
+                        bloodType: formData.bloodType,
+                        phone: formData.phone,
+                        email: formData.email,
+                        address: formData.address,
+                        emergencyName: formData.emergencyName,
+                        emergencyPhone: formData.emergencyPhone,
+                        allergies: formData.hasAllergies ? formData.allergies.map(a => a.name).join(", ") : "None",
+                        conditions: formData.hasConditions ? formData.conditions.join(", ") : "None",
+                        medications: formData.hasMedications ? formData.medications.map(m => m.name).join(", ") : "None"
+                      })} size={96} />
+                      <p className="text-[10px] font-mono mt-2 text-slate-400">{formData.patientId}</p>
                     </div>
                     <div className="flex items-center gap-4 mb-4">
                       <div className="w-16 h-16 rounded-lg bg-white border border-slate-200 overflow-hidden">
@@ -1252,6 +1766,56 @@ export function NewPatient() {
                         <p>{formData.familyHistory.filter(f => f.condition).map(f => `${f.relation}: ${f.condition}`).join(', ') || 'None'}</p>
                         {formData.familyHistoryText && <p className="mt-1 text-xs italic">{formData.familyHistoryText}</p>}
                       </div>
+                      
+                      {formData.gender === 'female' && (
+                        <div className="pt-2 border-t border-slate-200 mt-2 space-y-2">
+                          <p className="font-semibold text-indigo-600 flex items-center gap-1">
+                            <Baby className="w-4 h-4" /> Gynecological & Obstetrical History:
+                          </p>
+                          <div className="grid grid-cols-2 gap-2 pl-3 text-xs border-l-2 border-indigo-100">
+                            <div>
+                              <span className="text-slate-500 block">Menarche Age:</span>
+                              <span className="font-medium">{formData.gynHistory?.menarcheAge || 'N/A'} years</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-500 block">Last Menstrual Period:</span>
+                              <span className="font-medium">{formData.gynHistory?.lmp || 'N/A'}</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-500 block">Cycle Stability:</span>
+                              <span className="font-medium">{formData.gynHistory?.cycleRegularity || 'N/A'} {formData.gynHistory?.cycleLength ? `(${formData.gynHistory.cycleLength} days)` : ''}</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-500 block">Contraception:</span>
+                              <span className="font-medium">{formData.gynHistory?.contraception || 'N/A'}</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-500 block">Pap Smear Result:</span>
+                              <span className="font-medium">{formData.gynHistory?.papSmear || 'N/A'}</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-500 block">Pap Notes:</span>
+                              <span className="font-medium">{formData.gynHistory?.papNotes || 'N/A'}</span>
+                            </div>
+                          </div>
+                          <div className="pl-3 text-xs border-l-2 border-indigo-100 mt-2">
+                            <span className="text-slate-500 block">Pregnancy Formula (GTPAL):</span>
+                            <span className="font-bold tracking-widest text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
+                              G:{formData.obsHistory?.gravidity || 0} P:{formData.obsHistory?.parity || 0} T:{formData.obsHistory?.term || 0} Pr:{formData.obsHistory?.preterm || 0} A:{formData.obsHistory?.abortions || 0} L:{formData.obsHistory?.living || 0}
+                            </span>
+                          </div>
+                          {formData.obsHistory?.modeOfDelivery && (
+                            <div className="pl-3 text-xs border-l-2 border-indigo-100">
+                              <span className="text-slate-500">Mode of Delivery:</span> <span className="font-medium">{formData.obsHistory.modeOfDelivery}</span>
+                            </div>
+                          )}
+                          {formData.obsHistory?.complicationNotes && (
+                            <div className="pl-3 text-xs border-l-2 border-indigo-100">
+                              <span className="text-slate-500">Complications:</span> <span className="font-medium">{formData.obsHistory.complicationNotes}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -1273,23 +1837,27 @@ export function NewPatient() {
                   {t('back')}
                 </button>
                 <button 
-                    onClick={async () => {
-                      try {
-                        const now = Date.now();
-                        
-                        // Calculate age from DOB
-                        let calculatedAge = 0;
-                        if (formData.dob) {
-                          const birthDate = new Date(formData.dob);
-                          const today = new Date();
-                          calculatedAge = today.getFullYear() - birthDate.getFullYear();
-                          const m = today.getMonth() - birthDate.getMonth();
-                          if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
-                            calculatedAge--;
-                          }
+                  type="button"
+                  onClick={async (e) => {
+                    e.preventDefault();
+                    console.log("Submit Registration clicked");
+                    try {
+                      const now = Date.now();
+                      
+                      // Calculate age from DOB
+                      let calculatedAge = 0;
+                      if (formData.dob) {
+                        const birthDate = new Date(formData.dob);
+                        const today = new Date();
+                        calculatedAge = today.getFullYear() - birthDate.getFullYear();
+                        const m = today.getMonth() - birthDate.getMonth();
+                        if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+                          calculatedAge--;
                         }
+                      }
+                      console.log("Calculated age:", calculatedAge);
 
-                      await db.patients.add({
+                      const patientPayload = {
                         id: formData.patientId,
                         name: `${formData.firstName} ${formData.lastName}`,
                         firstName: formData.firstName,
@@ -1306,34 +1874,41 @@ export function NewPatient() {
                         insuranceProvider: formData.insuranceProvider,
                         policyNumber: formData.policyNumber,
                         groupNumber: formData.groupNumber,
-                        insuranceFront: formData.insuranceFront || undefined,
-                        insuranceBack: formData.insuranceBack || undefined,
+                        insuranceFront: formData.insuranceFront || null,
+                        insuranceBack: formData.insuranceBack || null,
                         emergencyName: formData.emergencyName,
                         emergencyPhone: formData.emergencyPhone,
                         emergencyRelationship: formData.emergencyRelation,
-                        hasAllergies: formData.hasAllergies || undefined,
+                        hasAllergies: formData.hasAllergies || null,
                         allergies: formData.allergies,
-                        hasConditions: formData.hasConditions || undefined,
+                        hasConditions: formData.hasConditions || null,
                         conditions: formData.conditions,
                         otherConditions: formData.otherConditions,
-                        hasMedications: formData.hasMedications || undefined,
+                        hasMedications: formData.hasMedications || null,
                         medications: formData.medications,
                         hasSurgeries: formData.surgeries ? 'yes' : 'no',
                         surgeries: formData.surgeries,
                         familyHistory: formData.familyHistory,
                         familyHistoryNotes: formData.familyHistoryText,
-                        photo: formData.photo || undefined,
-                        signature: formData.signature || undefined,
+                        photo: formData.photo || null,
+                        signature: formData.signature || null,
                         consentTreatment: formData.consentTreatment,
                         consentPrivacy: formData.consentPrivacy,
                         consentFinancial: formData.consentFinancial,
                         communication: formData.communication,
+                        gynHistory: formData.gynHistory,
+                        obsHistory: formData.obsHistory,
                         lastVisit: new Date().toISOString().split('T')[0],
                         status: 'Stable',
                         lastModified: now,
                         isDeleted: 0,
                         isSynced: 0
-                      });
+                      };
+                      
+                      console.log("Adding patient to Dexie:", patientPayload);
+
+                      await db.patients.add(patientPayload);
+                      console.log("Patient added successfully to Dexie");
                       
                       await addNotification({
                         title: "New Patient Registered",
@@ -1342,13 +1917,14 @@ export function NewPatient() {
                         category: "patient",
                         link: "/"
                       });
+                      console.log("Notification added");
                       
                       toast.success("Patient Registered Successfully!");
                       localStorage.removeItem('newPatientDraft');
                       navigate('/');
-                    } catch (error) {
+                    } catch (error: any) {
                       console.error("Failed to register patient:", error);
-                      toast.error("Failed to register patient. Please try again.");
+                      toast.error(`Failed to register patient: ${error?.message || "Unknown error"}`);
                     }
                   }}
                   className="bg-indigo-600 text-white px-8 py-2.5 rounded-lg font-bold hover:bg-indigo-700 transition-colors shadow-lg flex items-center gap-2 glow-indigo"

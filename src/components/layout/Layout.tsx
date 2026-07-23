@@ -1,7 +1,6 @@
 import { Outlet, useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
-import { PatientSelection } from "../PatientSelection";
 import { PatientContextBar } from "../PatientContextBar";
 import { usePatient } from "../../lib/PatientContext";
 import { cn } from "../../lib/utils";
@@ -13,17 +12,6 @@ export function Layout() {
   const isClinicalOverview = location.pathname === "/clinical-overview";
   const isSpecialRoute = isEncounterNote || isClinicalOverview;
 
-  const showPatientSelection = !isSpecialRoute && [
-    "/new-patient",
-    "/symptom-analysis",
-    "/physical-exam",
-    "/lab-requests",
-    "/final-diagnosis",
-    "/prescriptions",
-    "/pharmacies",
-    "/medical-records"
-  ].includes(location.pathname);
-
   return (
     <div className={cn(
       "flex h-screen w-full font-sans overflow-hidden transition-colors duration-200",
@@ -32,17 +20,18 @@ export function Layout() {
       <div className="no-print flex h-full">
         <Sidebar />
       </div>
-      <div className="flex flex-col flex-1 overflow-hidden">
-        <div className="no-print">
+      <div className="flex flex-col flex-1 overflow-hidden min-w-0">
+        <div className="no-print shrink-0">
           <Header />
-          {!isSpecialRoute && selectedPatient && <PatientContextBar />}
+          {!isSpecialRoute && <PatientContextBar />}
         </div>
         <main className={cn(
-          "flex-1 overflow-y-auto print:p-0 print:overflow-visible",
+          "flex-1 flex flex-col min-h-0 overflow-y-auto print:p-0 print:overflow-visible",
           isSpecialRoute ? "p-0" : "p-4 md:p-6"
         )}>
-          {showPatientSelection && <div className="no-print"><PatientSelection variant="compact" /></div>}
-          <Outlet />
+          <div className="flex-1 flex flex-col min-h-0">
+            <Outlet />
+          </div>
         </main>
       </div>
     </div>

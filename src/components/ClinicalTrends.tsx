@@ -91,28 +91,28 @@ export function ClinicalTrends({ events }: ClinicalTrendsProps) {
     const isAbnormal = idealRange && (latest < idealRange.min || latest > idealRange.max);
 
     return (
-      <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all group overflow-hidden">
+      <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all group overflow-hidden" role="figure" aria-label={`${title} trend chart`}>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <div className={cn("p-2 rounded-lg bg-opacity-10", color.replace('text-', 'bg-'))}>
-              <div className={cn("w-4 h-4", color)}>{icon}</div>
+              <div className={cn("w-4 h-4", color)} aria-hidden="true">{icon}</div>
             </div>
             <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{title}</h4>
           </div>
           <div className={cn("flex items-center gap-1 text-[10px] font-bold", trendColor)}>
-            <TrendIcon className="w-3 h-3" />
-            {Math.abs(Number(percentChange))}%
+            <TrendIcon className="w-3 h-3" aria-hidden="true" />
+            <span aria-label={`Percentage change: ${Math.abs(Number(percentChange))}%`}>{Math.abs(Number(percentChange))}%</span>
           </div>
         </div>
 
-        <div className="flex items-baseline gap-1 mb-4">
+        <div className="flex items-baseline gap-1 mb-4" aria-live="polite">
           <span className={cn("text-2xl font-bold", isAbnormal ? "text-rose-600" : "text-slate-900")}>
             {latest}
           </span>
           <span className="text-xs font-medium text-slate-400">{unit}</span>
         </div>
 
-        <div className="w-full min-w-0 h-16 w-full -mx-2">
+        <div className="w-full min-w-0 h-16 w-full -mx-2" role="img" aria-label={`Line chart showing ${title} trend over time`}>
           <ChartContainer>
 <ResponsiveContainer width="100%" height="100%">
             <LineChart data={data}>
@@ -128,7 +128,7 @@ export function ClinicalTrends({ events }: ClinicalTrendsProps) {
                 content={({ active, payload }) => {
                   if (active && payload && payload.length) {
                     return (
-                      <div className="bg-slate-900 text-white px-2 py-1 rounded text-[10px] font-bold shadow-xl border border-slate-800">
+                      <div className="bg-slate-900 text-white px-2 py-1 rounded text-[10px] font-bold shadow-xl border border-slate-800" aria-label={`Value: ${payload[0].value} ${unit}`}>
                         {payload[0].value} {unit}
                       </div>
                     );

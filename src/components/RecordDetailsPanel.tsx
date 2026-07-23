@@ -2,6 +2,8 @@ import { Calendar, Printer, CheckCircle2, Sparkles, RefreshCw, Zap, X, FlaskConi
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface RecordDetailsPanelProps {
   selectedRecord: any | null;
@@ -55,6 +57,51 @@ export function RecordDetailsPanel({
       </div>
     );
   }
+
+  const handleDownloadPdf = () => {
+    if (selectedRecord?.type !== 'Lab Result') {
+      toast.error('Only lab results can be downloaded as PDF reports.');
+      return;
+    }
+
+    const doc = new jsPDF();
+    doc.setFontSize(18);
+    doc.text(`Lab Report: ${selectedRecord.title}`, 14, 20);
+    doc.setFontSize(12);
+    doc.text(`Date: ${selectedRecord.date}`, 14, 30);
+    doc.text(`Provider: ${selectedRecord.provider}`, 14, 35);
+    
+    const tableData = selectedRecord.results.map((r: any) => [r.test, `${r.value} ${r.unit}`, r.range, r.status]);
+    
+    // Explicitly call autoTable and handle potential import issues
+    try {
+      if (typeof autoTable === 'function') {
+        autoTable(doc, {
+          head: [['Biomarker', 'Result', 'Ref Range', 'Status']],
+          body: tableData,
+          startY: 45,
+        });
+      } else if (typeof (doc as any).autoTable === 'function') {
+        (doc as any).autoTable({
+          head: [['Biomarker', 'Result', 'Ref Range', 'Status']],
+          body: tableData,
+          startY: 45,
+        });
+      } else {
+        throw new Error('autoTable plugin not found');
+      }
+    } catch (e) {
+      console.error('PDF Table generation failed:', e);
+      // Fallback: draw basic text if autoTable fails
+      doc.text('Biomarker | Result | Ref Range | Status', 14, 45);
+      tableData.forEach((row: any, i: number) => {
+        doc.text(row.join(' | '), 14, 52 + (i * 7));
+      });
+    }
+    
+    doc.save(`LabReport_${selectedRecord.title}_${selectedRecord.date}.pdf`);
+    toast.success('Lab report downloaded.');
+  };
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden h-full">
@@ -361,7 +408,10 @@ export function RecordDetailsPanel({
                 </table>
               </div>
               <div className="flex gap-2 pt-2">
-                <button className="flex-1 py-3 bg-white border border-slate-200 rounded-2xl text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all flex items-center justify-center gap-2 shadow-sm">
+                <button 
+                  onClick={handleDownloadPdf}
+                  className="flex-1 py-3 bg-white border border-slate-200 rounded-2xl text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all flex items-center justify-center gap-2 shadow-sm"
+                >
                    <FileText className="w-3.5 h-3.5" /> Full Lab Report (PDF)
                 </button>
                 {!isTimelineMode && (

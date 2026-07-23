@@ -128,25 +128,46 @@ export function getPrescriptionNotesPrompt(prescription: {
   medications: string[];
   diagnosis: string;
   patientName: string;
+  patientAge?: string;
+  patientGender?: string;
+  patientAllergies?: string;
+  patientChronicConditions?: string;
+  vitals?: string;
 }) {
-  return `As a senior clinical analyst, generate a structured clinical summary and treatment plan for the following prescription.
-      
-      Patient: ${prescription.patientName}
-      Diagnosis: ${prescription.diagnosis}
-      Medications: ${prescription.medications.join(", ")}
-      
-      Rules:
-      1. Use the following EXACT structure:
-         GOALS: [Briefly state therapy aims]
-         REGIMEN: [Specific instructions for this medication list]
-         FOLLOW-UP: [Timeline and targets, e.g., "Repeat serum IgE in 4 weeks"]
-         MONITORING/SAFETY: [Specific labs like LFTs, ECGs, or red flags, e.g., "Baseline LFTs for Itraconazole"]
-      
-      2. Content must be high-density and clinically actionable.
-      3. For specific drugs known to require monitoring (e.g., Itraconazole -> LFTs, Statins -> LFTs, ACEi -> Renal/K+), include those specific monitoring instructions.
-      4. Keep the total length concise (max 150 words).
-      
-      Return ONLY the structured text.`;
+  return `Review the patient's data, and prescribed medications.
+
+Patient Name: ${prescription.patientName}
+Patient Age: ${prescription.patientAge || "Not specified"}
+Patient Gender: ${prescription.patientGender || "Not specified"}
+Diagnosis: ${prescription.diagnosis}
+Allergies: ${prescription.patientAllergies || "None documented"}
+Chronic Conditions / Comorbidities: ${prescription.patientChronicConditions || "None documented"}
+Vitals: ${prescription.vitals || "Not documented"}
+
+Prescribed Medications:
+${prescription.medications.join("\n")}
+
+Generate ONLY the required laboratory monitoring tests for the prescribed medications.
+
+For each laboratory test provide:
+1. Test Name
+2. Monitoring Frequency
+3. Brief Clinical Reason (1 sentence maximum)
+
+Format will be as the following example:
+1. HbA1c: Baseline and every 3–6 months to assess glycemic control.
+2. Renal Function (eGFR/Serum Creatinine): Baseline and annually; monitor kidney function and determine whether medication dose adjustment is required.
+3. Vitamin B12: Annually during long-term therapy to monitor for medication-associated deficiency.
+
+Rules:
+- Include only clinically indicated laboratory tests.
+- Consolidate duplicate monitoring requirements from multiple medications.
+- Consider patient-specific factors such as age, renal impairment, hepatic impairment, diabetes, heart failure, pregnancy, and other comorbidities.
+- Prioritize the most important monitoring tests.
+- Do not provide medication recommendations.
+- Do not provide treatment plans.
+- Do not explain your reasoning.
+- Return ONLY the monitoring list in the format shown above, with no extra text.`;
 }
 
 /**
@@ -189,7 +210,7 @@ export function getDifferentialDiagnosisPrompt(
             "condition": "Name of condition",
             "probability": number (0-100),
             "icd10": "ICD-10 code",
-            "reasoning": "Detailed clinical reasoning integrating symptoms, labs, trends, and medication potential impacts...",
+            "reasoning": "Detailed clinical reasoning. You MUST include a section titled '### Summary of Clinical Approach' containing a Markdown table with columns: | Step | Rational | Severity |.",
             "recommendations": ["Next step 1", "Next step 2"],
             "red_flags": ["Critical warning 1"],
             "references": [

@@ -2,86 +2,185 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ===============================================================
-    // Assumed Data Model
-    // ===============================================================
-    //
-    // Collection: users
-    // Document ID: {userId}
-    // Fields:
-    //   - uid: string (required)
-    //   - email: string (required, email format)
-    //   - displayName: string (optional)
-    //   - photoURL: string (optional, uri format)
-    //   - role: string (required, 'admin' or 'user')
-    //   - createdAt: timestamp (required)
-    //
-    // Collection: saved_knowledge
-    // Document ID: {knowledgeId}
-    // Fields:
-    //   - userId: string (required)
-    //   - type: string (required, 'drug', 'protocol', 'lab', 'encyclopedia')
-    //   - title: string (required)
-    //   - data: map (required, the AI-generated content)
-    //   - createdAt: timestamp (required)
-    //
-    // ===============================================================
-
-    // ===============================================================
-    // Helper Functions
-    // ===============================================================
-    
-    function isAuthenticated() {
+    // Helper functions
+    function isSignedIn() {
       return request.auth != null;
     }
 
+    function canRead() {
+      return isSignedIn();
+    }
+
     function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+      return isSignedIn() && request.auth.uid == userId;
     }
 
-    function isDocOwner() {
-      return isAuthenticated() && request.auth.uid == resource.data.userId;
+    // Retrieve clinicId from the user's document in the users collection
+    function getClinicId() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId;
     }
 
-    function isAdmin() {
-      return isAuthenticated() && 
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-         (request.auth.token.email == "ahmedfathyalihussien@gmail.com" && request.auth.token.email_verified == true));
+    // Verify if clinicId matches between incoming/existing resource and the user's assigned clinic
+    function hasClinicAccess(data) {
+      return isSignedIn() && (data.clinicId == getClinicId());
     }
 
-    function isValidUser(data) {
-      return data.keys().hasAll(['uid', 'email', 'role', 'createdAt']) &&
-             data.uid is string &&
-             data.email is string &&
-             data.role in ['admin', 'user'] &&
-             data.createdAt is timestamp;
-    }
-
-    function isValidSavedKnowledge(data) {
-      return data.keys().hasAll(['userId', 'type', 'title', 'data', 'createdAt']) &&
-             data.userId == request.auth.uid &&
-             data.type in ['drug', 'protocol', 'lab', 'encyclopedia'] &&
-             data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
-             data.data is map &&
-             data.createdAt is timestamp;
-    }
-
-    // ===============================================================
-    // Rules
-    // ===============================================================
-
+    // Rules for individual collections
     match /users/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
-      allow create: if isAuthenticated() && isValidUser(request.resource.data) && (isOwner(userId) || isAdmin());
-      allow update: if isAuthenticated() && isValidUser(request.resource.data) && (isOwner(userId) || isAdmin()) && 
-                    request.resource.data.role == resource.data.role; // Prevent self-role escalation
+      allow read: if isSignedIn() && (request.auth.uid == userId || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == resource.data.clinicId);
+      allow create: if isSignedIn() && (request.auth.uid == userId);
+      allow update: if isSignedIn() && (request.auth.uid == userId);
+      allow delete: if isSignedIn() && (request.auth.uid == userId);
     }
 
-    match /saved_knowledge/{knowledgeId} {
-      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isAuthenticated() && isValidSavedKnowledge(request.resource.data);
-      allow update: if isAuthenticated() && isValidSavedKnowledge(request.resource.data) && (resource.data.userId == request.auth.uid || isAdmin());
-      allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+    match /clinics/{id} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && (request.resource.data.ownerUid == request.auth.uid);
+      allow update, delete: if isSignedIn() && (resource.data.ownerUid == request.auth.uid);
+    }
+
+    match /patients/{id} {
+      allow read: if hasClinicAccess(resource.data);
+      allow create: if hasClinicAccess(request.resource.data);
+      allow update: if hasClinicAccess(resource.data) && hasClinicAccess(request.resource.data);
+      allow delete: if hasClinicAccess(resource.data);
+    }
+
+    match /appointments/{id} {
+      allow read: if hasClinicAccess(resource.data);
+      allow create: if hasClinicAccess(request.resource.data);
+      allow update: if hasClinicAccess(resource.data) && hasClinicAccess(request.resource.data);
+      allow delete: if hasClinicAccess(resource.data);
+    }
+
+    match /prescriptions/{id} {
+      allow read: if hasClinicAccess(resource.data);
+      allow create: if hasClinicAccess(request.resource.data);
+      allow update: if hasClinicAccess(resource.data) && hasClinicAccess(request.resource.data);
+      allow delete: if hasClinicAccess(resource.data);
+    }
+
+    match /prescription_items/{id} {
+      allow read: if hasClinicAccess(resource.data);
+      allow create: if hasClinicAccess(request.resource.data);
+      allow update: if hasClinicAccess(resource.data) && hasClinicAccess(request.resource.data);
+      allow delete: if hasClinicAccess(resource.data);
+    }
+
+    match /diagnoses/{id} {
+      allow read: if hasClinicAccess(resource.data);
+      allow create: if hasClinicAccess(request.resource.data);
+      allow update: if hasClinicAccess(resource.data) && hasClinicAccess(request.resource.data);
+      allow delete: if hasClinicAccess(resource.data);
+    }
+
+    match /lab_results/{id} {
+      allow read: if hasClinicAccess(resource.data);
+      allow create: if hasClinicAccess(request.resource.data);
+      allow update: if hasClinicAccess(resource.data) && hasClinicAccess(request.resource.data);
+      allow delete: if hasClinicAccess(resource.data);
+    }
+
+    match /lab_requests/{id} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /vitals/{id} {
+      allow read: if hasClinicAccess(resource.data);
+      allow create: if hasClinicAccess(request.resource.data);
+      allow update: if hasClinicAccess(resource.data) && hasClinicAccess(request.resource.data);
+      allow delete: if hasClinicAccess(resource.data);
+    }
+
+    match /physical_exams/{id} {
+      allow read: if hasClinicAccess(resource.data);
+      allow create: if hasClinicAccess(request.resource.data);
+      allow update: if hasClinicAccess(resource.data) && hasClinicAccess(request.resource.data);
+      allow delete: if hasClinicAccess(resource.data);
+    }
+
+    match /pharmacy_inventory/{id} {
+      allow read: if hasClinicAccess(resource.data);
+      allow create: if hasClinicAccess(request.resource.data);
+      allow update: if hasClinicAccess(resource.data) && hasClinicAccess(request.resource.data);
+      allow delete: if hasClinicAccess(resource.data);
+    }
+
+    match /pharmacy_batches/{id} {
+      allow read: if hasClinicAccess(resource.data);
+      allow create: if hasClinicAccess(request.resource.data);
+      allow update: if hasClinicAccess(resource.data) && hasClinicAccess(request.resource.data);
+      allow delete: if hasClinicAccess(resource.data);
+    }
+
+    match /notifications/{id} {
+      allow read: if hasClinicAccess(resource.data);
+      allow create: if hasClinicAccess(request.resource.data);
+      allow update: if hasClinicAccess(resource.data) && hasClinicAccess(request.resource.data);
+      allow delete: if hasClinicAccess(resource.data);
+    }
+
+    match /templates/{id} {
+      allow read: if hasClinicAccess(resource.data);
+      allow create: if hasClinicAccess(request.resource.data);
+      allow update: if hasClinicAccess(resource.data) && hasClinicAccess(request.resource.data);
+      allow delete: if hasClinicAccess(resource.data);
+    }
+
+    match /tasks/{id} {
+      allow read: if hasClinicAccess(resource.data);
+      allow create: if hasClinicAccess(request.resource.data);
+      allow update: if hasClinicAccess(resource.data) && hasClinicAccess(request.resource.data);
+      allow delete: if hasClinicAccess(resource.data);
+    }
+
+    match /mental_health_assessments/{id} {
+      allow read: if hasClinicAccess(resource.data);
+      allow create: if hasClinicAccess(request.resource.data);
+      allow update: if hasClinicAccess(resource.data) && hasClinicAccess(request.resource.data);
+      allow delete: if hasClinicAccess(resource.data);
+    }
+
+    match /obstetric_records/{id} {
+      allow read: if hasClinicAccess(resource.data);
+      allow create: if hasClinicAccess(request.resource.data);
+      allow update: if hasClinicAccess(resource.data) && hasClinicAccess(request.resource.data);
+      allow delete: if hasClinicAccess(resource.data);
+    }
+
+    match /internal_messages/{id} {
+      allow read: if hasClinicAccess(resource.data);
+      allow create: if hasClinicAccess(request.resource.data);
+      allow update: if hasClinicAccess(resource.data) && hasClinicAccess(request.resource.data);
+      allow delete: if hasClinicAccess(resource.data);
+    }
+
+    match /clinical_drafts/{id} {
+      allow read: if hasClinicAccess(resource.data);
+      allow create: if hasClinicAccess(request.resource.data);
+      allow update: if hasClinicAccess(resource.data) && hasClinicAccess(request.resource.data);
+      allow delete: if hasClinicAccess(resource.data);
+    }
+
+    match /patient_notes/{id} {
+      allow read: if hasClinicAccess(resource.data);
+      allow create: if hasClinicAccess(request.resource.data);
+      allow update: if hasClinicAccess(resource.data) && hasClinicAccess(request.resource.data);
+      allow delete: if hasClinicAccess(resource.data);
+    }
+
+    match /chat_messages/{id} {
+      allow read: if hasClinicAccess(resource.data);
+      allow create: if hasClinicAccess(request.resource.data);
+      allow update: if hasClinicAccess(resource.data) && hasClinicAccess(request.resource.data);
+      allow delete: if hasClinicAccess(resource.data);
+    }
+
+    match /saved_knowledge/{id} {
+      allow read: if hasClinicAccess(resource.data);
+      allow create: if hasClinicAccess(request.resource.data);
+      allow update: if hasClinicAccess(resource.data) && hasClinicAccess(request.resource.data);
+      allow delete: if hasClinicAccess(resource.data);
     }
   }
 }

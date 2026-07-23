@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { X, User, Info, Sparkles, Repeat, Bell } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { db } from "@/lib/db";
@@ -7,14 +7,38 @@ import { toast } from "sonner";
 interface NewAppointmentModalProps {
   isOpen: boolean;
   onClose: () => void;
+  initialPatientName?: string;
+  suggestedSlotsOverride?: { label: string; date: string; time: string }[];
 }
 
-export function NewAppointmentModal({ isOpen, onClose }: NewAppointmentModalProps) {
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
+export function NewAppointmentModal({ isOpen, onClose, initialPatientName, suggestedSlotsOverride }: NewAppointmentModalProps) {
+  const [firstName, setFirstName] = useState(initialPatientName?.split(" ")[0] || "");
+  const [lastName, setLastName] = useState(initialPatientName?.split(" ").slice(1).join(" ") || "");
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
-  const [type, setType] = useState("checkup");
+
+  useEffect(() => {
+    if (isOpen && suggestedSlotsOverride && suggestedSlotsOverride.length === 1) {
+      setDate(suggestedSlotsOverride[0].date);
+      
+      const timeStr = suggestedSlotsOverride[0].time;
+      let formattedTime = timeStr;
+      if (timeStr.includes("AM") || timeStr.includes("PM")) {
+        const [timePart, ampm] = timeStr.split(" ");
+        let [hours, minutes] = timePart.split(":");
+        let h = parseInt(hours);
+        if (ampm === "PM" && h < 12) h += 12;
+        if (ampm === "AM" && h === 12) h = 0;
+        formattedTime = `${String(h).padStart(2, '0')}:${minutes}`;
+      }
+      setTime(formattedTime);
+    } else if (isOpen) {
+      setFirstName(initialPatientName?.split(" ")[0] || "");
+      setLastName(initialPatientName?.split(" ").slice(1).join(" ") || "");
+    }
+  }, [isOpen, suggestedSlotsOverride, initialPatientName]);
+
+  const [type, setType] = useState("Check-up");
   const [doctor, setDoctor] = useState("");
   const [notes, setNotes] = useState("");
   const [isRecurring, setIsRecurring] = useState(false);
@@ -32,10 +56,23 @@ export function NewAppointmentModal({ isOpen, onClose }: NewAppointmentModalProp
 
     setIsSubmitting(true);
     try {
+      const formattedTimeStr = formatTime(time);
+      const normalizeTime = (t: string) => t.replace(/^0/, '');
+      const existingAppts = await db.appointments
+        .where('isDeleted').equals(0)
+        .filter(app => app.date === date && normalizeTime(app.time || '') === normalizeTime(formattedTimeStr))
+        .toArray();
+
+      if (existingAppts.length > 0) {
+        toast.error("An appointment is already scheduled for this time slot");
+        setIsSubmitting(false);
+        return;
+      }
+
       await db.appointments.add({
         patientName: `${firstName} ${lastName}`,
         date,
-        time: formatTime(time),
+        time: formattedTimeStr,
         type: formatType(type),
         status: "scheduled",
         doctor: doctor === "dr-ahmed" ? "Dr. Ahmed Fathy" : "Dr. Sarah Johnson",
@@ -58,14 +95,15 @@ export function NewAppointmentModal({ isOpen, onClose }: NewAppointmentModalProp
     const h = parseInt(hours);
     const ampm = h >= 12 ? 'PM' : 'AM';
     const h12 = h % 12 || 12;
-    return `${h12}:${minutes} ${ampm}`;
+    const h12String = String(h12).padStart(2, '0');
+    return `${h12String}:${minutes} ${ampm}`;
   };
 
   const formatType = (t: string) => {
     return t.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join('-');
   };
 
-  const suggestedSlots = [
+  const suggestedSlots = suggestedSlotsOverride || [
     { label: "Today, 2:00 PM", date: new Date().toISOString().split('T')[0], time: "14:00" },
     { label: "Tomorrow, 10:00 AM", date: new Date(Date.now() + 86400000).toISOString().split('T')[0], time: "10:00" },
     { label: "Tomorrow, 3:30 PM", date: new Date(Date.now() + 86400000).toISOString().split('T')[0], time: "15:30" },
@@ -139,7 +177,17 @@ export function NewAppointmentModal({ isOpen, onClose }: NewAppointmentModalProp
                       type="button"
                       onClick={() => {
                         setDate(slot.date);
-                        setTime(slot.time);
+                        
+                        let formattedTime = slot.time;
+                        if (formattedTime.includes("AM") || formattedTime.includes("PM")) {
+                          const [timePart, ampm] = formattedTime.split(" ");
+                          let [hours, minutes] = timePart.split(":");
+                          let h = parseInt(hours);
+                          if (ampm === "PM" && h < 12) h += 12;
+                          if (ampm === "AM" && h === 12) h = 0;
+                          formattedTime = `${String(h).padStart(2, '0')}:${minutes}`;
+                        }
+                        setTime(formattedTime);
                       }}
                       className="px-3 py-1.5 text-xs font-medium bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-500/30 text-indigo-700 dark:text-indigo-400 rounded-full hover:bg-indigo-50 dark:hover:bg-indigo-500/10 transition-colors"
                     >
@@ -174,11 +222,11 @@ export function NewAppointmentModal({ isOpen, onClose }: NewAppointmentModalProp
                   onChange={(e) => setType(e.target.value)}
                   className="w-full px-3 py-2 bg-white dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-colors"
                 >
-                  <option value="checkup" className="dark:bg-slate-900">Check-up</option>
-                  <option value="follow-up" className="dark:bg-slate-900">Follow-up</option>
-                  <option value="consultation" className="dark:bg-slate-900">Consultation</option>
-                  <option value="emergency" className="dark:bg-slate-900">Emergency</option>
-                  <option value="surgery" className="dark:bg-slate-900">Surgery</option>
+                  <option value="Check-up" className="dark:bg-slate-900">Check-up</option>
+                  <option value="Follow-up" className="dark:bg-slate-900">Follow-up</option>
+                  <option value="Consultation" className="dark:bg-slate-900">Consultation</option>
+                  <option value="Emergency" className="dark:bg-slate-900">Emergency</option>
+                  <option value="Surgery" className="dark:bg-slate-900">Surgery</option>
                 </select>
               </div>
 

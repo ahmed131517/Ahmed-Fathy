@@ -43,5 +43,24 @@ export interface Patient {
   familyHistory?: string[];
   familyHistoryNotes?: string;
   otherConditions?: string;
+  gynHistory?: {
+    menarcheAge?: string;
+    lmp?: string;
+    cycleRegularity?: string;
+    cycleLength?: string;
+    contraception?: string;
+    papSmear?: string;
+    papNotes?: string;
+  };
+  obsHistory?: {
+    gravidity?: string;
+    parity?: string;
+    term?: string;
+    preterm?: string;
+    abortions?: string;
+    living?: string;
+    modeOfDelivery?: string;
+    complicationNotes?: string;
+  };
   labResults?: { labName: string; value: number; unit: string; range: 'Normal' | 'High' | 'Low' }[];
 }

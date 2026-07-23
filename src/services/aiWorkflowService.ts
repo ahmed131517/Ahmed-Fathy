@@ -31,7 +31,7 @@ export async function clinicalAIRequest(
   
   // Use the proxy endpoint for all clinical AI requests to ensure consistency
   // and avoid complex client-side SDK logic for multiple providers
-  const response = await fetch("/api/ai/chat", {
+  const response = await fetch("/api/clinical-workflow/analyze", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -39,7 +39,7 @@ export async function clinicalAIRequest(
     body: JSON.stringify({
       messages: messages.filter(m => m.role !== 'system'), // Extract system separately
       provider: provider,
-      model: provider === 'openrouter' ? activeSettings.openRouterModel : 'gemini-1.5-flash',
+      model: provider === 'openrouter' ? activeSettings.openRouterModel : 'gemini-3.1-flash-lite',
       apiKey: provider === 'openrouter' ? activeSettings.openRouterApiKey : undefined,
       systemInstruction: systemInstruction || messages.find(m => m.role === 'system')?.content
     }),

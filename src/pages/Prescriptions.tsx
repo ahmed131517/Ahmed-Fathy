@@ -13,9 +13,11 @@ import {
   Shuffle, BrainCircuit, Zap, ArrowRight, Plus
 } from "lucide-react";
 import { WeightCalculatorModal } from "@/components/prescriptions/WeightCalculatorModal";
+import { DosageFormBadge } from "@/components/prescriptions/DosageFormBadge";
+import { FavoritesQuickBar } from "@/components/prescriptions/FavoritesQuickBar";
 import { cn } from "@/lib/utils";
 import { Textarea } from "@/components/ui/textarea";
-import { medicationsDatabase } from "@/data/medications";
+import { medicationsDatabase, enrichDrug, deriveMedicationDefaults } from "@/data/medications";
 import { prescriptionTemplates } from "@/data/templates";
 import { PrescriptionPreview } from "@/components/PrescriptionPreview";
 import { usePatient } from "@/lib/PatientContext";
@@ -31,7 +33,302 @@ import { db } from "@/lib/db";
 import { useLiveQuery } from "dexie-react-hooks";
 
 // Flatten medications for "All" category
-const allMedications = Object.values(medicationsDatabase).flat();
+const allMedications = Object.values(medicationsDatabase).flat().map(m => enrichDrug(m));
+
+export function formatPositiveFindings(data: any): string {
+  if (!data) return "";
+  
+  const findings: string[] = [];
+  
+  // Helper to parse arrays/objects
+  const parseValue = (val: any): string => {
+    if (val === null || val === undefined || val === '') return '';
+    if (Array.isArray(val)) {
+      const filtered = val.filter(v => v && !['normal', 'wnl', 'none', 'clear', 'appropriate', 'euthymic', 'linear', 'good'].includes(String(v).toLowerCase().trim()));
+      return filtered.join(', ');
+    }
+    if (typeof val === 'object') {
+      return Object.entries(val)
+        .filter(([_, v]) => v === true || (typeof v === 'object' && (v as any).value))
+        .map(([k, v]) => {
+          if (typeof v === 'object') {
+            const innerVal = (v as any).value;
+            if (innerVal && !['normal', 'wnl', 'none', 'clear', 'appropriate', 'euthymic', 'linear', 'good'].includes(String(innerVal).toLowerCase().trim())) {
+              return `${k}: ${innerVal}`;
+            }
+            return '';
+          }
+          return k;
+        })
+        .filter(Boolean)
+        .join(', ');
+    }
+    const valStr = String(val);
+    if (['normal', 'wnl', 'none', 'clear', 'appropriate', 'euthymic', 'linear', 'good'].includes(valStr.toLowerCase().trim())) return '';
+    return valStr;
+  };
+
+  // 1. Symptoms if any
+  if (data.symptoms && Array.isArray(data.symptoms) && data.symptoms.length > 0) {
+    findings.push(`Symptoms: ${data.symptoms.join(', ')}`);
+  }
+
+  // 2. General Findings
+  if (data.generalFindings) {
+    const gf = data.generalFindings;
+    const general = [];
+    if (gf.appearance && !['normal', 'wnl', 'well', 'no acute distress', 'nad'].includes(String(gf.appearance).toLowerCase().trim())) {
+      general.push(`Appearance: ${gf.appearance}`);
+    }
+    if (gf.mentalStatus && !['normal', 'wnl', 'alert', 'alert & oriented'].includes(String(gf.mentalStatus).toLowerCase().trim())) {
+      general.push(`Mental Status: ${gf.mentalStatus}`);
+    }
+    if (gf.detailed) {
+      Object.entries(gf.detailed).forEach(([key, val]) => {
+        const parsed = parseValue(val);
+        if (parsed) general.push(`${key}: ${parsed}`);
+      });
+    }
+    if (gf.notes) general.push(gf.notes);
+    if (general.length > 0) {
+      findings.push(`General: ${general.join('; ')}`);
+    }
+  }
+
+  // 3. HEENT
+  if (data.heentFindings) {
+    const hf = data.heentFindings;
+    const heent: string[] = [];
+    if (hf.heentState) {
+      Object.entries(hf.heentState).forEach(([part, stateVal]: [string, any]) => {
+        if (stateVal?.status === 'abnormal' && stateVal.findings) {
+          const partFindings = Object.entries(stateVal.findings)
+            .filter(([_, fData]: [string, any]) => fData?.present)
+            .map(([fKey, fData]: [string, any]) => {
+              return fData.description ? `${fKey} (${fData.description})` : fKey;
+            });
+          if (partFindings.length > 0) {
+            heent.push(`${part}: ${partFindings.join(', ')}`);
+          }
+        }
+      });
+    }
+    if (hf.notes) heent.push(hf.notes);
+    if (heent.length > 0) findings.push(`HEENT: ${heent.join('; ')}`);
+  }
+
+  // 4. Special Senses (SSE)
+  if (data.sseFindings) {
+    const sse = data.sseFindings;
+    const sseList = [];
+    if (sse.fundoscopy && sse.fundoscopy.length > 0) {
+      const parsed = parseValue(sse.fundoscopy);
+      if (parsed) sseList.push(`Fundoscopy: ${parsed}`);
+    }
+    if (sse.otoscopy && sse.otoscopy.length > 0) {
+      const parsed = parseValue(sse.otoscopy);
+      if (parsed) sseList.push(`Otoscopy: ${parsed}`);
+    }
+    if (sse.weber && !['midline', 'normal'].includes(String(sse.weber).toLowerCase().trim())) {
+      sseList.push(`Weber: ${sse.weber}`);
+    }
+    if (sse.rinneR && !['positive', 'normal'].includes(String(sse.rinneR).toLowerCase().trim())) {
+      sseList.push(`Rinne Right: ${sse.rinneR}`);
+    }
+    if (sse.rinneL && !['positive', 'normal'].includes(String(sse.rinneL).toLowerCase().trim())) {
+      sseList.push(`Rinne Left: ${sse.rinneL}`);
+    }
+    if (sse.notes) sseList.push(sse.notes);
+    if (sseList.length > 0) findings.push(`SSE: ${sseList.join('; ')}`);
+  }
+
+  // 5. Respiratory
+  if (data.respiratoryFindings) {
+    const rf = data.respiratoryFindings;
+    const resp = [];
+    if (rf.lungs && rf.lungs.length > 0) {
+      const parsed = parseValue(rf.lungs);
+      if (parsed) resp.push(`Lungs: ${parsed}`);
+    }
+    if (rf.regionalFindings) {
+      Object.entries(rf.regionalFindings).forEach(([region, vals]: [string, any]) => {
+        const regionFindings = [];
+        const insp = parseValue(vals.inspection);
+        const palp = parseValue(vals.palpationPercussion);
+        const aus = parseValue(vals.auscultation);
+        
+        if (insp) regionFindings.push(`Insp: ${insp}`);
+        if (palp) regionFindings.push(`Palp/Perc: ${palp}`);
+        if (aus) regionFindings.push(`Aus: ${aus}`);
+        if (vals.description) regionFindings.push(vals.description);
+        
+        if (regionFindings.length > 0) resp.push(`${region}: [${regionFindings.join(' | ')}]`);
+      });
+    }
+    if (rf.notes) resp.push(rf.notes);
+    if (resp.length > 0) findings.push(`Respiratory: ${resp.join('; ')}`);
+  }
+
+  // 6. Cardiovascular
+  if (data.cardiovascularFindings) {
+    const cf = data.cardiovascularFindings;
+    const cv = [];
+    if (cf.heart && cf.heart.length > 0) {
+      const parsed = parseValue(cf.heart);
+      if (parsed) cv.push(`Heart: ${parsed}`);
+    }
+    if (cf.pulses && !['normal', 'wnl'].includes(String(cf.pulses).toLowerCase().trim())) {
+      cv.push(`Pulses: ${cf.pulses}`);
+    }
+    if (cf.notes) cv.push(cf.notes);
+    if (cv.length > 0) findings.push(`Cardiovascular: ${cv.join('; ')}`);
+  }
+
+  // 7. Gastrointestinal
+  if (data.gastrointestinalFindings) {
+    const gif = data.gastrointestinalFindings;
+    const gi = [];
+    if (gif.abdomen && gif.abdomen.length > 0) {
+      const parsed = parseValue(gif.abdomen);
+      if (parsed) gi.push(`Abdomen: ${parsed}`);
+    }
+    if (gif.notes) gi.push(gif.notes);
+    if (gi.length > 0) findings.push(`Gastrointestinal: ${gi.join('; ')}`);
+  }
+
+  // 8. Musculoskeletal
+  if (data.musculoskeletalFindings) {
+    const mf = data.musculoskeletalFindings;
+    const msk = [];
+    if (mf.galsScreen === 'abnormal') msk.push('abnormal GALS screen');
+    if (mf.gaitPosture && mf.gaitPosture.length > 0) {
+      const parsed = parseValue(mf.gaitPosture);
+      if (parsed) msk.push(`Gait/Posture: ${parsed}`);
+    }
+    if (mf.mrcUpper && parseInt(mf.mrcUpper) < 5) msk.push(`Upper Power: ${mf.mrcUpper}/5`);
+    if (mf.mrcLower && parseInt(mf.mrcLower) < 5) msk.push(`Lower Power: ${mf.mrcLower}/5`);
+    if (mf.jointExams && mf.jointExams.length > 0) {
+      const nonNormalJoints = mf.jointExams
+        .filter((j: any) => j && (j.rom === 'abnormal' || j.stability === 'abnormal'))
+        .map((j: any) => `${j.joint} (${j.rom === 'abnormal' ? 'restricted ROM' : ''}${j.rom === 'abnormal' && j.stability === 'abnormal' ? ', ' : ''}${j.stability === 'abnormal' ? 'unstable' : ''})`);
+      if (nonNormalJoints.length > 0) msk.push(`Joints: ${nonNormalJoints.join(', ')}`);
+    }
+    if (mf.notes) msk.push(mf.notes);
+    if (msk.length > 0) findings.push(`Musculoskeletal: ${msk.join('; ')}`);
+  }
+
+  // 9. Neurological
+  if (data.neurologicalFindings) {
+    const nf = data.neurologicalFindings;
+    const neuro = [];
+    if (nf.mental && nf.mental.length > 0) {
+      const parsed = parseValue(nf.mental);
+      if (parsed) neuro.push(`Mental status: ${parsed}`);
+    }
+    if (nf.motorBulk && !['normal', 'wnl'].includes(String(nf.motorBulk).toLowerCase().trim())) {
+      neuro.push(`Bulk: ${nf.motorBulk}`);
+    }
+    if (nf.motorTone && !['normal', 'wnl'].includes(String(nf.motorTone).toLowerCase().trim())) {
+      neuro.push(`Tone: ${nf.motorTone}`);
+    }
+    if (nf.plantarResponse && !['normal', 'wnl', 'flexor'].includes(String(nf.plantarResponse).toLowerCase().trim())) {
+      neuro.push(`Plantar: ${nf.plantarResponse}`);
+    }
+    if (nf.clonus && !['normal', 'wnl', 'absent'].includes(String(nf.clonus).toLowerCase().trim())) {
+      neuro.push(`Clonus: ${nf.clonus}`);
+    }
+    if (nf.notes) neuro.push(nf.notes);
+    if (neuro.length > 0) findings.push(`Neurological: ${neuro.join('; ')}`);
+  }
+
+  // 10. Skin
+  if (data.skinFindings) {
+    const sf = data.skinFindings;
+    const skin = [];
+    if (sf.color && !['normal', 'wnl', 'healthy'].includes(String(sf.color).toLowerCase().trim())) {
+      skin.push(`Color: ${sf.color}`);
+    }
+    if (sf.temp && !['normal', 'wnl', 'warm'].includes(String(sf.temp).toLowerCase().trim())) {
+      skin.push(`Temp: ${sf.temp}`);
+    }
+    if (sf.lesions && sf.lesions.length > 0) {
+      const parsed = parseValue(sf.lesions);
+      if (parsed) skin.push(`Lesions: ${parsed}`);
+    }
+    if (sf.notes) skin.push(sf.notes);
+    if (skin.length > 0) findings.push(`Skin: ${skin.join('; ')}`);
+  }
+
+  // 11. Psychiatric
+  if (data.psychiatricFindings) {
+    const pf = data.psychiatricFindings;
+    const psych = [];
+    if (pf.mood && !['euthymic', 'normal', 'wnl'].includes(String(pf.mood).toLowerCase().trim())) {
+      psych.push(`Mood: ${pf.mood}`);
+    }
+    if (pf.affect && !['appropriate', 'normal', 'wnl'].includes(String(pf.affect).toLowerCase().trim())) {
+      psych.push(`Affect: ${pf.affect}`);
+    }
+    if (pf.thoughtProcess && !['linear', 'normal', 'wnl'].includes(String(pf.thoughtProcess).toLowerCase().trim())) {
+      psych.push(`Thought process: ${pf.thoughtProcess}`);
+    }
+    if (pf.insight && !['good', 'normal', 'wnl'].includes(String(pf.insight).toLowerCase().trim())) {
+      psych.push(`Insight: ${pf.insight}`);
+    }
+    if (pf.judgment && !['good', 'normal', 'wnl'].includes(String(pf.judgment).toLowerCase().trim())) {
+      psych.push(`Judgment: ${pf.judgment}`);
+    }
+    if (pf.notes) psych.push(pf.notes);
+    if (psych.length > 0) findings.push(`Psychiatric: ${psych.join('; ')}`);
+  }
+
+  // 12. Geriatric
+  if (data.geriatricFindings) {
+    const gef = data.geriatricFindings;
+    const geri = [];
+    if (gef.frailty && !['robust', 'normal', 'wnl'].includes(String(gef.frailty).toLowerCase().trim())) {
+      geri.push(`Frailty: ${gef.frailty}`);
+    }
+    if (gef.gait && !['normal', 'wnl'].includes(String(gef.gait).toLowerCase().trim())) {
+      geri.push(`Gait: ${gef.gait}`);
+    }
+    if (gef.notes) geri.push(gef.notes);
+    if (geri.length > 0) findings.push(`Geriatric: ${geri.join('; ')}`);
+  }
+
+  return findings.length > 0 ? findings.join(' | ') : 'No positive/abnormal findings.';
+}
+
+function parseClinicalNotes(notes: string) {
+  const labs: string[] = [];
+  const followUp: string[] = [];
+
+  if (!notes) return { labs, followUp };
+
+  const lines = notes.split('\n');
+  for (let line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    const cleanLine = trimmed.replace(/\*/g, '').trim();
+
+    // Check if it's a list item starting with a digit like "1." or "1-" or "1) " or a bullet like "-", "•", "*"
+    if (/^\d+\s*[.)-]?\s*/.test(cleanLine) || /^[-•*]/.test(cleanLine)) {
+      const content = cleanLine.replace(/^\d+\s*[.)-]?\s*/, '').replace(/^[-•*]\s*/, '').trim();
+      if (content) {
+        labs.push(content);
+      }
+    } else {
+      // If it doesn't start with a digit/bullet but is non-empty, include it as a lab line unless it looks like general instruction/header
+      if (cleanLine.length > 3 && !cleanLine.toLowerCase().includes("rules:") && !cleanLine.toLowerCase().includes("format:")) {
+        labs.push(cleanLine);
+      }
+    }
+  }
+
+  return { labs, followUp };
+}
+
 
 export function Prescriptions() {
   const { settings: aiSettings } = useAISettings();
@@ -63,6 +360,7 @@ export function Prescriptions() {
   // State for new prescription being built
   const [currentPrescription, setCurrentPrescription] = useState<any[]>([]);
   const [prescriptionNotes, setPrescriptionNotes] = useState("");
+  const [auditedLabSuggestions, setAuditedLabSuggestions] = useState<string[] | undefined>(undefined);
   const [refills, setRefills] = useState("0");
   const [vitals, setVitals] = useState({
     bp: "",
@@ -116,20 +414,89 @@ export function Prescriptions() {
           .equals(selectedPatient.id)
           .reverse()
           .first();
-          
+
+        // Fetch latest physical exam to retrieve RBS and positive findings (O/E)
+        const latestExam = await db.physical_exams
+          .where('patientId')
+          .equals(selectedPatient.id)
+          .reverse()
+          .first();
+
+        let bpVal = "";
+        let pVal = "";
+        let tempVal = "";
+        let rrVal = "";
+        let sao2Val = "";
+        let weightVal = "";
+        let coVal = "";
+        let rbsVal = "";
+        let oeVal = "";
+
         if (latestVitals) {
+          bpVal = latestVitals.bp_systolic && latestVitals.bp_diastolic 
+            ? `${latestVitals.bp_systolic}/${latestVitals.bp_diastolic}` 
+            : "";
+          pVal = latestVitals.hr?.toString() || "";
+          tempVal = latestVitals.temp?.toString() || "";
+          rrVal = latestVitals.rr?.toString() || "";
+          sao2Val = latestVitals.spo2 ? `${latestVitals.spo2}%` : "";
+          weightVal = latestVitals.weight?.toString() || "";
+          coVal = latestVitals.notes || "";
+        }
+
+        if (latestExam && latestExam.data) {
+          const examData = latestExam.data;
+          
+          if (examData.vitals?.rbs) {
+            rbsVal = examData.vitals.rbs;
+          }
+          
+          oeVal = formatPositiveFindings(examData);
+
+          if (!bpVal && examData.vitals?.bpSystolic && examData.vitals?.bpDiastolic) {
+            bpVal = `${examData.vitals.bpSystolic}/${examData.vitals.bpDiastolic}`;
+          }
+          if (!pVal && examData.vitals?.pulse) {
+            pVal = examData.vitals.pulse;
+          }
+          if (!tempVal && examData.vitals?.temperature) {
+            tempVal = examData.vitals.temperature;
+          }
+          if (!rrVal && examData.vitals?.respiratoryRate) {
+            rrVal = examData.vitals.respiratoryRate;
+          }
+          if (!sao2Val && examData.vitals?.oxygenSaturation) {
+            sao2Val = examData.vitals.oxygenSaturation ? `${examData.vitals.oxygenSaturation}%` : "";
+          }
+          if (!weightVal && examData.vitals?.weight) {
+            weightVal = examData.vitals.weight;
+          }
+        }
+
+        if (latestVitals || latestExam) {
           setVitals({
-            bp: latestVitals.bp_systolic && latestVitals.bp_diastolic 
-              ? `${latestVitals.bp_systolic}/${latestVitals.bp_diastolic}` 
-              : "",
-            p: latestVitals.hr?.toString() || "",
-            temp: latestVitals.temp?.toString() || "",
-            rr: latestVitals.rr?.toString() || "",
-            sao2: latestVitals.spo2 ? `${latestVitals.spo2}%` : "",
-            weight: latestVitals.weight?.toString() || "",
-            rbs: "", // RBS might not be in the standard vitals table if it's a separate field
+            bp: bpVal,
+            p: pVal,
+            temp: tempVal,
+            rr: rrVal,
+            sao2: sao2Val,
+            weight: weightVal,
+            rbs: rbsVal,
+            oe: oeVal,
+            co: coVal,
+            ph: ""
+          });
+        } else {
+          setVitals({
+            bp: "",
+            p: "",
+            temp: "",
+            rr: "",
+            sao2: "",
+            weight: "",
+            rbs: "",
             oe: "",
-            co: latestVitals.notes || "",
+            co: "",
             ph: ""
           });
         }
@@ -261,9 +628,19 @@ export function Prescriptions() {
       setCurrentPrescription(location.state.items);
       if (location.state?.audited) {
         toast.success("Prescription audited and approved.");
+        if (location.state.labSuggestions && Array.isArray(location.state.labSuggestions)) {
+          setAuditedLabSuggestions(location.state.labSuggestions);
+        }
       }
     }
   }, [location.state]);
+
+  // Reset suggestions when the prescription is modified manually
+  useEffect(() => {
+    if (location.state?.items !== currentPrescription) {
+      setAuditedLabSuggestions(undefined);
+    }
+  }, [currentPrescription]);
 
   // Modals and UI states
   const [selectedMedForForms, setSelectedMedForForms] = useState<any | null>(null);
@@ -308,15 +685,29 @@ export function Prescriptions() {
     setIsDiscovering(true);
     try {
       const prompt = `You are a medical AI. The user is searching for a medication named "${searchQuery}".
-Provide details about this medication in JSON format.
+Provide comprehensive details about this medication in JSON format. Use sources like OpenFDA, DailyMed, RxNorm, and an Egyptian drug database for local trade names if applicable.
 If it is a valid medication, return:
 {
   "isValid": true,
   "generic_name": "Generic Name",
-  "drug_class": "Drug Class (e.g., Antibiotic, Analgesic)",
-  "atc_code": "ATC Code (if known, else Unknown)",
+  "drug_class": "Drug Class",
+  "atc_code": "ATC Code",
   "brands": ["Brand 1", "Brand 2"],
-  "side_effects": ["Side effect 1", "Side effect 2"]
+  "mechanism_of_action": "Mechanism of Action",
+  "adult_dose": "Adult Dose",
+  "pediatric_dose": "Pediatric Dose",
+  "renal_dose": "Renal Dose",
+  "hepatic_dose": "Hepatic Dose",
+  "pregnancy_category": "Pregnancy Category",
+  "lactation": "Lactation information",
+  "food_interactions": ["Interaction 1"],
+  "monitoring_parameters": ["Parameter 1"],
+  "lab_tests": ["Lab test 1"],
+  "storage": "Storage info",
+  "patient_counseling": ["Counseling point 1"],
+  "references": ["Ref 1", "Ref 2"],
+  "side_effects": ["Side effect 1"],
+  "contraindications": ["Contraindication 1"]
 }
 If it is not a valid medication, return:
 {
@@ -333,7 +724,21 @@ If it is not a valid medication, return:
           drug_class: data.drug_class,
           atc_code: data.atc_code,
           brands: data.brands,
-          side_effects: data.side_effects
+          mechanism_of_action: data.mechanism_of_action,
+          adult_dose: data.adult_dose,
+          pediatric_dose: data.pediatric_dose,
+          renal_dose: data.renal_dose,
+          hepatic_dose: data.hepatic_dose,
+          pregnancy_category: data.pregnancy_category,
+          lactation: data.lactation,
+          food_interactions: data.food_interactions,
+          monitoring_parameters: data.monitoring_parameters,
+          lab_tests: data.lab_tests,
+          storage: data.storage,
+          patient_counseling: data.patient_counseling,
+          references: data.references,
+          side_effects: data.side_effects,
+          contraindications: data.contraindications
         });
         toast.success(`${data.generic_name} discovered and added to database!`);
         // Trigger a re-search
@@ -464,58 +869,46 @@ If it is not a valid medication, return:
     });
   }, [selectedCategory, searchQuery, dbMeds]);
 
-  const handleMedicationSelect = async (med: any) => {
+    const handleMedicationSelect = async (med: any) => {
     if (med.id && typeof med.id === 'number') {
-      // It's a DB med
       try {
         const details = await medicationService.getMedicationDetails(med.id);
-        // Map DB details to the format expected by the UI
-        const mappedMed = {
+        const mappedMed = enrichDrug({
+          ...details,
           id: details.id,
           name: details.generic_name,
-          contraindications: details.contraindications,
-          sideEffects: details.sideEffects,
-          interactions: details.interactions,
-          forms: details.brands.map(b => ({ id: `brand_${b.id}`, name: b.brand_name }))
-        };
-        // If no brands, check strengths or just use generic
-        if (mappedMed.forms.length === 0) {
-          mappedMed.forms = [{ id: `generic_${details.id}`, name: "Generic" }];
-        }
+          generic_name: details.generic_name,
+          forms: details.brands && details.brands.length > 0 
+            ? details.brands.map(b => ({ id: `brand_${b.id}`, name: b.brand_name }))
+            : [{ id: `generic_${details.id}`, name: "Generic Form" }]
+        });
         setSelectedMedForForms(mappedMed);
       } catch (error) {
-        console.error("Failed to get med details", error);
-        toast.error("Failed to load medication details");
+        setSelectedMedForForms(enrichDrug(med));
       }
     } else {
-      // It's a mock med
-      setSelectedMedForForms(med);
+      setSelectedMedForForms(enrichDrug(med));
     }
   };
 
-  const handleAddMedication = (medName: string, form: any) => {
+  const handleAddMedication = (medName: string, form: any, fullMedDetails?: any) => {
     const isCustom = typeof form !== 'object' || form === null;
-    const formName = isCustom ? form : form.name;
+    const formName = isCustom ? (typeof form === 'string' ? form : 'Tablet') : (form.name || 'Tablet');
+    const medDetails = fullMedDetails || selectedMedForForms || {};
+
+    const defaults = deriveMedicationDefaults(medName, form, medDetails);
+
     const newItem = {
       id: "item_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9),
       medication: medName,
       form: formName,
-      concentration: isCustom ? form : (form.concentration || formName),
-      dosage: isCustom ? "" : (form.dosage || ""),
-      frequency: isCustom ? "" : (form.frequency || ""),
-      duration: isCustom ? "" : (form.duration || ""),
-      instructions: isCustom ? "" : (form.instructions || "")
+      concentration: (!isCustom && form.concentration) ? form.concentration : defaults.concentration,
+      dosage: (!isCustom && form.dosage) ? form.dosage : defaults.dosage,
+      frequency: (!isCustom && form.frequency) ? form.frequency : defaults.frequency,
+      duration: (!isCustom && form.duration) ? form.duration : defaults.duration,
+      instructions: (!isCustom && form.instructions) ? form.instructions : defaults.instructions
     };
 
-    // If form is an object and contains properties, use them (like when adding from custom modal)
-    if (!isCustom) {
-      if (form.concentration) newItem.concentration = form.concentration;
-      if (form.dosage) newItem.dosage = form.dosage;
-      if (form.frequency) newItem.frequency = form.frequency;
-      if (form.duration) newItem.duration = form.duration;
-      if (form.instructions) newItem.instructions = form.instructions;
-    }
-    
     const updatedPrescription = [...currentPrescription, newItem];
     setCurrentPrescription(updatedPrescription);
     setSelectedMedForForms(null);
@@ -569,9 +962,14 @@ If it is not a valid medication, return:
     setIsGeneratingNotes(true);
     try {
       const prompt = getPrescriptionNotesPrompt({
-        medications: currentPrescription.map(i => i.medication),
+        medications: currentPrescription.map(i => `${i.medication} (${i.concentration || ''} ${i.form || ''} ${i.dosage || ''} ${i.frequency || ''})`),
         diagnosis: confirmedDiagnosis || "Not provided",
-        patientName: selectedPatient?.name || "Patient"
+        patientName: selectedPatient?.name || "Patient",
+        patientAge: selectedPatient?.age ? String(selectedPatient.age) : "Not specified",
+        patientGender: selectedPatient?.gender || "Not specified",
+        patientAllergies: selectedPatient?.allergies?.map((a: any) => a.name).join(", ") || "None reported",
+        patientChronicConditions: selectedPatient?.chronicConditions?.join(", ") || "None documented",
+        vitals: `BP: ${vitals.bp}, HR/Pulse: ${vitals.p}, Temp: ${vitals.temp}, Weight: ${vitals.weight}`
       });
 
       const responseText = await clinicalAIRequest(
@@ -888,7 +1286,7 @@ If it is not a valid medication, return:
   };
 
   return (
-    <div className="space-y-6 h-full flex flex-col">
+    <div className="space-y-6 h-full flex flex-col overflow-y-auto custom-scrollbar pb-6 pr-2">
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold text-slate-900">Medications</h2>
@@ -1019,16 +1417,19 @@ If it is not a valid medication, return:
         </div>
       </div>
 
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0">
+      {/* Favorite Medications Quick-Bar directly below toolbar header */}
+      <FavoritesQuickBar onSelectMedication={handleAddMedication} />
+
+      <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Side: Medication Catalog & Vitals */}
-        <div className="lg:col-span-4 flex flex-col gap-4 min-h-0">
+        <div className="lg:col-span-4 flex flex-col gap-4 min-h-[500px] lg:min-h-0">
           {/* Vitals Section */}
 
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col flex-1 overflow-hidden">
-            <div className="p-4 border-b border-slate-200">
-              <div className="flex justify-between items-center mb-3">
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col flex-1 overflow-hidden min-h-0">
+            <div className="p-4 border-b border-slate-200 space-y-3">
+              <div className="flex justify-between items-center">
                 <h3 className="font-semibold text-slate-800 flex items-center gap-2">
-                  <Search className="w-4 h-4 text-slate-500" /> Medications
+                  <Search className="w-4 h-4 text-slate-500" /> All Medications Catalog
                 </h3>
                 <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200">
                    <button 
@@ -1051,6 +1452,7 @@ If it is not a valid medication, return:
                    </button>
                 </div>
               </div>
+
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input 
@@ -1174,7 +1576,10 @@ If it is not a valid medication, return:
                             : "bg-white border-slate-100 hover:border-slate-300 hover:bg-slate-50"
                         )}
                       >
-                        <p className="font-medium text-sm">{getMedicationDisplay(med.name || med.generic_name)}</p>
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="font-medium text-sm">{getMedicationDisplay(med.name || med.generic_name)}</p>
+                          <DosageFormBadge form={med.dosage_form || (med.forms?.[0]?.name) || 'Tablet'} size="xs" />
+                        </div>
                         {(matchedSideEffect || matchedInteraction) && (
                           <div className="mt-1 text-[10px] text-slate-500">
                             {matchedSideEffect && <p>Matches side effect: <span className="font-medium text-indigo-600">{matchedSideEffect}</span></p>}
@@ -1223,10 +1628,67 @@ If it is not a valid medication, return:
                 </button>
               </div>
               
-              <div className="p-3 border-b border-slate-100 bg-slate-50 space-y-3">
-                {selectedMedForForms.contraindications && (
+              <div className="p-3 border-b border-slate-100 bg-slate-50 space-y-3 max-h-[400px] overflow-y-auto">
+                {/* Badges */}
+                <div className="flex flex-wrap gap-1 text-[10px]">
+                  {selectedMedForForms.drug_class && (
+                    <span className="px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded font-semibold">
+                      Class: {selectedMedForForms.drug_class}
+                    </span>
+                  )}
+                  {selectedMedForForms.route && (
+                    <span className="px-2 py-0.5 bg-slate-200 text-slate-800 rounded font-medium">
+                      Route: {selectedMedForForms.route}
+                    </span>
+                  )}
+                  {selectedMedForForms.strength && (
+                    <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded font-medium">
+                      Strength: {selectedMedForForms.strength}
+                    </span>
+                  )}
+                  {selectedMedForForms.dosage_form && (
+                    <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded font-medium">
+                      Form: {selectedMedForForms.dosage_form}
+                    </span>
+                  )}
+                </div>
+
+                {/* Egyptian Brands */}
+                {selectedMedForForms.brand_names_egypt && Array.isArray(selectedMedForForms.brand_names_egypt) && selectedMedForForms.brand_names_egypt.length > 0 && (
                   <div>
-                    <h5 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1">
+                    <h5 className="text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">🇪🇬 Brand Names (Egypt)</h5>
+                    <div className="flex flex-wrap gap-1">
+                      {selectedMedForForms.brand_names_egypt.map((b: any, i: number) => (
+                        <span key={i} className="px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded text-[10px] font-medium">
+                          {typeof b === 'string' ? b : b?.brand_name || b?.name || String(b)}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Mechanism of Action */}
+                {selectedMedForForms.mechanism_of_action && (
+                  <div>
+                    <h5 className="text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-0.5">Mechanism of Action</h5>
+                    <p className="text-xs text-slate-600 leading-relaxed">{selectedMedForForms.mechanism_of_action}</p>
+                  </div>
+                )}
+
+                {/* Indications */}
+                {selectedMedForForms.indications && Array.isArray(selectedMedForForms.indications) && selectedMedForForms.indications.length > 0 && (
+                  <div>
+                    <h5 className="text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">Indications</h5>
+                    <ul className="text-xs text-slate-600 list-disc list-inside space-y-0.5">
+                      {selectedMedForForms.indications.map((ind: string, i: number) => <li key={i}>{ind}</li>)}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Contraindications */}
+                {selectedMedForForms.contraindications && Array.isArray(selectedMedForForms.contraindications) && selectedMedForForms.contraindications.length > 0 && (
+                  <div>
+                    <h5 className="text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1 flex items-center gap-1">
                       <AlertCircle className="w-3 h-3 text-red-500" /> Contraindications
                     </h5>
                     <div className="flex flex-wrap gap-1">
@@ -1238,18 +1700,112 @@ If it is not a valid medication, return:
                     </div>
                   </div>
                 )}
-                
-                {selectedMedForForms.sideEffects && Array.isArray(selectedMedForForms.sideEffects) && (
+
+                {/* Dosing Guidelines */}
+                <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200 text-xs">
+                  {selectedMedForForms.adult_dose && (
+                    <div>
+                      <span className="font-semibold text-slate-700 block text-[10px] uppercase">Adult Dose</span>
+                      <span className="text-slate-600 text-[11px]">{selectedMedForForms.adult_dose}</span>
+                    </div>
+                  )}
+                  {selectedMedForForms.pediatric_dose && (
+                    <div>
+                      <span className="font-semibold text-slate-700 block text-[10px] uppercase">Pediatric Dose</span>
+                      <span className="text-slate-600 text-[11px]">{selectedMedForForms.pediatric_dose}</span>
+                    </div>
+                  )}
+                  {selectedMedForForms.renal_dose && (
+                    <div>
+                      <span className="font-semibold text-slate-700 block text-[10px] uppercase">Renal Dose</span>
+                      <span className="text-slate-600 text-[11px]">{selectedMedForForms.renal_dose}</span>
+                    </div>
+                  )}
+                  {selectedMedForForms.hepatic_dose && (
+                    <div>
+                      <span className="font-semibold text-slate-700 block text-[10px] uppercase">Hepatic Dose</span>
+                      <span className="text-slate-600 text-[11px]">{selectedMedForForms.hepatic_dose}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Pregnancy & Lactation */}
+                {(selectedMedForForms.pregnancy_category || selectedMedForForms.lactation) && (
+                  <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200 text-xs">
+                    {selectedMedForForms.pregnancy_category && (
+                      <div>
+                        <span className="font-semibold text-slate-700 block text-[10px] uppercase">Pregnancy Category</span>
+                        <span className="text-slate-600 text-[11px]">{selectedMedForForms.pregnancy_category}</span>
+                      </div>
+                    )}
+                    {selectedMedForForms.lactation && (
+                      <div>
+                        <span className="font-semibold text-slate-700 block text-[10px] uppercase">Lactation</span>
+                        <span className="text-slate-600 text-[11px]">{selectedMedForForms.lactation}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Side Effects & Interactions */}
+                {selectedMedForForms.sideEffects && Array.isArray(selectedMedForForms.sideEffects) && selectedMedForForms.sideEffects.length > 0 && (
                   <div>
-                    <h5 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Common Side Effects</h5>
+                    <h5 className="text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">Side Effects</h5>
                     <p className="text-xs text-slate-600">{selectedMedForForms.sideEffects.join(", ")}</p>
                   </div>
                 )}
 
-                {selectedMedForForms.interactions && Array.isArray(selectedMedForForms.interactions) && (
+                {selectedMedForForms.interactions && Array.isArray(selectedMedForForms.interactions) && selectedMedForForms.interactions.length > 0 && (
                   <div>
-                    <h5 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Key Interactions</h5>
+                    <h5 className="text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">Drug Interactions</h5>
                     <p className="text-xs text-slate-600">{selectedMedForForms.interactions.join(", ")}</p>
+                  </div>
+                )}
+
+                {selectedMedForForms.food_interactions && Array.isArray(selectedMedForForms.food_interactions) && selectedMedForForms.food_interactions.length > 0 && (
+                  <div>
+                    <h5 className="text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">Food Interactions</h5>
+                    <p className="text-xs text-slate-600">{selectedMedForForms.food_interactions.join(", ")}</p>
+                  </div>
+                )}
+
+                {/* Monitoring & Labs */}
+                {selectedMedForForms.monitoring_parameters && Array.isArray(selectedMedForForms.monitoring_parameters) && selectedMedForForms.monitoring_parameters.length > 0 && (
+                  <div>
+                    <h5 className="text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">Monitoring Parameters</h5>
+                    <p className="text-xs text-slate-600">{selectedMedForForms.monitoring_parameters.join(", ")}</p>
+                  </div>
+                )}
+
+                {selectedMedForForms.lab_tests && Array.isArray(selectedMedForForms.lab_tests) && selectedMedForForms.lab_tests.length > 0 && (
+                  <div>
+                    <h5 className="text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">Lab Tests</h5>
+                    <p className="text-xs text-slate-600">{selectedMedForForms.lab_tests.join(", ")}</p>
+                  </div>
+                )}
+
+                {selectedMedForForms.storage && (
+                  <div>
+                    <h5 className="text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-0.5">Storage</h5>
+                    <p className="text-xs text-slate-600">{selectedMedForForms.storage}</p>
+                  </div>
+                )}
+
+                {/* Patient Counseling */}
+                {selectedMedForForms.patient_counseling && Array.isArray(selectedMedForForms.patient_counseling) && selectedMedForForms.patient_counseling.length > 0 && (
+                  <div>
+                    <h5 className="text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">Patient Counseling</h5>
+                    <ul className="text-xs text-slate-600 list-disc list-inside space-y-0.5">
+                      {selectedMedForForms.patient_counseling.map((c: string, i: number) => <li key={i}>{c}</li>)}
+                    </ul>
+                  </div>
+                )}
+
+                {/* References */}
+                {selectedMedForForms.references && Array.isArray(selectedMedForForms.references) && selectedMedForForms.references.length > 0 && (
+                  <div>
+                    <h5 className="text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">References</h5>
+                    <p className="text-[10px] text-slate-500 italic">{selectedMedForForms.references.join(" • ")}</p>
                   </div>
                 )}
               </div>
@@ -1259,12 +1815,14 @@ If it is not a valid medication, return:
                 {selectedMedForForms.forms.map((form: any) => (
                   <button
                     key={form.id}
-                    onClick={() => handleAddMedication(selectedMedForForms.name, form)}
-                    className="w-full text-left p-3 bg-white border border-slate-200 rounded-lg hover:border-indigo-500 hover:shadow-sm transition-all flex justify-between items-center group"
+                    onClick={() => handleAddMedication(selectedMedForForms.name, form, selectedMedForForms)}
+                    className="w-full text-left p-3 bg-white border border-slate-200 rounded-lg hover:border-indigo-500 hover:shadow-sm transition-all flex justify-between items-center group gap-2"
                   >
-                    <span className="text-sm font-medium text-slate-700 group-hover:text-indigo-700">{form.name}</span>
+                    <div className="flex items-center gap-2">
+                      <DosageFormBadge form={form.name} size="sm" />
+                    </div>
                     {form.minDose && (
-                      <div className="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded border border-slate-200">
+                      <div className="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded border border-slate-200 shrink-0">
                         <div className="w-1.5 h-1.5 rounded-full bg-indigo-400"></div>
                         <span className="text-[10px] font-semibold text-slate-600">
                           {form.minDose} - {form.maxDose}
@@ -1435,9 +1993,7 @@ If it is not a valid medication, return:
                     <div key={item.id} className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow hover:border-indigo-200 group">
                       <div className="p-4 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
                         <div className="flex items-center gap-3">
-                          <span className="bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
-                            {item.form}
-                          </span>
+                          <DosageFormBadge form={item.form} size="md" />
                           <h4 className="font-bold text-lg text-slate-900 m-0">{getMedicationDisplay(item.medication)}</h4>
                         </div>
                         <button 
@@ -1610,22 +2166,22 @@ If it is not a valid medication, return:
         </div>
       </div>
       </>
-      ) : (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-slate-200">
+      ) : activeTab === 'active' ? (
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col flex-1 min-h-0">
+          <div className="p-6 border-b border-slate-200 shrink-0">
             <div>
               <h3 className="text-lg font-bold text-slate-900">Active Medications</h3>
               <p className="text-sm text-slate-500">Manage current patient medications</p>
             </div>
           </div>
-          <div className="p-6">
+          <div className="p-6 overflow-y-auto flex-1 custom-scrollbar max-h-[60vh]">
             {patientMedications.length === 0 ? (
               <div className="text-center py-12 text-slate-500">
                 <ShoppingCart className="w-12 h-12 text-slate-300 mx-auto mb-4" />
                 <p>No active medications found for this patient.</p>
               </div>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-4 pr-2">
                 {patientMedications.map(med => (
                   <div key={med.id} className="border border-slate-200 rounded-xl p-4 flex items-center justify-between bg-slate-50">
                     <div>
@@ -1694,7 +2250,7 @@ If it is not a valid medication, return:
             )}
           </div>
         </div>
-      )}
+      ) : null}
 
       {/* Modals */}
       <WeightCalculatorModal 
@@ -1958,7 +2514,9 @@ If it is not a valid medication, return:
                     frequency: item.frequency,
                     duration: item.duration,
                     instructions: item.instructions
-                  }))
+                  })),
+                  requiredLabMonitoring: auditedLabSuggestions || (parseClinicalNotes(prescriptionNotes).labs.length > 0 ? parseClinicalNotes(prescriptionNotes).labs : undefined),
+                  followUpSchedule: parseClinicalNotes(prescriptionNotes).followUp.length > 0 ? parseClinicalNotes(prescriptionNotes).followUp : undefined
                 }} />
               </div>
             </div>

@@ -11,6 +11,9 @@ interface SettingsState {
   practiceZip: string;
   practicePhone: string;
   practiceLogo: string;
+  practiceLogoShape: 'circle' | 'square' | 'rounded' | 'none';
+  practiceLogoSize: number;
+  practiceLogoPosition: 'left' | 'center' | 'right';
   patientIdPrefix: string;
   
   // Prescription
@@ -107,6 +110,9 @@ const defaultSettings: SettingsState = {
   practiceZip: "12345",
   practicePhone: "(555) 123-4567",
   practiceLogo: "",
+  practiceLogoShape: "circle",
+  practiceLogoSize: 96,
+  practiceLogoPosition: "center",
   patientIdPrefix: "PAT",
   
   doctorName: "DR. AHMED FATHY ALI",

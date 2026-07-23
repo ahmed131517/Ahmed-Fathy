@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { getPatientStatusTags, getStatusTagClass, getCriticalFinding } from '../utils/patientUtils';
 import { usePatient } from '../lib/PatientContext';
 import { cn } from '../lib/utils';
 import { Printer, FileText, Activity, Pill, FlaskConical, Sparkles, Loader2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { clinicalAIRequest } from "@/services/aiWorkflowService";
 import { useAISettings } from "@/lib/AISettingsContext";
 
@@ -22,7 +24,8 @@ export function PatientReport() {
     if (!selectedPatient) return;
     setLoadingSummary(true);
     try {
-      const prompt = `Summarize this patient data: ${JSON.stringify(selectedPatient)}`;
+      const prompt = `Summarize this patient data: ${JSON.stringify(selectedPatient)}. 
+      Include a section "### Summary of Clinical Approach" organized in a Markdown table with columns: | Category | Finding | Clinical Significance |.`;
       const systemInstruction = "You are a senior clinical analyst. Provide a professional, concise medical summary of the patient data provided. Focus on key trends and urgent issues. Format as professional clinical notes.";
       
       const responseText = await clinicalAIRequest(
@@ -75,8 +78,29 @@ export function PatientReport() {
         </div>
         <div>
           <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-2">Clinical Context</h2>
-          <p className="text-slate-600">MRN: {selectedPatient.mrn}</p>
-          <p className="text-slate-600">Status: <span className="font-bold text-emerald-600">Stable</span></p>
+          <p className="text-slate-600 mb-1">MRN: {selectedPatient.mrn}</p>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-slate-600">Status:</span>
+            <div className="flex gap-2">
+              {getPatientStatusTags(selectedPatient).map((tag) => (
+                 <span key={tag} className={cn("text-xs font-bold", getStatusTagClass(tag))}>
+                   {tag}
+                 </span>
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-slate-600">Critical Findings:</span>
+            {(() => {
+              const finding = getCriticalFinding(selectedPatient);
+              const isNormal = finding === "No critical findings reported." || finding === "No patient selected";
+              return (
+                 <span className={cn("text-sm font-semibold", isNormal ? "text-emerald-600" : "text-error")}>
+                   {finding}
+                 </span>
+              );
+            })()}
+          </div>
         </div>
       </div>
 
@@ -94,7 +118,7 @@ export function PatientReport() {
               </div>
             ) : (
               <div className="prose prose-slate max-w-none prose-sm">
-                <ReactMarkdown>{summary}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{summary}</ReactMarkdown>
               </div>
             )}
           </div>

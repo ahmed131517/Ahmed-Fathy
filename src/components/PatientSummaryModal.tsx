@@ -3,11 +3,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Button } from "@/components/ui/button";
 import { FileDown, Share2, Smartphone, Mail, X, CheckCircle2, AlertTriangle, Clock, Info, Globe, Languages, RefreshCw } from "lucide-react";
 import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { jsPDF } from 'jspdf';
 import { toast } from 'sonner';
 import { useAISettings } from '@/lib/AISettingsContext';
 import { clinicalAIRequest } from '@/services/aiWorkflowService';
 import { cn } from "@/lib/utils";
+import { parseJsonResponse } from '@/utils/gemini';
 
 interface PatientSummaryModalProps {
   isOpen: boolean;
@@ -89,7 +91,17 @@ export function PatientSummaryModal({
         aiSettings
       );
 
-      const result = JSON.parse(responseText);
+      const defaultValue = {
+        summary: summaryText,
+        diagnosis: diagnosis,
+        plan: planText || ""
+      };
+      const result = parseJsonResponse(responseText, defaultValue);
+      
+      if (!result || (!result.summary && !result.diagnosis)) {
+        throw new Error("Could not parse proper translation fields from response");
+      }
+      
       setTranslations(result);
       toast.success(`Translated to ${lang}`);
     } catch (err) {
@@ -266,7 +278,7 @@ export function PatientSummaryModal({
                        <Info className="w-3 h-3" /> Understanding Your Health
                      </h5>
                      <div className="prose prose-sm prose-slate max-w-none text-xs leading-relaxed text-slate-600 font-medium">
-                       <Markdown>{currentSummary}</Markdown>
+                       <Markdown remarkPlugins={[remarkGfm]}>{currentSummary}</Markdown>
                      </div>
                   </section>
 
