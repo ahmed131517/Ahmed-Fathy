@@ -18,7 +18,7 @@ export async function performDatabaseCleanup() {
     if (auditCount > MAX_AUDIT_LOGS) {
       const toDeleteCount = auditCount - MAX_AUDIT_LOGS;
       const oldestLogs = await db.audit_logs.orderBy('timestamp').limit(toDeleteCount).toArray();
-      await db.audit_logs.bulkDelete(oldestLogs.map(l => l.id!));
+      await db.audit_logs.bulkDelete(oldestLogs.map(l => l.localId as number));
       console.log(`Deleted ${toDeleteCount} old audit logs.`);
     }
 
@@ -27,7 +27,7 @@ export async function performDatabaseCleanup() {
     if (notificationCount > MAX_NOTIFICATIONS) {
       const toDeleteCount = notificationCount - MAX_NOTIFICATIONS;
       const oldestNotifications = await db.notifications.orderBy('createdAt').limit(toDeleteCount).toArray();
-      await db.notifications.bulkDelete(oldestNotifications.map(n => n.localId!));
+      await db.notifications.bulkDelete(oldestNotifications.map(n => n.localId as number));
       console.log(`Deleted ${toDeleteCount} old notifications.`);
     }
 
@@ -35,7 +35,7 @@ export async function performDatabaseCleanup() {
     const retentionThreshold = Date.now() - (LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000);
     const oldLogs = await db.audit_logs.where('timestamp').below(retentionThreshold).toArray();
     if (oldLogs.length > 0) {
-      await db.audit_logs.bulkDelete(oldLogs.map(l => l.id!));
+      await db.audit_logs.bulkDelete(oldLogs.map(l => l.localId as number));
       console.log(`Deleted ${oldLogs.length} audit logs older than ${LOG_RETENTION_DAYS} days.`);
     }
 

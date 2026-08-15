@@ -7,6 +7,7 @@ import { DosageFormBadge } from './prescriptions/DosageFormBadge';
 interface Medication {
   name: string;
   form?: string;
+  route?: string;
   concentration?: string;
   dosage: string;
   frequency: string;
@@ -179,6 +180,11 @@ export const PrescriptionPreview: React.FC<{ data: PrescriptionData }> = ({ data
     practiceState,
     practiceZip,
     practicePhone,
+    practiceNameAr,
+    practiceAddressAr,
+    practiceMotto,
+    practiceMottoAr,
+    headerLayoutPreset,
     practiceLogo,
     practiceLogoShape,
     practiceLogoSize,
@@ -189,7 +195,17 @@ export const PrescriptionPreview: React.FC<{ data: PrescriptionData }> = ({ data
     prescriptionHeaderFont,
     prescriptionFooterFont,
     prescriptionBodyFont,
-    doctorSignature
+    doctorSignature,
+    facilityStamp,
+    facilityLicenseNo,
+    healthAuthorityId,
+    taxRegistrationId,
+    enableVerificationQRCode,
+    verificationPortalUrl,
+    paperSize = 'a4',
+    topMargin = 15,
+    bottomMargin = 15,
+    watermarkOpacity = 30
   } = useSettings();
 
   const fontMap: Record<string, string> = {
@@ -205,72 +221,264 @@ export const PrescriptionPreview: React.FC<{ data: PrescriptionData }> = ({ data
   const bodyStyle = { fontFamily: fontMap[prescriptionBodyFont] || fontMap.inter };
   const footerStyle = { fontFamily: fontMap[prescriptionFooterFont] || fontMap.inter };
 
+  const formatFrequency = (freq?: string) => {
+    if (!freq) return '';
+    const match = freq.match(/^(OD|BID|TID|QID|QD|PRN)\s*\(([^)]+)\)/i);
+    let res = '';
+    if (match && match[2]) {
+      res = match[2];
+    } else {
+      res = freq.replace(/^(OD|BID|TID|QID|QD|PRN)\b\s*/i, '');
+    }
+    if (res.startsWith('Every')) {
+      res = 'every' + res.slice(5);
+    }
+    return res;
+  };
+
+  const getQRValue = () => {
+    const dateStr = new Date().toLocaleDateString();
+    const rxId = data.id || 'N/A';
+    
+    const lines: string[] = [
+      `PRESCRIPTION SUMMARY`,
+      `====================`,
+      `ID: ${rxId}`,
+      `Date: ${dateStr}`,
+      `Clinic/Practice: ${practiceName || 'N/A'}`,
+      `Doctor: ${doctorName || 'N/A'} (${doctorQualifications || 'N/A'})`,
+      `Reg No: ${doctorRegNo || 'N/A'}`,
+      `--------------------`,
+      `Patient Name: ${data.name || 'N/A'}`,
+      `Age: ${data.age || 'N/A'} | Gender: ${data.gender || 'N/A'}`,
+    ];
+    
+    if (data.contact) {
+      lines.push(`Contact: ${data.contact}`);
+    }
+
+    const vitals: string[] = [];
+    if (data.bp) vitals.push(`BP: ${data.bp}`);
+    if (data.p) vitals.push(`HR: ${data.p} bpm`);
+    if (data.temp) vitals.push(`Temp: ${data.temp}°C`);
+    if (data.rr) vitals.push(`RR: ${data.rr}/min`);
+    if (data.sao2) vitals.push(`SaO2: ${data.sao2}%`);
+    if (data.rbs) vitals.push(`RBS: ${data.rbs} mg/dL`);
+    
+    if (vitals.length > 0) {
+      lines.push(`Vitals: ${vitals.join(' | ')}`);
+    }
+    
+    if (data.oe) {
+      lines.push(`O/E Examination: ${data.oe}`);
+    }
+    
+    if (data.dx) {
+      lines.push(`Diagnosis: ${data.dx}`);
+    }
+    
+    if (data.medications && data.medications.length > 0) {
+      lines.push(`--------------------`);
+      lines.push(`Rx Medications:`);
+      data.medications.forEach((med, idx) => {
+        let medStr = `${idx + 1}. ℞ / ${med.name}`;
+        if (med.concentration) {
+          medStr += ` (${med.concentration})`;
+        }
+        lines.push(medStr);
+        
+        const details: string[] = [];
+        if (med.dosage) details.push(med.dosage);
+        if (med.frequency) details.push(formatFrequency(med.frequency));
+        if (med.duration) details.push(`for ${med.duration}`);
+        if (details.length > 0) {
+          lines.push(`   Take: ${details.join(' ')}`);
+        }
+        if (med.instructions) {
+          lines.push(`   Clinical Instructions: ${med.instructions}`);
+        }
+      });
+    }
+    
+    const safety = getClinicalSafetyData(data.medications, data.dx);
+    const labs = data.requiredLabMonitoring || safety.labs;
+    const followUp = data.followUpSchedule || safety.followUp;
+    
+    if (labs && labs.length > 0) {
+      lines.push(`--------------------`);
+      lines.push(`Required Lab Monitoring:`);
+      labs.forEach(lab => lines.push(`• ${lab}`));
+    }
+    
+    if (followUp && followUp.length > 0) {
+      lines.push(`--------------------`);
+      lines.push(`Follow-up Schedule:`);
+      followUp.forEach(sched => lines.push(`• ${sched}`));
+    }
+    
+    return lines.join('\n');
+  };
+
+  const paperSizeClasses = {
+    a4: 'max-w-4xl',
+    a5: 'max-w-xl',
+    letter: 'max-w-4xl',
+    thermal80mm: 'max-w-[320px] text-xs'
+  }[paperSize] || 'max-w-4xl';
+
   return (
-    <div 
-      className="w-full max-w-4xl mx-auto bg-white p-8 border border-slate-200 shadow-lg font-sans text-slate-900 print:shadow-none print:border-none print:w-full print:max-w-none print:m-0 relative overflow-hidden print:overflow-visible print:bg-white"
-      style={{
-        ...(prescriptionBackground ? {
-          backgroundImage: `url(${prescriptionBackground})`,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          backgroundRepeat: 'no-repeat'
-        } : {}),
-        ...bodyStyle
-      }}
-    >
-      {/* Background Overlay for readability if background exists */}
-      {prescriptionBackground && (
-        <div className="absolute inset-0 bg-white/80 pointer-events-none print:bg-white"></div>
-      )}
+    <>
+      <style>{`
+        @media print {
+          @page {
+            size: ${paperSize === 'thermal80mm' ? '80mm auto' : paperSize === 'a5' ? 'A5' : paperSize === 'letter' ? 'letter' : 'A4'};
+            margin: ${topMargin}mm 10mm ${bottomMargin}mm 10mm;
+          }
+        }
+      `}</style>
+      <div 
+        className={cn(
+          "w-full mx-auto bg-white border border-slate-200 shadow-lg font-sans text-slate-900 print:shadow-none print:border-none print:w-full print:max-w-none print:m-0 relative overflow-hidden print:overflow-visible print:bg-white transition-all",
+          paperSizeClasses
+        )}
+        style={{
+          paddingTop: `${topMargin}mm`,
+          paddingBottom: `${bottomMargin}mm`,
+          paddingLeft: paperSize === 'thermal80mm' ? '8px' : '32px',
+          paddingRight: paperSize === 'thermal80mm' ? '8px' : '32px',
+          ...bodyStyle
+        }}
+      >
+        {/* Background Watermark Image with Opacity */}
+        {prescriptionBackground && (
+          <div 
+            className="absolute inset-0 pointer-events-none bg-cover bg-center bg-no-repeat"
+            style={{
+              backgroundImage: `url(${prescriptionBackground})`,
+              opacity: watermarkOpacity / 100
+            }}
+          />
+        )}
       
       <div className="relative z-10">
         {/* Header */}
-      <div className="flex justify-between items-start border-b-2 border-slate-900 pb-4 mb-6" style={headerStyle}>
-        <div className={cn(
-          "text-sm",
-          practiceLogoPosition === 'left' && "order-2",
-          (practiceLogoPosition === 'center' || !practiceLogoPosition) && "order-1",
-          practiceLogoPosition === 'right' && "order-1"
-        )}>
-          <h1 className="text-2xl font-bold text-slate-900 uppercase">{doctorName}</h1>
-          <p>{doctorQualifications}</p>
-          <p>{doctorDesignation}</p>
-          <p>Reg. No. {doctorRegNo}</p>
+        <div className="border-b-2 border-slate-900 pb-4 mb-6" style={headerStyle}>
+          {(() => {
+            const enBlock = (
+              <div className="text-sm space-y-0.5">
+                {practiceName && <p className="font-bold text-indigo-900 text-xs tracking-wider uppercase">{practiceName}</p>}
+                <h1 className="text-xl font-extrabold text-slate-900 uppercase leading-snug">{doctorName}</h1>
+                <p className="text-slate-800 font-medium text-xs">{doctorQualifications}</p>
+                <p className="text-slate-600 text-xs">{doctorDesignation}</p>
+                <p className="text-slate-600 text-xs">Reg. No. {doctorRegNo}</p>
+                {practiceAddress && (
+                  <p className="text-[11px] text-slate-500 mt-1 leading-tight">
+                    {practiceAddress}{practiceCity ? `, ${practiceCity}` : ''}{practicePhone ? ` • ${practicePhone}` : ''}
+                  </p>
+                )}
+                {practiceMotto && <p className="text-[11px] italic text-indigo-700 font-medium mt-0.5">{practiceMotto}</p>}
+                {(facilityLicenseNo || healthAuthorityId || taxRegistrationId) && (
+                  <p className="text-[10px] text-slate-500 font-mono tracking-tight mt-1">
+                    {[
+                      facilityLicenseNo && `Lic: ${facilityLicenseNo}`,
+                      healthAuthorityId && `NHA: ${healthAuthorityId}`,
+                      taxRegistrationId && `TAX: ${taxRegistrationId}`
+                    ].filter(Boolean).join(" | ")}
+                  </p>
+                )}
+              </div>
+            );
+
+            const arBlock = (
+              <div className="text-sm text-right space-y-0.5" dir="rtl">
+                {practiceNameAr && <p className="font-bold text-indigo-900 text-xs tracking-wider">{practiceNameAr}</p>}
+                <h1 className="text-xl font-extrabold text-slate-900 leading-snug">{doctorNameAr}</h1>
+                <p className="text-slate-800 font-medium text-xs">{doctorQualificationsAr}</p>
+                <p className="text-slate-600 text-xs">{doctorDesignationAr}</p>
+                <p className="text-slate-600 text-xs">رقم القيد: {doctorRegNo}</p>
+                {practiceAddressAr && <p className="text-[11px] text-slate-500 mt-1 leading-tight">{practiceAddressAr}</p>}
+                {practiceMottoAr && <p className="text-[11px] italic text-indigo-700 font-medium mt-0.5">{practiceMottoAr}</p>}
+              </div>
+            );
+
+            const logoBlock = (
+              <div 
+                className={cn(
+                  "flex items-center justify-center overflow-hidden shrink-0 transition-all duration-200 mx-auto sm:mx-0",
+                  practiceLogoShape === 'circle' && "rounded-full border-2 border-slate-900 bg-slate-50",
+                  practiceLogoShape === 'rounded' && "rounded-xl border-2 border-slate-900 bg-slate-50",
+                  practiceLogoShape === 'square' && "rounded-none border-2 border-slate-900 bg-slate-50",
+                  practiceLogoShape === 'none' && (practiceLogo ? "border-0 bg-transparent" : "rounded-md border-2 border-dashed border-slate-900 bg-slate-50")
+                )}
+                style={{
+                  width: `${practiceLogoSize || 96}px`,
+                  height: `${practiceLogoSize || 96}px`
+                }}
+              >
+                {practiceLogo ? (
+                  <img src={practiceLogo} alt="Practice Logo" className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-xs font-bold text-slate-400 uppercase">Logo</span>
+                )}
+              </div>
+            );
+
+            if (headerLayoutPreset === 'ar-left-en-right') {
+              return (
+                <div className="flex justify-between items-start gap-4">
+                  <div className="w-5/12">{arBlock}</div>
+                  <div className="w-2/12 flex justify-center">{logoBlock}</div>
+                  <div className="w-5/12 text-right">{enBlock}</div>
+                </div>
+              );
+            }
+
+            if (headerLayoutPreset === 'stacked-en-top') {
+              return (
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center border-b border-slate-200 pb-2">
+                    <div className="flex-1">{enBlock}</div>
+                    {logoBlock}
+                  </div>
+                  <div>{arBlock}</div>
+                </div>
+              );
+            }
+
+            if (headerLayoutPreset === 'stacked-ar-top') {
+              return (
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center border-b border-slate-200 pb-2">
+                    {logoBlock}
+                    <div className="flex-1">{arBlock}</div>
+                  </div>
+                  <div>{enBlock}</div>
+                </div>
+              );
+            }
+
+            if (headerLayoutPreset === 'center-logo-split') {
+              return (
+                <div className="space-y-3">
+                  <div className="flex justify-center">{logoBlock}</div>
+                  <div className="grid grid-cols-2 gap-6 items-start pt-2 border-t border-slate-200">
+                    <div className="border-r border-slate-200 pr-4">{enBlock}</div>
+                    <div className="pl-2">{arBlock}</div>
+                  </div>
+                </div>
+              );
+            }
+
+            // Default: 'en-left-ar-right'
+            return (
+              <div className="flex justify-between items-start gap-4">
+                <div className="w-5/12">{enBlock}</div>
+                <div className="w-2/12 flex justify-center">{logoBlock}</div>
+                <div className="w-5/12">{arBlock}</div>
+              </div>
+            );
+          })()}
         </div>
-        <div 
-          className={cn(
-            "flex items-center justify-center overflow-hidden shrink-0 transition-all duration-200",
-            practiceLogoPosition === 'left' && "order-1",
-            (practiceLogoPosition === 'center' || !practiceLogoPosition) && "order-2",
-            practiceLogoPosition === 'right' && "order-3",
-            practiceLogoShape === 'circle' && "rounded-full border-2 border-slate-900 bg-slate-50",
-            practiceLogoShape === 'rounded' && "rounded-xl border-2 border-slate-900 bg-slate-50",
-            practiceLogoShape === 'square' && "rounded-none border-2 border-slate-900 bg-slate-50",
-            practiceLogoShape === 'none' && (practiceLogo ? "border-0 bg-transparent" : "rounded-md border-2 border-dashed border-slate-900 bg-slate-50")
-          )}
-          style={{
-            width: `${practiceLogoSize || 96}px`,
-            height: `${practiceLogoSize || 96}px`
-          }}
-        >
-          {practiceLogo ? (
-            <img src={practiceLogo} alt="Practice Logo" className="w-full h-full object-cover" />
-          ) : (
-            <span className="text-xs font-bold text-slate-400 uppercase">Logo</span>
-          )}
-        </div>
-        <div className={cn(
-          "text-sm text-right",
-          practiceLogoPosition === 'left' && "order-3",
-          (practiceLogoPosition === 'center' || !practiceLogoPosition) && "order-3",
-          practiceLogoPosition === 'right' && "order-2"
-        )} dir="rtl">
-          <h1 className="text-2xl font-bold text-slate-900">{doctorNameAr}</h1>
-          <p>{doctorQualificationsAr}</p>
-          <p>{doctorDesignationAr}</p>
-          <p>رقم القيد: {doctorRegNo}</p>
-        </div>
-      </div>
 
       <div className="flex gap-8">
         {/* Left Column: Patient Info & Clinical Data */}
@@ -321,20 +529,24 @@ export const PrescriptionPreview: React.FC<{ data: PrescriptionData }> = ({ data
         <div className="w-2/3">
           <div className="text-4xl font-serif text-blue-600 mb-4">℞</div>
           <div className="min-h-[400px] space-y-6" style={bodyStyle}>
-            {data.medications.map((med, index) => (
-              <div key={index} className="medication-entry">
-                <div className="text-lg font-bold text-slate-900 flex flex-wrap items-center gap-2">
-                  <span>℞ / {med.name}</span>
-                  {med.form && <DosageFormBadge form={med.form} size="xs" />}
-                  <span>{med.concentration ? `(${med.concentration})` : ''} {med.dosage} {med.frequency} for {med.duration}</span>
-                </div>
-                {med.instructions && (
-                  <div className="text-sm text-slate-600 mt-1 italic">
-                    Instructions: {med.instructions}
+            {data.medications.map((med, index) => {
+              return (
+                <div key={index} className="medication-entry mb-4 space-y-1">
+                  <div className="text-lg font-bold text-slate-900 flex flex-wrap items-center gap-2">
+                    <span>℞ / {med.name}</span>
+                    {med.concentration && <span>{med.concentration.startsWith('(') ? med.concentration : `(${med.concentration})`}</span>}
                   </div>
-                )}
-              </div>
-            ))}
+                  <div className="text-base font-semibold text-slate-800">
+                    {med.dosage} {formatFrequency(med.frequency)} {med.duration ? `for ${med.duration}` : ''}
+                  </div>
+                  {med.instructions && (
+                    <div className="text-sm text-slate-600 italic">
+                      Instructions: {med.instructions}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
           <div className="mt-12 border-t border-slate-400 pt-4 flex flex-col gap-6">
             <div className="space-y-6">
@@ -383,14 +595,28 @@ export const PrescriptionPreview: React.FC<{ data: PrescriptionData }> = ({ data
               </div>
             </div>
             
-            {doctorSignature ? (
-              <div className="mt-2 flex flex-col items-end align-end self-end">
-                <img src={doctorSignature} alt="Required Lab Monitoring" className="h-12 object-contain mb-1" />
-                <span className="text-[10px] text-slate-500 uppercase tracking-wider">Authorized Signature</span>
-              </div>
-            ) : (
-              <div className="mt-6 border-b border-slate-350 w-48 self-end min-h-[1px]"></div>
-            )}
+            <div className="mt-4 flex items-end justify-end gap-6 self-end">
+              {facilityStamp && (
+                <div className="flex flex-col items-center">
+                  <div className="p-1 border border-dashed border-indigo-400/60 rounded-lg bg-indigo-50/20">
+                    <img src={facilityStamp} alt="Official Facility Stamp" className="h-14 w-14 object-contain" />
+                  </div>
+                  <span className="text-[9px] font-bold text-indigo-900 dark:text-indigo-300 uppercase tracking-wider mt-0.5">Facility Seal</span>
+                </div>
+              )}
+
+              {doctorSignature ? (
+                <div className="flex flex-col items-end">
+                  <img src={doctorSignature} alt="Authorized Signature" className="h-12 object-contain mb-1" />
+                  <span className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Authorized Signature</span>
+                </div>
+              ) : (
+                <div className="flex flex-col items-end">
+                  <div className="border-b border-slate-400 w-48 h-8 mb-1"></div>
+                  <span className="text-[10px] text-slate-500 uppercase tracking-wider">Authorized Signature</span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -401,22 +627,27 @@ export const PrescriptionPreview: React.FC<{ data: PrescriptionData }> = ({ data
           <p>{practicePhone} | {practiceAddress}, {practiceCity} {practiceState}, {practiceZip}</p>
           <p>{prescriptionFooter}</p>
         </div>
-        <div className="mx-4 flex flex-col items-center gap-1">
-          <div className="p-1 bg-white border border-slate-900">
-            <QRCode 
-              value={`Patient: ${data.name} | ID: ${data.id || 'N/A'} | Date: ${new Date().toLocaleDateString()}`}
-              size={64}
-              style={{ height: "auto", maxWidth: "100%", width: "100%" }}
-              viewBox={`0 0 256 256`}
-            />
+        
+        {enableVerificationQRCode && (
+          <div className="mx-4 flex flex-col items-center gap-1">
+            <div className="p-1 bg-white border border-slate-900 shadow-sm">
+              <QRCode 
+                value={verificationPortalUrl ? `${verificationPortalUrl}?rxId=${data.id || 'PREVIEW'}` : getQRValue()}
+                size={60}
+                style={{ height: "auto", maxWidth: "100%", width: "100%" }}
+                viewBox={`0 0 256 256`}
+              />
+            </div>
+            <span className="text-[8px] font-bold text-slate-600 uppercase tracking-tighter">e-Rx Verified Portal</span>
           </div>
-          <span className="text-[8px] font-bold text-slate-500 uppercase">Prescription ID: {data.id?.slice(0, 8) || 'PREVIEW'}</span>
-        </div>
+        )}
+
         <div className="flex-1 text-right" dir="rtl">
           <p>{prescriptionFooterAr}</p>
         </div>
       </div>
       </div>
     </div>
+    </>
   );
 };

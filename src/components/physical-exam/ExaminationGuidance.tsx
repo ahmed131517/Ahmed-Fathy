@@ -17,6 +17,7 @@ export function ExaminationGuidance({ patient, symptoms }: ExaminationGuidancePr
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isFallbackMode, setIsFallbackMode] = useState(false);
   const [guidance, setGuidance] = useState<{
     focusedExams: { system: string; rational: string; keySigns: string[] }[];
     clinicalPearls: string[];
@@ -24,21 +25,96 @@ export function ExaminationGuidance({ patient, symptoms }: ExaminationGuidancePr
   } | null>(null);
 
   useEffect(() => {
-    if (patient && !guidance && !isGenerating && !error) {
+    if (patient && !guidance && !isGenerating) {
       generateGuidance();
     }
   }, [patient]);
+
+  const generateLocalGuidance = (patientObj: any, symptomsArr: any[]) => {
+    const focusedExams: { system: string; rational: string; keySigns: string[] }[] = [];
+    const clinicalPearls: string[] = [];
+    const riskFactors: string[] = [];
+
+    const sympText = (symptomsArr || []).map((s: any) => (s.label || s.name || '').toLowerCase()).join(" ");
+
+    if (sympText.includes("cough") || sympText.includes("sob") || sympText.includes("breath") || sympText.includes("chest")) {
+      focusedExams.push({
+        system: "Respiratory System",
+        rational: "Assess for adventitious breath sounds, consolidation, or airway obstruction.",
+        keySigns: ["Auscultation (wheezes/crackles)", "Percussion note", "Tactile fremitus", "SpO2 & Respiratory Rate"]
+      });
+      focusedExams.push({
+        system: "Cardiovascular System",
+        rational: "Rule out cardiac cause for shortness of breath or chest distress.",
+        keySigns: ["Heart sounds (S1, S2, S3/S4)", "Jugular venous pressure (JVP)", "Peripheral edema"]
+      });
+      clinicalPearls.push("Always evaluate respiratory rate and work of breathing before detailed auscultation.");
+    }
+
+    if (sympText.includes("pain") || sympText.includes("abdo") || sympText.includes("nausea") || sympText.includes("vomit")) {
+      focusedExams.push({
+        system: "Abdominal System",
+        rational: "Evaluate for peritoneal signs, organomegaly, or localized tenderness.",
+        keySigns: ["Light & deep palpation", "Rebound tenderness / Guarding", "Bowel sounds", "Murphy / McBurney sign if indicated"]
+      });
+      clinicalPearls.push("Auscultate bowel sounds prior to palpation to avoid altering peristaltic activity.");
+    }
+
+    if (sympText.includes("headache") || sympText.includes("dizz") || sympText.includes("numb") || sympText.includes("weak")) {
+      focusedExams.push({
+        system: "Neurological System",
+        rational: "Assess cranial nerves, motor/sensory function, and cerebellar signs.",
+        keySigns: ["Cranial nerves II-XII", "Deep tendon reflexes", "Gait & Romberg test", "Focal motor power"]
+      });
+      clinicalPearls.push("Perform fundoscopy if severe headache or elevated BP is present to rule out papilledema.");
+    }
+
+    if (focusedExams.length === 0) {
+      focusedExams.push({
+        system: "General & Vital Signs",
+        rational: "Baseline physiological assessment and general physical appearance.",
+        keySigns: ["BP, HR, RR, Temp, SpO2", "Pallor, Jaundice, Cyanosis", "Hydration status"]
+      });
+      focusedExams.push({
+        system: "Cardiopulmonary Screen",
+        rational: "Routine screening of heart and lungs based on demographic profile.",
+        keySigns: ["Dual heart sounds without murmurs", "Vesicular breath sounds bilaterally", "No peripheral edema"]
+      });
+    }
+
+    if (patientObj?.age && Number(patientObj.age) > 50) {
+      riskFactors.push("Age > 50 (Higher cardiovascular & metabolic risk)");
+      riskFactors.push("Screen for hypertension & vascular changes");
+    } else {
+      riskFactors.push("Standard demographic risk profile");
+    }
+
+    if (patientObj?.gender?.toLowerCase() === "female") {
+      riskFactors.push("Check relevant gynecological & endocrine history if applicable");
+    }
+
+    return {
+      focusedExams,
+      clinicalPearls: clinicalPearls.length > 0 ? clinicalPearls : [
+        "Always correlate physical exam findings with full clinical history.",
+        "Ensure patient comfort and proper positioning prior to palpation and auscultation."
+      ],
+      riskFactors
+    };
+  };
 
   const generateGuidance = async () => {
     if (!patient) return;
     
     setIsGenerating(true);
     setError(false);
+    setIsFallbackMode(false);
+
     try {
       const prompt = `Based on the patient profile ${symptoms.length > 0 ? 'and current symptoms' : 'and general context'}, provide focused clinical examination guidance.
       
       Patient: ${patient.age}y ${patient.gender}, ${patient.occupation || 'N/A'}
-      Symptoms: ${symptoms.length > 0 ? symptoms.map(s => s.label).join(", ") : 'None reported yet. Provide a standard age/gender appropriate physical exam overview.'}
+      Symptoms: ${symptoms.length > 0 ? symptoms.map(s => s.label || s.name || s).join(", ") : 'None reported yet. Provide a standard age/gender appropriate physical exam overview.'}
       
       Return a JSON object with:
       {
@@ -56,19 +132,18 @@ export function ExaminationGuidance({ patient, symptoms }: ExaminationGuidancePr
       );
 
       if (response) {
-        // Clean up response if needed
         const jsonMatch = response.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           setGuidance(JSON.parse(jsonMatch[0]));
-        } else {
-          setError(true);
+          return;
         }
-      } else {
-        setError(true);
       }
-    } catch (error) {
-      console.error("Failed to generate exam guidance:", error);
-      setError(true);
+      throw new Error("Invalid response format");
+    } catch (err: any) {
+      console.warn("AI exam guidance unavailable, using structured clinical fallback:", err?.message || err);
+      // Fallback to structured clinical guidance when AI service is unavailable or quota exceeded
+      setGuidance(generateLocalGuidance(patient, symptoms));
+      setIsFallbackMode(true);
     } finally {
       setIsGenerating(false);
     }

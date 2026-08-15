@@ -1,28 +1,36 @@
-import React, { useState, useMemo } from "react";
-import { Clock, Package, Eye, GripVertical, User, AlertCircle } from "lucide-react";
+import React, { useState, useMemo, useEffect } from "react";
+import { Clock, Package, Eye, GripVertical, User, AlertCircle, AlertTriangle, ShieldAlert, CheckCircle2, Scan } from "lucide-react";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragOverlay } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { db, Prescription, PrescriptionItem, PatientRecord } from "@/lib/db";
 import { useLiveQuery } from "dexie-react-hooks";
 import { toast } from "sonner";
+import { DispensingModal } from "@/components/pharmacy/DispensingModal";
+import { checkDrugAllergies, checkDrugInteractions } from "@/utils/pharmacySafety";
+import { PharmacyInventoryService } from "@/services/PharmacyInventoryService";
 
 interface Order {
   id: string;
   patient: string;
   status: "Pending" | "Ready" | "Completed";
   time: string;
-  items: number;
+  itemsCount: number;
   total: number;
   rawPrescription: Prescription;
   patientData?: PatientRecord;
+  prescriptionItems: PrescriptionItem[];
+  hasAllergyConflict: boolean;
+  hasInteractionWarning: boolean;
+  warningSummary: string;
 }
 
 interface SortableItemProps {
   order: Order;
+  onOpenDispensing: (order: Order) => void;
 }
 
-const SortableItem: React.FC<SortableItemProps> = ({ order }) => {
+const SortableItem: React.FC<SortableItemProps> = ({ order, onOpenDispensing }) => {
   const {
     attributes,
     listeners,
@@ -37,15 +45,68 @@ const SortableItem: React.FC<SortableItemProps> = ({ order }) => {
   };
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="bg-white border border-slate-200 rounded-xl p-4 mb-3 shadow-sm hover:shadow-md transition-all cursor-grab active:cursor-grabbing">
+    <div 
+      ref={setNodeRef} 
+      style={style} 
+      className="bg-white border border-slate-200 rounded-xl p-4 mb-3 shadow-sm hover:shadow-md transition-all group cursor-default"
+    >
       <div className="flex justify-between items-start mb-2">
-        <span className="text-xs font-mono font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded">{order.id}</span>
-        <GripVertical className="w-4 h-4 text-slate-300" />
+        <span className="text-xs font-mono font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{order.id}</span>
+        <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing p-1 text-slate-300 hover:text-slate-600">
+          <GripVertical className="w-4 h-4" />
+        </div>
       </div>
+
       <h3 className="font-bold text-slate-900 text-sm mb-1">{order.patient}</h3>
-      <div className="flex justify-between items-center text-xs text-slate-500">
-        <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {order.time}</span>
-        <span className="font-semibold text-slate-700">${order.total.toFixed(2)}</span>
+      
+      {/* Safety Alert Badges on Order Card */}
+      <div className="flex flex-wrap gap-1 mb-2">
+        {order.hasAllergyConflict && (
+          <span className="bg-rose-100 text-rose-800 border border-rose-300 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
+            <AlertTriangle className="w-3 h-3 text-rose-600" />
+            Allergy Conflict
+          </span>
+        )}
+        {order.hasInteractionWarning && (
+          <span className="bg-amber-100 text-amber-800 border border-amber-300 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+            <ShieldAlert className="w-3 h-3 text-amber-600" />
+            Interaction Risk
+          </span>
+        )}
+        {!order.hasAllergyConflict && !order.hasInteractionWarning && (
+          <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1">
+            <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+            Safety Clear
+          </span>
+        )}
+      </div>
+
+      {/* Medication Preview List */}
+      <div className="text-xs text-slate-600 bg-slate-50 p-2 rounded-lg mb-3 space-y-1">
+        {order.prescriptionItems.slice(0, 2).map((item, idx) => (
+          <div key={idx} className="flex justify-between truncate">
+            <span className="truncate font-medium">• {item.medicationName}</span>
+            <span className="text-slate-400 shrink-0 ml-1">{item.dosage}</span>
+          </div>
+        ))}
+        {order.prescriptionItems.length > 2 && (
+          <p className="text-[10px] text-indigo-600 font-semibold text-right">+ {order.prescriptionItems.length - 2} more item(s)</p>
+        )}
+      </div>
+
+      <div className="flex justify-between items-center text-xs text-slate-500 pt-1 border-t border-slate-100">
+        <span className="flex items-center gap-1"><Clock className="w-3 h-3 text-slate-400" /> {order.time}</span>
+        
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenDispensing(order);
+          }}
+          className="bg-slate-900 text-white hover:bg-indigo-600 px-2.5 py-1 rounded-lg font-bold text-xs flex items-center gap-1 transition-colors shadow-sm"
+        >
+          <Scan className="w-3.5 h-3.5" />
+          Fulfill & Scan
+        </button>
       </div>
     </div>
   );
@@ -57,6 +118,14 @@ export function PharmacyOrders() {
   const dbItems = useLiveQuery(() => db.prescription_items.toArray()) || [];
   const inventory = useLiveQuery(() => db.pharmacy_inventory.toArray()) || [];
 
+  const [selectedOrderForDispensing, setSelectedOrderForDispensing] = useState<Order | null>(null);
+  const [isDispensingOpen, setIsDispensingOpen] = useState(false);
+
+  // Seed default demo inventory batches if none exist
+  useEffect(() => {
+    PharmacyInventoryService.ensureSeedBatches();
+  }, [inventory.length]);
+
   const orders = useMemo(() => {
     return dbPrescriptions.map(p => {
       const patient = dbPatients.find(pat => pat.id === p.patientId);
@@ -66,22 +135,44 @@ export function PharmacyOrders() {
       let total = 0;
       items.forEach(item => {
         const invItem = inventory.find(i => i.medicationName?.toLowerCase() === item.medicationName?.toLowerCase());
-        if (invItem) {
-          total += invItem.price;
-        } else {
-          total += 10; // Default price if not in inventory
-        }
+        total += invItem ? invItem.price : 12;
       });
+
+      // Drug safety evaluation
+      const medNames = items.map(i => i.medicationName || "").filter(Boolean);
+      
+      let patientAllergies: any[] = [];
+      if (patient?.allergies) {
+        if (Array.isArray(patient.allergies)) patientAllergies = patient.allergies;
+        else if (typeof patient.allergies === 'string') {
+          try { patientAllergies = JSON.parse(patient.allergies); } catch { patientAllergies = [patient.allergies]; }
+        }
+      }
+
+      let patientMeds: any[] = [];
+      if (patient?.medications) {
+        if (Array.isArray(patient.medications)) patientMeds = patient.medications;
+        else if (typeof patient.medications === 'string') {
+          try { patientMeds = JSON.parse(patient.medications); } catch { patientMeds = [patient.medications]; }
+        }
+      }
+
+      const allergyWarns = checkDrugAllergies(patientAllergies, medNames);
+      const interactionWarns = checkDrugInteractions(medNames, patientMeds);
 
       return {
         id: p.id || `local-${p.localId}`,
         patient: patient?.name || "Unknown Patient",
         status: (p.status as any) || "Pending",
         time: new Date(p.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        items: items.length,
+        itemsCount: items.length,
         total: total,
         rawPrescription: p,
-        patientData: patient
+        patientData: patient,
+        prescriptionItems: items,
+        hasAllergyConflict: allergyWarns.length > 0,
+        hasInteractionWarning: interactionWarns.length > 0,
+        warningSummary: allergyWarns.length > 0 ? allergyWarns[0].message : (interactionWarns.length > 0 ? interactionWarns[0].message : "")
       } as Order;
     }).filter(o => ["Pending", "Ready", "Completed"].includes(o.status));
   }, [dbPrescriptions, dbPatients, dbItems, inventory]);
@@ -101,13 +192,17 @@ export function PharmacyOrders() {
     Completed: orders.filter(o => o.status === "Completed"),
   };
 
+  const handleOpenDispensing = (order: Order) => {
+    setSelectedOrderForDispensing(order);
+    setIsDispensingOpen(true);
+  };
+
   const handleDragStart = (event: any) => {
     setActiveId(event.active.id);
   };
 
   const handleDragEnd = async (event: any) => {
     const { active, over } = event;
-
     if (!over) return;
 
     const activeId = active.id;
@@ -124,18 +219,24 @@ export function PharmacyOrders() {
     }
 
     if (activeContainer && overContainer && activeContainer !== overContainer) {
+      // If order has allergy conflicts and dragging to completed, ask for dispensing modal verification
+      if (activeOrder.hasAllergyConflict && overContainer !== "Pending") {
+        toast.warning("Order has drug-allergy conflict! Opening safety verification workspace...");
+        handleOpenDispensing(activeOrder);
+        setActiveId(null);
+        return;
+      }
+
       try {
         const timestamp = Date.now();
         const prescription = activeOrder.rawPrescription;
         
-        // Update prescription status
         if (prescription.localId) {
           await db.prescriptions.update(prescription.localId, {
             status: overContainer,
             lastModified: timestamp
           });
 
-          // If moving to Ready, notify clinician
           if (overContainer === "Ready" && prescription.doctorId) {
             await db.notifications.add({
               id: crypto.randomUUID(),
@@ -152,23 +253,16 @@ export function PharmacyOrders() {
             });
           }
 
-          // If moving to Completed, deduct from inventory
           if (overContainer === "Completed") {
             const items = dbItems.filter(i => i.prescriptionId === prescription.id);
             for (const item of items) {
               const invItem = inventory.find(i => i.medicationName?.toLowerCase() === item.medicationName?.toLowerCase());
               if (invItem && invItem.localId) {
-                const newStock = Math.max(0, invItem.stock - 1); // Assuming 1 unit per prescription item for simplicity
+                const newStock = Math.max(0, invItem.stock - 1);
                 await db.pharmacy_inventory.update(invItem.localId, {
                   stock: newStock,
                   lastModified: timestamp
                 });
-                
-                if (newStock === 0) {
-                  toast.warning(`${invItem.medicationName} is now out of stock!`);
-                } else if (newStock <= invItem.minStock) {
-                  toast.warning(`${invItem.medicationName} is low on stock (${newStock} left)`);
-                }
               }
             }
             toast.success(`Order ${activeId} completed and inventory updated`);
@@ -186,32 +280,38 @@ export function PharmacyOrders() {
   };
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-xl font-bold text-slate-900">Order Management</h2>
-        <div className="flex gap-2 text-sm text-slate-500">
-          <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-amber-500"></div> Pending</span>
-          <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-emerald-500"></div> Ready</span>
-          <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-indigo-500"></div> Completed</span>
+    <div className="h-full flex flex-col space-y-4">
+      {/* Page Header */}
+      <div className="flex flex-wrap justify-between items-center gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <div>
+          <h2 className="text-xl font-bold text-slate-900">Pharmacy Dispensing & Order Queue</h2>
+          <p className="text-xs text-slate-500">Automated Drug Safety, FEFO Lot Selection & Barcode Verification</p>
+        </div>
+
+        <div className="flex items-center gap-4 text-xs font-semibold text-slate-600">
+          <span className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-amber-500"></div> Pending Queue</span>
+          <span className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-emerald-500"></div> Ready for Pickup</span>
+          <span className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-indigo-500"></div> Dispensed & Completed</span>
         </div>
       </div>
 
+      {/* Kanban Order Columns */}
       <DndContext 
         sensors={sensors} 
         collisionDetection={closestCenter} 
         onDragStart={handleDragStart} 
         onDragEnd={handleDragEnd}
       >
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-full">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 flex-1 min-h-[500px]">
           {(Object.keys(columns) as Array<keyof typeof columns>).map((status) => (
-            <div key={status} className="flex flex-col h-full bg-slate-50 rounded-xl border border-slate-200 overflow-hidden">
-              <div className={`p-3 border-b border-slate-200 font-semibold flex justify-between items-center ${
-                status === "Pending" ? "bg-amber-50 text-amber-700" :
-                status === "Ready" ? "bg-emerald-50 text-emerald-700" :
-                "bg-indigo-50 text-indigo-700"
+            <div key={status} className="flex flex-col h-full bg-slate-50/80 rounded-xl border border-slate-200 overflow-hidden shadow-xs">
+              <div className={`p-3 border-b font-bold text-xs uppercase tracking-wider flex justify-between items-center ${
+                status === "Pending" ? "bg-amber-50/80 border-amber-200 text-amber-800" :
+                status === "Ready" ? "bg-emerald-50/80 border-emerald-200 text-emerald-800" :
+                "bg-indigo-50/80 border-indigo-200 text-indigo-800"
               }`}>
-                {status}
-                <span className="bg-white/50 px-2 py-0.5 rounded-full text-xs font-bold">
+                <span>{status} Orders</span>
+                <span className="bg-white/80 px-2 py-0.5 rounded-full text-xs font-mono font-bold shadow-2xs">
                   {columns[status].length}
                 </span>
               </div>
@@ -222,10 +322,15 @@ export function PharmacyOrders() {
                   items={columns[status].map(o => o.id)} 
                   strategy={verticalListSortingStrategy}
                 >
-                  <div className="min-h-[100px]">
+                  <div className="min-h-[150px]">
                     {columns[status].map((order) => (
-                      <SortableItem key={order.id} order={order} />
+                      <SortableItem key={order.id} order={order} onOpenDispensing={handleOpenDispensing} />
                     ))}
+                    {columns[status].length === 0 && (
+                      <div className="text-center py-10 text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl bg-white/40">
+                        No {status.toLowerCase()} orders in queue
+                      </div>
+                    )}
                   </div>
                 </SortableContext>
               </div>
@@ -235,7 +340,7 @@ export function PharmacyOrders() {
 
         <DragOverlay>
           {activeId ? (
-            <div className="bg-white border border-indigo-200 rounded-xl p-4 shadow-xl rotate-2 cursor-grabbing">
+            <div className="bg-white border border-indigo-300 rounded-xl p-4 shadow-2xl rotate-2 cursor-grabbing w-72">
               {(() => {
                 const order = orders.find(o => o.id === activeId);
                 if (!order) return null;
@@ -243,13 +348,10 @@ export function PharmacyOrders() {
                   <>
                     <div className="flex justify-between items-start mb-2">
                       <span className="text-xs font-mono font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded">{order.id}</span>
-                      <GripVertical className="w-4 h-4 text-slate-300" />
+                      <GripVertical className="w-4 h-4 text-slate-400" />
                     </div>
                     <h3 className="font-bold text-slate-900 text-sm mb-1">{order.patient}</h3>
-                    <div className="flex justify-between items-center text-xs text-slate-500">
-                      <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {order.time}</span>
-                      <span className="font-semibold text-slate-700">${order.total.toFixed(2)}</span>
-                    </div>
+                    <p className="text-xs text-slate-500">{order.prescriptionItems.length} medication line item(s)</p>
                   </>
                 );
               })()}
@@ -257,6 +359,24 @@ export function PharmacyOrders() {
           ) : null}
         </DragOverlay>
       </DndContext>
+
+      {/* Dispensing Modal */}
+      {selectedOrderForDispensing && (
+        <DispensingModal 
+          isOpen={isDispensingOpen}
+          onClose={() => {
+            setIsDispensingOpen(false);
+            setSelectedOrderForDispensing(null);
+          }}
+          prescription={selectedOrderForDispensing.rawPrescription}
+          patientData={selectedOrderForDispensing.patientData}
+          prescriptionItems={selectedOrderForDispensing.prescriptionItems}
+          onStatusUpdated={() => {
+            setIsDispensingOpen(false);
+            setSelectedOrderForDispensing(null);
+          }}
+        />
+      )}
     </div>
   );
 }

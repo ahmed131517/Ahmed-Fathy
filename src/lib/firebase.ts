@@ -8,7 +8,8 @@ import {
   doc, 
   setDoc, 
   getDoc, 
-  getDocs, 
+  getDocs,
+  getDocFromServer, 
   query, 
   where, 
   onSnapshot, 
@@ -33,6 +34,18 @@ try {
 }
 
 export const db = firestoreDb;
+
+// Test Firestore connection on boot
+async function testConnection() {
+  try {
+    await getDocFromServer(doc(firestoreDb, 'test', 'connection'));
+  } catch (error) {
+    if (error instanceof Error && (error.message.includes('the client is offline') || error.message.includes('Could not reach Cloud Firestore'))) {
+      console.warn("Firestore operating in offline local cache mode.");
+    }
+  }
+}
+testConnection();
 
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();

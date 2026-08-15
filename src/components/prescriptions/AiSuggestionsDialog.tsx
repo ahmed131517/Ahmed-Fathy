@@ -1,5 +1,5 @@
 import React from 'react';
-import { Cpu, X, Sparkles, Loader2, RefreshCw, CheckCircle } from 'lucide-react';
+import { Cpu, X, Sparkles, Loader2, RefreshCw, CheckCircle, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface AiSuggestionsDialogProps {
@@ -7,6 +7,11 @@ interface AiSuggestionsDialogProps {
   onClose: () => void;
   confirmedDiagnosis: string;
   aiSuggestions: any[];
+  aiDataSufficiency?: {
+    dataSufficiency?: 'SUFFICIENT' | 'INSUFFICIENT';
+    dataSufficiencyReasoning?: string;
+    missingCriticalVariables?: string[];
+  } | null;
   isAiLoading: boolean;
   handleAiSuggest: () => void;
   handleGetAlternative: (suggestion: any, idx: number) => void;
@@ -22,6 +27,7 @@ export function AiSuggestionsDialog({
   onClose,
   confirmedDiagnosis,
   aiSuggestions,
+  aiDataSufficiency,
   isAiLoading,
   handleAiSuggest,
   handleGetAlternative,
@@ -54,7 +60,7 @@ export function AiSuggestionsDialog({
             </div>
           )}
           
-          {(isAiLoading || !aiSuggestions.length) && (
+          {(isAiLoading || (!aiSuggestions.length && !aiDataSufficiency)) && (
             <button 
               onClick={handleAiSuggest}
               disabled={isAiLoading}
@@ -62,7 +68,7 @@ export function AiSuggestionsDialog({
             >
               {isAiLoading ? (
                 <>
-                  <Loader2 className="w-5 h-5 animate-spin" /> Analyzing...
+                  <Loader2 className="w-5 h-5 animate-spin" /> Analyzing Clinical Data...
                 </>
               ) : (
                 <>
@@ -72,10 +78,40 @@ export function AiSuggestionsDialog({
             </button>
           )}
 
+          {/* Data Sufficiency Assessment Banner */}
+          {aiDataSufficiency && (
+            <div className="mb-4">
+              {aiDataSufficiency.dataSufficiency === 'INSUFFICIENT' ? (
+                <div className="p-4 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 space-y-2">
+                  <div className="flex items-center gap-2 font-bold text-sm text-amber-900">
+                    <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
+                    <span>DATA INSUFFICIENT FOR FULL PRESCRIPTION SAFETY</span>
+                  </div>
+                  <ul className="list-disc list-inside text-xs text-amber-900 space-y-1 font-medium pt-1">
+                    {aiDataSufficiency.missingCriticalVariables && aiDataSufficiency.missingCriticalVariables.length > 0 ? (
+                      aiDataSufficiency.missingCriticalVariables.map((v, i) => (
+                        <li key={i}>{v}</li>
+                      ))
+                    ) : (
+                      <li>Critical clinical parameters missing for safe prescription.</li>
+                    )}
+                  </ul>
+                </div>
+              ) : (
+                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 flex items-center gap-2 text-xs">
+                  <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span><strong>Data Sufficient:</strong> {aiDataSufficiency.dataSufficiencyReasoning || "Patient profile contains sufficient clinical variables for prescription generation."}</span>
+                </div>
+              )}
+            </div>
+          )}
+
           {aiSuggestions.length > 0 && (
             <div className="space-y-4">
               <div className="flex justify-between items-center mb-2">
-                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Recommended Medications</h4>
+                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  {aiDataSufficiency?.dataSufficiency === 'INSUFFICIENT' ? 'Provisional Medications (Caution Needed)' : 'Recommended Medications'}
+                </h4>
                 <div className="flex gap-3">
                   <button 
                     onClick={() => {setAiSuggestions([]); handleAiSuggest();}}
@@ -156,7 +192,7 @@ export function AiSuggestionsDialog({
                 <div className="absolute inset-0 border-4 border-indigo-600 rounded-full border-t-transparent animate-spin"></div>
                 <Cpu className="absolute inset-0 m-auto w-6 h-6 text-indigo-600 animate-pulse" />
               </div>
-              <p className="text-slate-500 text-sm animate-pulse">Consulting clinical knowledge base...</p>
+              <p className="text-slate-500 text-sm animate-pulse">Evaluating patient data sufficiency & clinical safety...</p>
             </div>
           )}
         </div>

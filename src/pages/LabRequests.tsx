@@ -98,6 +98,14 @@ export function LabRequests() {
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
   const [isSuggesting, setIsSuggesting] = useState(false);
   
+  // AI Image & Investigation Reader States
+  const [investigationImage, setInvestigationImage] = useState<string | null>(null);
+  const [investigationType, setInvestigationType] = useState<string>("chest_xray");
+  const [investigationNotes, setInvestigationNotes] = useState<string>("");
+  const [isAnalyzingImage, setIsAnalyzingImage] = useState<boolean>(false);
+  const [imageAnalysisResult, setImageAnalysisResult] = useState<string | null>(null);
+  const [showImageZoom, setShowImageZoom] = useState<boolean>(false);
+  
   const [isResultsModalOpen, setIsResultsModalOpen] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<LabRequest | null>(null);
   const [resultsInput, setResultsInput] = useState<any[]>([]);
@@ -360,17 +368,160 @@ export function LabRequests() {
     toast.success(`Template "${template.name}" applied.`);
   };
 
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast.error("Please upload a valid image file (JPG, PNG, WEBP).");
+      return;
+    }
+
+    if (file.size > 20 * 1024 * 1024) {
+      toast.error("Image size exceeds 20MB limit.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64Data = event.target?.result as string;
+      setInvestigationImage(base64Data);
+      setImageAnalysisResult(null);
+      toast.success("Investigation image loaded successfully.");
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleAnalyzeInvestigationImage = async () => {
+    if (!investigationImage) {
+      toast.error("Please upload an investigation image first.");
+      return;
+    }
+
+    setIsAnalyzingImage(true);
+    setImageAnalysisResult(null);
+
+    const modalityLabels: Record<string, string> = {
+      chest_xray: "Chest / Bone X-Ray",
+      ct_scan: "Computed Tomography (CT) Scan",
+      mri: "Magnetic Resonance Imaging (MRI)",
+      lab_sheet: "Laboratory Test Printout / Handwritten Lab Sheet",
+      ecg_strip: "Electrocardiogram (ECG / EKG) Strip",
+      ultrasound: "Ultrasound / Sonogram",
+      pathology: "Pathology / Histology Slide",
+      other_imaging: "Diagnostic Imaging / Investigation"
+    };
+
+    const modalityName = modalityLabels[investigationType] || "Medical Investigation";
+
+    const systemInstruction = `You are an expert board-certified diagnostic radiologist, clinical pathologist, and medical image interpretation AI specialist.
+Analyze the provided medical investigation image thoroughly, accurately, and professionally.
+Correlate findings with clinical context and provide a structured medical report in clean markdown.`;
+
+    const prompt = `Analyze this ${modalityName} image for patient: ${selectedPatient ? selectedPatient.name : "Unspecified Patient"} (Age: ${selectedPatient ? selectedPatient.age : 'N/A'}, Gender: ${selectedPatient ? selectedPatient.gender : 'N/A'}).
+Clinical Context / Reason for Scan: ${investigationNotes || "Routine diagnostic evaluation"}
+
+Provide a structured clinical diagnostic report in Markdown formatted as follows:
+### 1. Technical Quality & Projection
+- **Modality & View**: [Detail view, projection, contrast status]
+- **Image Adequacy**: [Exposure, penetration, artifacts, legibility]
+
+### 2. Detailed Key Findings & Observations
+- [Itemize primary radiologic landmarks or laboratory findings]
+- [Identify presence or absence of abnormalities, opacities, fractures, masses, or abnormal values]
+
+### 3. Primary Clinical Impression & Differential Diagnoses
+- **Primary Impression**: [Most probable diagnosis]
+- **Differential Diagnoses**: [List 2-3 secondary considerations]
+
+### 4. Critical Red Flag Alerts
+- 🚨 **Red Flag Status**: [Highlight urgent, acute, or critical findings requiring immediate attention, e.g. pneumothorax, fracture displacement, intracranial bleeding, or panic lab value. If normal, state 'No acute red flags identified.']
+
+### 5. Recommended Next Steps
+- [Suggested follow-up scans, confirmatory lab tests, or clinical correlation]`;
+
+    try {
+      const mimeMatch = investigationImage.match(/data:(image\/[a-zA-Z0-9\+\-\.]+);base64,/);
+      const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+
+      const responseText = await clinicalAIRequest(
+        [{
+          role: "user",
+          content: prompt,
+          images: [{
+            mimeType,
+            data: investigationImage
+          }]
+        }],
+        aiSettings,
+        systemInstruction
+      );
+
+      setImageAnalysisResult(responseText);
+      toast.success("AI Investigation Analysis completed.");
+    } catch (err: any) {
+      console.error("Failed to analyze investigation image:", err);
+      toast.error(err.message || "Failed to analyze image. Please try again.");
+    } finally {
+      setIsAnalyzingImage(false);
+    }
+  };
+
+  const handleSaveImageAnalysisToRecord = async () => {
+    if (!selectedPatient || !imageAnalysisResult) return;
+
+    try {
+      const modalityLabels: Record<string, string> = {
+        chest_xray: "Chest X-Ray",
+        ct_scan: "CT Scan",
+        mri: "MRI Imaging",
+        lab_sheet: "Lab Result Sheet",
+        ecg_strip: "ECG Strip",
+        ultrasound: "Ultrasound Scan",
+        pathology: "Pathology Report",
+        other_imaging: "Diagnostic Imaging"
+      };
+
+      const newReq: LabRequest = {
+        id: `IMG-${Math.floor(Math.random() * 10000)}`,
+        patientId: selectedPatient.id,
+        patientName: selectedPatient.name,
+        clinicId: profile.clinicId || 'default',
+        tests: [{ name: modalityLabels[investigationType] || "AI Imaging Scan", category: "imaging", code: "IMG-AI" } as any],
+        priority: 'standard',
+        physician,
+        requestDate: new Date().toISOString().split('T')[0],
+        status: 'completed',
+        clinicalInfo: investigationNotes || "Image Uploaded for AI Diagnostic Analysis",
+        notes: `AI Image Analysis attached for ${modalityLabels[investigationType]}`,
+        aiAnalysis: imageAnalysisResult,
+        uploadedLabUrl: investigationImage || undefined,
+        notifyPatient: false,
+        lastModified: Date.now(),
+        isDeleted: 0,
+        isSynced: 0
+      };
+
+      await db.lab_requests.add(newReq);
+      toast.success("Investigation report & AI analysis saved to patient's lab history!");
+      setActiveTab('completed');
+    } catch (error) {
+      console.error("Failed to save image report:", error);
+      toast.error("Failed to save report.");
+    }
+  };
+
   const analyzeResults = async (request: LabRequest) => {
-    if (!request.results || request.aiAnalysis) return;
+    if ((!request.results && !request.uploadedLabUrl) || request.aiAnalysis) return;
     
     setIsAnalyzing(true);
     try {
       const prompt = `
-        Analyze the following lab results for a patient named ${request.patientName}.
+        Analyze the following lab/investigation results for patient named ${request.patientName}.
         Clinical Info: ${request.clinicalInfo}
         
-        Results:
-        ${JSON.stringify(request.results, null, 2)}
+        Results Data:
+        ${JSON.stringify(request.results || [], null, 2)}
         
         Please provide a structured analysis in Markdown format:
         ### Summary of Clinical Approach
@@ -389,8 +540,13 @@ export function LabRequests() {
         Keep it concise and clinical.
       `;
 
+      const imagesPayload = request.uploadedLabUrl ? [{
+        mimeType: request.uploadedLabUrl.match(/data:(image\/[a-zA-Z0-9\+\-\.]+);base64,/)?.[1] || 'image/jpeg',
+        data: request.uploadedLabUrl
+      }] : undefined;
+
       const text = await clinicalAIRequest(
-        [{ role: "user", content: prompt }],
+        [{ role: "user", content: prompt, images: imagesPayload }],
         aiSettings
       );
       
@@ -485,21 +641,28 @@ export function LabRequests() {
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col flex-1 overflow-hidden">
         <div className="flex border-b border-slate-200 bg-slate-50">
           {[
-            { id: 'new', label: 'New Lab Request' },
-            { id: 'pending', label: 'Pending Tests' },
-            { id: 'completed', label: 'Completed Tests' },
+            { id: 'new', label: 'New Lab Request', icon: FilePlus },
+            { id: 'ai_investigation', label: 'AI Investigation Reader (CT / X-Ray / Labs)', icon: Sparkles, badge: 'AI Vision' },
+            { id: 'pending', label: 'Pending Tests', icon: Clock },
+            { id: 'completed', label: 'Completed Tests', icon: CheckCircle },
           ].map(tab => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={cn(
-                "px-6 py-4 text-sm font-medium transition-colors border-b-2",
+                "px-5 py-4 text-sm font-medium transition-colors border-b-2 flex items-center gap-2",
                 activeTab === tab.id 
                   ? "border-indigo-600 text-indigo-600 bg-white" 
                   : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100/50"
               )}
             >
+              {tab.icon && <tab.icon className={cn("w-4 h-4", activeTab === tab.id ? "text-indigo-600" : "text-slate-500")} />}
               {tab.label}
+              {tab.badge && (
+                <span className="px-2 py-0.5 text-[10px] font-bold bg-indigo-100 text-indigo-700 rounded-full animate-pulse">
+                  {tab.badge}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -886,6 +1049,265 @@ export function LabRequests() {
                   </div>
                 </div>
               </div>
+            </div>
+          ) : activeTab === 'ai_investigation' ? (
+            <div className="space-y-6 animate-in fade-in duration-300 max-w-6xl mx-auto pb-6">
+              {/* Header banner */}
+              <div className="bg-gradient-to-r from-indigo-900 via-indigo-800 to-slate-900 text-white rounded-2xl p-6 shadow-md relative overflow-hidden">
+                <div className="absolute right-0 top-0 bottom-0 w-1/3 opacity-10 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-white via-indigo-300 to-transparent pointer-events-none" />
+                <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                  <div>
+                    <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-500/30 border border-indigo-400/30 rounded-full text-xs font-semibold text-indigo-200 mb-2">
+                      <Sparkles className="w-3.5 h-3.5 text-indigo-300" /> Multimodal Diagnostic AI Vision
+                    </div>
+                    <h3 className="text-xl font-bold text-white">AI Medical Image & Lab Reader</h3>
+                    <p className="text-indigo-200 text-sm mt-1 max-w-2xl">
+                      Upload X-Rays, CT Scans, MRIs, Ultrasounds, ECGs, Pathology slides, or printed Lab Reports. Gemini Vision will analyze the image and generate an instant, structured diagnostic report.
+                    </p>
+                  </div>
+                  <div className="bg-white/10 backdrop-blur-md px-4 py-3 rounded-xl border border-white/20 text-xs text-indigo-100 flex flex-col gap-1">
+                    <span className="font-semibold text-white">Selected Patient:</span>
+                    <span className="text-sm font-bold text-indigo-200">{selectedPatient.name}</span>
+                    <span>Age: {selectedPatient.age} • {selectedPatient.gender}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                {/* Input & Upload Panel */}
+                <div className="lg:col-span-5 space-y-6">
+                  {/* Modality Selector */}
+                  <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
+                    <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                      <ImageIcon className="w-4 h-4 text-indigo-600" />
+                      1. Select Investigation Type
+                    </h4>
+                    
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { id: 'chest_xray', name: 'Chest / Bone X-Ray', icon: '🩻' },
+                        { id: 'ct_scan', name: 'CT Scan', icon: '🧠' },
+                        { id: 'mri', name: 'MRI Imaging', icon: '🧲' },
+                        { id: 'ultrasound', name: 'Ultrasound / Echo', icon: '🔊' },
+                        { id: 'ecg_strip', name: 'ECG / EKG Strip', icon: '🫀' },
+                        { id: 'lab_sheet', name: 'Lab Report Sheet', icon: '📄' },
+                        { id: 'pathology', name: 'Pathology / Biopsy', icon: '🧫' },
+                        { id: 'other_imaging', name: 'Other Scan / Image', icon: '🔬' },
+                      ].map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => setInvestigationType(item.id)}
+                          className={cn(
+                            "flex items-center gap-2 p-2.5 rounded-lg border text-left text-xs font-medium transition-all",
+                            investigationType === item.id
+                              ? "border-indigo-600 bg-indigo-50/70 text-indigo-900 font-bold shadow-xs"
+                              : "border-slate-200 text-slate-700 hover:bg-slate-50"
+                          )}
+                        >
+                          <span className="text-base">{item.icon}</span>
+                          <span className="truncate">{item.name}</span>
+                        </button>
+                      ))}
+                    </div>
+
+                    <div>
+                      <Label className="text-xs font-semibold text-slate-700 mb-1.5 block">
+                        Clinical Context / Indications (Optional)
+                      </Label>
+                      <Textarea
+                        value={investigationNotes}
+                        onChange={(e) => setInvestigationNotes(e.target.value)}
+                        placeholder="e.g. 45yo male with 3-day cough, fever, right-sided pleuritic chest pain. Rule out pneumonia."
+                        className="text-xs min-h-[70px] bg-slate-50 focus:bg-white"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Upload Drop Zone */}
+                  <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
+                    <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                      <FolderOpen className="w-4 h-4 text-indigo-600" />
+                      2. Upload Investigation Image
+                    </h4>
+
+                    {investigationImage ? (
+                      <div className="relative rounded-xl border border-indigo-200 bg-slate-900/5 p-3 space-y-3">
+                        <div className="relative h-48 w-full bg-slate-900 rounded-lg overflow-hidden flex items-center justify-center border border-slate-700">
+                          <img
+                            src={investigationImage}
+                            alt="Investigation scan"
+                            className="max-h-full max-w-full object-contain"
+                          />
+                          <div className="absolute top-2 right-2 flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setShowImageZoom(true)}
+                              className="p-1.5 bg-slate-900/80 text-white hover:bg-slate-900 rounded-lg backdrop-blur-xs transition-colors"
+                              title="View Fullsize"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setInvestigationImage(null);
+                                setImageAnalysisResult(null);
+                              }}
+                              className="p-1.5 bg-red-600 text-white hover:bg-red-700 rounded-lg transition-colors"
+                              title="Remove Image"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-xs text-slate-600 px-1">
+                          <span className="font-medium text-emerald-700 flex items-center gap-1">
+                            <CheckCircle className="w-3.5 h-3.5 text-emerald-600" /> Image Loaded & Ready
+                          </span>
+                          <label className="text-indigo-600 hover:underline cursor-pointer font-medium">
+                            Change Image
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={handleImageUpload}
+                              className="hidden"
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    ) : (
+                      <label className="border-2 border-dashed border-indigo-200 hover:border-indigo-400 bg-indigo-50/30 hover:bg-indigo-50/70 rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer transition-all text-center group">
+                        <div className="w-12 h-12 rounded-full bg-indigo-100 group-hover:bg-indigo-200 text-indigo-600 flex items-center justify-center mb-3 transition-colors">
+                          <ImageIcon className="w-6 h-6" />
+                        </div>
+                        <p className="text-sm font-semibold text-slate-800">
+                          Click to upload or drag medical scan/photo
+                        </p>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Supports Chest X-Rays, CT Scans, MRIs, Lab sheets, ECGs (PNG, JPG, WEBP up to 20MB)
+                        </p>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleImageUpload}
+                          className="hidden"
+                        />
+                      </label>
+                    )}
+
+                    <Button
+                      onClick={handleAnalyzeInvestigationImage}
+                      disabled={!investigationImage || isAnalyzingImage}
+                      className="w-full bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-semibold py-2.5 shadow-md flex items-center justify-center gap-2"
+                    >
+                      {isAnalyzingImage ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin text-indigo-200" />
+                          Analyzing Image with Gemini AI...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-4 h-4 text-amber-300" />
+                          Analyze Investigation with AI
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Analysis Output Panel */}
+                <div className="lg:col-span-7">
+                  <div className="bg-white border border-slate-200 rounded-xl shadow-sm h-full flex flex-col overflow-hidden min-h-[450px]">
+                    <div className="bg-slate-50 px-5 py-4 border-b border-slate-200 flex justify-between items-center">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-indigo-600" />
+                        <h4 className="font-bold text-slate-900 text-sm">AI Diagnostic Analysis Report</h4>
+                      </div>
+
+                      {imageAnalysisResult && (
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(imageAnalysisResult);
+                              toast.success("Analysis report copied to clipboard.");
+                            }}
+                            className="px-2.5 py-1.5 text-xs bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 rounded-lg flex items-center gap-1 font-medium transition-colors"
+                          >
+                            <Copy className="w-3.5 h-3.5 text-slate-500" /> Copy
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleSaveImageAnalysisToRecord}
+                            className="px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg flex items-center gap-1 font-medium shadow-xs transition-colors"
+                          >
+                            <Database className="w-3.5 h-3.5 text-indigo-200" /> Save to Patient File
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="p-6 flex-1 overflow-y-auto">
+                      {isAnalyzingImage ? (
+                        <div className="h-64 flex flex-col items-center justify-center text-center">
+                          <div className="w-14 h-14 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center mb-4 text-indigo-600 animate-pulse">
+                            <Sparkles className="w-7 h-7" />
+                          </div>
+                          <h5 className="font-bold text-slate-800 text-base">Processing Medical Image</h5>
+                          <p className="text-xs text-slate-500 max-w-sm mt-1">
+                            Scanning radiologic landmarks, detecting structural anomalies, and correlating with clinical parameters...
+                          </p>
+                        </div>
+                      ) : imageAnalysisResult ? (
+                        <div className="prose prose-indigo prose-sm max-w-none text-slate-800 space-y-4">
+                          <div className="p-3.5 bg-indigo-50/50 border border-indigo-100 rounded-xl mb-4 text-xs text-indigo-900 flex items-start gap-2">
+                            <Info className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+                            <div>
+                              <span className="font-bold">AI Clinical Decision Support:</span> Automated image interpretation assists clinicians. Always correlate with clinical history and formal radiologic review.
+                            </div>
+                          </div>
+
+                          <div className="bg-slate-50/80 p-5 rounded-xl border border-slate-200 text-slate-800 text-xs sm:text-sm whitespace-pre-line leading-relaxed font-sans">
+                            {imageAnalysisResult}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="h-80 flex flex-col items-center justify-center text-center p-6 border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
+                          <div className="w-16 h-16 bg-white border border-slate-200 rounded-full flex items-center justify-center mb-3 text-slate-400 shadow-xs">
+                            <ImageIcon className="w-8 h-8 text-indigo-400" />
+                          </div>
+                          <h5 className="font-bold text-slate-800 text-base">No Investigation Loaded Yet</h5>
+                          <p className="text-xs text-slate-500 max-w-sm mt-1">
+                            Select an investigation type on the left, upload an X-Ray, CT Scan, MRI, or Lab Sheet photo, then click <strong>"Analyze Investigation with AI"</strong>.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Fullsize Image Modal */}
+              {showImageZoom && investigationImage && (
+                <Dialog open={showImageZoom} onOpenChange={setShowImageZoom}>
+                  <DialogContent className="sm:max-w-[90vw] max-h-[90vh] flex flex-col p-4 bg-slate-900 text-white">
+                    <DialogHeader className="flex flex-row justify-between items-center border-b border-slate-800 pb-3">
+                      <DialogTitle className="text-white text-base font-bold flex items-center gap-2">
+                        <Eye className="w-4 h-4 text-indigo-400" /> Fullsize Investigation View
+                      </DialogTitle>
+                    </DialogHeader>
+                    <div className="flex-1 overflow-auto flex items-center justify-center p-2 bg-black rounded-lg min-h-[60vh]">
+                      <img
+                        src={investigationImage}
+                        alt="Full size medical image"
+                        className="max-h-[75vh] max-w-full object-contain"
+                      />
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              )}
             </div>
           ) : activeTab === 'pending' ? (
             <div className="space-y-6 animate-in fade-in duration-300">

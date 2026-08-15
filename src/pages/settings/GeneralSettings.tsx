@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { useSettings } from "../../lib/SettingsContext";
-import { Check, Plus, Trash2, Edit2, ChevronDown, ChevronUp, Layout, Pill } from "lucide-react";
+import { useSettings, ClinicBranch } from "../../lib/SettingsContext";
+import { Check, Plus, Trash2, Edit2, ChevronDown, ChevronUp, Layout, Pill, Building2, MapPin, Phone, CheckCircle2, Star, ShieldCheck, Stamp, QrCode, FileCheck2, Award, Printer, Sliders, FileText, Download, Upload, FolderHeart, Activity, Ruler, Thermometer, Clock, Settings, Mail, Globe, Laptop } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -14,11 +14,24 @@ export function GeneralSettings() {
     practiceState: globalPracticeState,
     practiceZip: globalPracticeZip,
     practicePhone: globalPracticePhone,
+    practiceNameAr: globalPracticeNameAr = "",
+    practiceAddressAr: globalPracticeAddressAr = "",
+    practiceMotto: globalPracticeMotto = "",
+    practiceMottoAr: globalPracticeMottoAr = "",
+    headerLayoutPreset: globalHeaderLayoutPreset = "en-left-ar-right",
+    facilityStamp: globalFacilityStamp = "",
+    facilityLicenseNo: globalFacilityLicenseNo = "",
+    healthAuthorityId: globalHealthAuthorityId = "",
+    taxRegistrationId: globalTaxRegistrationId = "",
+    enableVerificationQRCode: globalEnableVerificationQRCode = true,
+    verificationPortalUrl: globalVerificationPortalUrl = "",
     practiceLogo: globalPracticeLogo,
     practiceLogoShape: globalPracticeLogoShape,
     practiceLogoSize: globalPracticeLogoSize,
     practiceLogoPosition: globalPracticeLogoPosition,
     patientIdPrefix: globalPatientIdPrefix,
+    branches: globalBranches = [],
+    activeBranchId: globalActiveBranchId = "",
     doctorName: globalDoctorName,
     doctorQualifications: globalDoctorQualifications,
     doctorDesignation: globalDoctorDesignation,
@@ -33,6 +46,15 @@ export function GeneralSettings() {
     prescriptionFooterFont: globalPrescriptionFooterFont,
     prescriptionBodyFont: globalPrescriptionBodyFont,
     doctorSignature: globalDoctorSignature,
+    paperSize: globalPaperSize = 'a4',
+    topMargin: globalTopMargin = 15,
+    bottomMargin: globalBottomMargin = 15,
+    watermarkOpacity: globalWatermarkOpacity = 30,
+    tempUnit: globalTempUnit = 'C',
+    weightUnit: globalWeightUnit = 'kg',
+    heightUnit: globalHeightUnit = 'cm',
+    bgUnit: globalBgUnit = 'mg/dL',
+    defaultApptDuration: globalDefaultApptDuration = 15,
     customPrescriptionTemplates: globalCustomTemplates,
     updateSettings 
   } = useSettings();
@@ -43,11 +65,103 @@ export function GeneralSettings() {
   const [practiceState, setPracticeState] = useState(globalPracticeState);
   const [practiceZip, setPracticeZip] = useState(globalPracticeZip);
   const [practicePhone, setPracticePhone] = useState(globalPracticePhone);
+  const [practiceNameAr, setPracticeNameAr] = useState(globalPracticeNameAr);
+  const [practiceAddressAr, setPracticeAddressAr] = useState(globalPracticeAddressAr);
+  const [practiceMotto, setPracticeMotto] = useState(globalPracticeMotto);
+  const [practiceMottoAr, setPracticeMottoAr] = useState(globalPracticeMottoAr);
+  const [headerLayoutPreset, setHeaderLayoutPreset] = useState<'en-left-ar-right' | 'ar-left-en-right' | 'stacked-en-top' | 'stacked-ar-top' | 'center-logo-split'>(globalHeaderLayoutPreset || 'en-left-ar-right');
+  const [facilityStamp, setFacilityStamp] = useState(globalFacilityStamp);
+  const [facilityLicenseNo, setFacilityLicenseNo] = useState(globalFacilityLicenseNo);
+  const [healthAuthorityId, setHealthAuthorityId] = useState(globalHealthAuthorityId);
+  const [taxRegistrationId, setTaxRegistrationId] = useState(globalTaxRegistrationId);
+  const [enableVerificationQRCode, setEnableVerificationQRCode] = useState(globalEnableVerificationQRCode);
+  const [verificationPortalUrl, setVerificationPortalUrl] = useState(globalVerificationPortalUrl);
   const [practiceLogo, setPracticeLogo] = useState(globalPracticeLogo);
   const [practiceLogoShape, setPracticeLogoShape] = useState(globalPracticeLogoShape);
   const [practiceLogoSize, setPracticeLogoSize] = useState(globalPracticeLogoSize || 96);
   const [practiceLogoPosition, setPracticeLogoPosition] = useState<'left' | 'center' | 'right'>(globalPracticeLogoPosition || 'center');
   const [patientIdPrefix, setPatientIdPrefix] = useState(globalPatientIdPrefix);
+  
+  // Multi-Branch State
+  const [branches, setBranches] = useState<ClinicBranch[]>(globalBranches);
+  const [activeBranchId, setActiveBranchId] = useState<string>(globalActiveBranchId || (globalBranches[0]?.id || ""));
+  const [isAddingBranch, setIsAddingBranch] = useState(false);
+  const [editingBranchId, setEditingBranchId] = useState<string | null>(null);
+  const [branchForm, setBranchForm] = useState<Omit<ClinicBranch, 'id'>>({
+    name: "",
+    address: "",
+    city: "",
+    state: "",
+    zip: "",
+    phone: "",
+    email: "",
+    website: "",
+    type: "Physical Clinic",
+    isDefault: false
+  });
+
+  const handleSelectActiveBranch = (branch: ClinicBranch) => {
+    setActiveBranchId(branch.id);
+    setPracticeName(branch.name);
+    setPracticeAddress(branch.address);
+    setPracticeCity(branch.city);
+    setPracticeState(branch.state);
+    setPracticeZip(branch.zip);
+    setPracticePhone(branch.phone);
+    toast.success(`Active clinic branch switched to "${branch.name}". Prescription headers updated!`);
+  };
+
+  const handleSaveBranch = () => {
+    if (!branchForm.name.trim()) {
+      toast.error("Branch name is required.");
+      return;
+    }
+
+    if (editingBranchId) {
+      const updated = branches.map(b => b.id === editingBranchId ? { ...branchForm, id: editingBranchId } : b);
+      setBranches(updated);
+      setEditingBranchId(null);
+      toast.success("Branch location updated.");
+    } else {
+      const newBranch: ClinicBranch = {
+        ...branchForm,
+        id: `branch-${Date.now()}`
+      };
+      const updated = [...branches, newBranch];
+      setBranches(updated);
+      setIsAddingBranch(false);
+      toast.success("New clinic branch added.");
+    }
+
+    setBranchForm({
+      name: "",
+      address: "",
+      city: "",
+      state: "",
+      zip: "",
+      phone: "",
+      email: "",
+      website: "",
+      type: "Physical Clinic",
+      isDefault: false
+    });
+  };
+
+  const handleDeleteBranch = (id: string) => {
+    if (branches.length <= 1) {
+      toast.error("You must maintain at least one active clinic location.");
+      return;
+    }
+    const updated = branches.filter(b => b.id !== id);
+    setBranches(updated);
+    if (activeBranchId === id) {
+      const nextBranch = updated[0];
+      if (nextBranch) {
+        handleSelectActiveBranch(nextBranch);
+      }
+    }
+    toast.success("Clinic branch removed.");
+  };
   
   const [doctorName, setDoctorName] = useState(globalDoctorName);
   const [doctorQualifications, setDoctorQualifications] = useState(globalDoctorQualifications);
@@ -63,6 +177,15 @@ export function GeneralSettings() {
   const [prescriptionFooterFont, setPrescriptionFooterFont] = useState(globalPrescriptionFooterFont);
   const [prescriptionBodyFont, setPrescriptionBodyFont] = useState(globalPrescriptionBodyFont);
   const [doctorSignature, setDoctorSignature] = useState(globalDoctorSignature);
+  const [paperSize, setPaperSize] = useState<'a4' | 'a5' | 'letter' | 'thermal80mm'>(globalPaperSize || 'a4');
+  const [topMargin, setTopMargin] = useState<number>(globalTopMargin ?? 15);
+  const [bottomMargin, setBottomMargin] = useState<number>(globalBottomMargin ?? 15);
+  const [watermarkOpacity, setWatermarkOpacity] = useState<number>(globalWatermarkOpacity ?? 30);
+  const [tempUnit, setTempUnit] = useState<'C' | 'F'>(globalTempUnit || 'C');
+  const [weightUnit, setWeightUnit] = useState<'kg' | 'lbs'>(globalWeightUnit || 'kg');
+  const [heightUnit, setHeightUnit] = useState<'cm' | 'in'>(globalHeightUnit || 'cm');
+  const [bgUnit, setBgUnit] = useState<'mg/dL' | 'mmol/L'>(globalBgUnit || 'mg/dL');
+  const [defaultApptDuration, setDefaultApptDuration] = useState<number>(globalDefaultApptDuration ?? 15);
   const [customTemplates, setCustomTemplates] = useState(globalCustomTemplates);
   const [expandedTemplate, setExpandedTemplate] = useState<string | null>(null);
   const [editingVariation, setEditingVariation] = useState<{template: string, variation: string} | null>(null);
@@ -90,6 +213,97 @@ export function GeneralSettings() {
     } else if (newTemplateName) {
       toast.error("Template name already exists.");
     }
+  };
+
+  const handleExportTemplates = () => {
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(customTemplates, null, 2));
+    const downloadAnchorNode = document.createElement('a');
+    downloadAnchorNode.setAttribute("href", dataStr);
+    downloadAnchorNode.setAttribute("download", "rx_templates_backup.json");
+    document.body.appendChild(downloadAnchorNode);
+    downloadAnchorNode.click();
+    downloadAnchorNode.remove();
+    toast.success("Templates exported to JSON");
+  };
+
+  const handleImportTemplates = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const imported = JSON.parse(event.target?.result as string);
+          if (typeof imported === 'object' && imported !== null) {
+            setCustomTemplates(prev => ({ ...prev, ...imported }));
+            toast.success("Templates imported successfully");
+            setIsSaved(false);
+          } else {
+            throw new Error("Invalid format");
+          }
+        } catch (err) {
+          toast.error("Failed to parse templates JSON file");
+        }
+      };
+      reader.readAsText(file);
+    }
+  };
+
+  const installPresetLibrary = (libraryName: string) => {
+    let presets: Record<string, Record<string, any[]>> = {};
+    if (libraryName === 'Pediatrics') {
+      presets = {
+        "Fever (Pediatric)": {
+          "Standard": [
+            { medication: "Paracetamol Suspension", form: "120mg/5ml", dosage: "5 ml", frequency: "Every 6 hours" }
+          ]
+        },
+        "Otitis Media": {
+          "Standard": [
+            { medication: "Amoxicillin", form: "250mg/5ml", dosage: "5 ml", frequency: "TDS for 7 days" }
+          ]
+        }
+      };
+    } else if (libraryName === 'Cardiology') {
+      presets = {
+        "Hypertension (Initial)": {
+          "Standard": [
+            { medication: "Amlodipine", form: "5mg Tablet", dosage: "1 tab", frequency: "OD" }
+          ]
+        },
+        "Heart Failure (Mild)": {
+          "Standard": [
+            { medication: "Bisoprolol", form: "2.5mg Tablet", dosage: "1 tab", frequency: "OD" },
+            { medication: "Furosemide", form: "40mg Tablet", dosage: "1 tab", frequency: "OD (Morning)" }
+          ]
+        }
+      };
+    } else if (libraryName === 'Dermatology') {
+      presets = {
+        "Acne Vulgaris": {
+          "Standard": [
+            { medication: "Adapalene", form: "0.1% Gel", dosage: "Apply thin layer", frequency: "At night" }
+          ]
+        }
+      };
+    } else if (libraryName === 'General Practice') {
+      presets = {
+        "Upper Respiratory Tract Infection": {
+          "Standard": [
+            { medication: "Paracetamol", form: "500mg Tablet", dosage: "1 tab", frequency: "TDS PRN" },
+            { medication: "Loratadine", form: "10mg Tablet", dosage: "1 tab", frequency: "OD" }
+          ]
+        },
+        "Uncomplicated UTI": {
+          "Standard": [
+            { medication: "Nitrofurantoin", form: "100mg Capsule", dosage: "1 cap", frequency: "BD for 5 days" }
+          ]
+        }
+      };
+    }
+
+    setCustomTemplates(prev => ({ ...prev, ...presets }));
+    toast.success(`${libraryName} templates installed`);
+    setIsSaved(false);
   };
 
   const removeTemplate = (name: string) => {
@@ -144,11 +358,18 @@ export function GeneralSettings() {
       practiceState,
       practiceZip,
       practicePhone,
+      practiceNameAr,
+      practiceAddressAr,
+      practiceMotto,
+      practiceMottoAr,
+      headerLayoutPreset,
       practiceLogo,
       practiceLogoShape,
       practiceLogoSize,
       practiceLogoPosition,
       patientIdPrefix,
+      branches,
+      activeBranchId,
       doctorName,
       doctorQualifications,
       doctorDesignation,
@@ -163,10 +384,36 @@ export function GeneralSettings() {
       prescriptionFooterFont,
       prescriptionBodyFont,
       doctorSignature,
+      facilityStamp,
+      facilityLicenseNo,
+      healthAuthorityId,
+      taxRegistrationId,
+      enableVerificationQRCode,
+      verificationPortalUrl,
+      paperSize,
+      topMargin,
+      bottomMargin,
+      watermarkOpacity,
+      tempUnit,
+      weightUnit,
+      heightUnit,
+      bgUnit,
+      defaultApptDuration,
       customPrescriptionTemplates: customTemplates,
     });
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 3000);
+  };
+
+  const handleFacilityStampUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFacilityStamp(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -204,34 +451,328 @@ export function GeneralSettings() {
 
   return (
     <div className="space-y-6">
+      {/* Enterprise Multi-Branch & Location Management */}
+      <div className="card-panel border-l-4 border-l-indigo-600 dark:border-l-indigo-500">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4 pb-3 border-b border-slate-100 dark:border-slate-800">
+          <div>
+            <div className="flex items-center gap-2">
+              <Building2 className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white">Workspaces & Clinics</h2>
+              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                Enterprise Suite
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              Configure multiple clinic branches and workspaces. Selecting an active workspace automatically updates prescription header details and contact info.
+            </p>
+          </div>
+          
+          <button
+            type="button"
+            onClick={() => {
+              setEditingBranchId(null);
+              setBranchForm({ name: "", address: "", city: "", state: "", zip: "", phone: "", email: "", website: "", type: "Physical Clinic", isDefault: false });
+              setIsAddingBranch(!isAddingBranch);
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 dark:bg-indigo-600 dark:hover:bg-indigo-500 transition-colors shadow-sm self-start sm:self-auto cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            {isAddingBranch ? "Cancel" : "Add Branch"}
+          </button>
+        </div>
+
+        {/* Add/Edit Branch Form */}
+        {(isAddingBranch || editingBranchId) && (
+          <div className="mb-6 p-4 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-indigo-100 dark:border-indigo-900/40 space-y-3">
+            <h3 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
+              {editingBranchId ? "Edit Clinic Branch" : "Register New Branch Location"}
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-medium text-slate-700 dark:text-slate-300">Branch / Clinic Name *</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Downtown Clinic or Telehealth Branch"
+                  value={branchForm.name}
+                  onChange={(e) => setBranchForm({ ...branchForm, name: e.target.value })}
+                  className="w-full p-2 text-xs border rounded-lg dark:bg-slate-800 dark:border-slate-700 mt-1"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-700 dark:text-slate-300">Phone Number</label>
+                <input
+                  type="text"
+                  placeholder="(555) 000-0000"
+                  value={branchForm.phone}
+                  onChange={(e) => setBranchForm({ ...branchForm, phone: e.target.value })}
+                  className="w-full p-2 text-xs border rounded-lg dark:bg-slate-800 dark:border-slate-700 mt-1"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="text-xs font-medium text-slate-700 dark:text-slate-300">Street Address</label>
+                <input
+                  type="text"
+                  placeholder="Street address or Suite #"
+                  value={branchForm.address}
+                  onChange={(e) => setBranchForm({ ...branchForm, address: e.target.value })}
+                  className="w-full p-2 text-xs border rounded-lg dark:bg-slate-800 dark:border-slate-700 mt-1"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-700 dark:text-slate-300">City</label>
+                <input
+                  type="text"
+                  value={branchForm.city}
+                  onChange={(e) => setBranchForm({ ...branchForm, city: e.target.value })}
+                  className="w-full p-2 text-xs border rounded-lg dark:bg-slate-800 dark:border-slate-700 mt-1"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs font-medium text-slate-700 dark:text-slate-300">State</label>
+                  <input
+                    type="text"
+                    value={branchForm.state}
+                    onChange={(e) => setBranchForm({ ...branchForm, state: e.target.value })}
+                    className="w-full p-2 text-xs border rounded-lg dark:bg-slate-800 dark:border-slate-700 mt-1"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-700 dark:text-slate-300">Zip Code</label>
+                  <input
+                    type="text"
+                    value={branchForm.zip}
+                    onChange={(e) => setBranchForm({ ...branchForm, zip: e.target.value })}
+                    className="w-full p-2 text-xs border rounded-lg dark:bg-slate-800 dark:border-slate-700 mt-1"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-700 dark:text-slate-300">Email Address</label>
+                <input
+                  type="email"
+                  placeholder="contact@clinic.com"
+                  value={branchForm.email}
+                  onChange={(e) => setBranchForm({ ...branchForm, email: e.target.value })}
+                  className="w-full p-2 text-xs border rounded-lg dark:bg-slate-800 dark:border-slate-700 mt-1"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-700 dark:text-slate-300">Website</label>
+                <input
+                  type="text"
+                  placeholder="www.clinic.com"
+                  value={branchForm.website}
+                  onChange={(e) => setBranchForm({ ...branchForm, website: e.target.value })}
+                  className="w-full p-2 text-xs border rounded-lg dark:bg-slate-800 dark:border-slate-700 mt-1"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="text-xs font-medium text-slate-700 dark:text-slate-300">Workspace Type</label>
+                <select
+                  value={branchForm.type}
+                  onChange={(e) => setBranchForm({ ...branchForm, type: e.target.value as any })}
+                  className="w-full p-2 text-xs border rounded-lg dark:bg-slate-800 dark:border-slate-700 mt-1 bg-white dark:bg-slate-800"
+                >
+                  <option value="Physical Clinic">Physical Clinic</option>
+                  <option value="Telehealth">Telehealth / Virtual</option>
+                  <option value="Administration">Administration</option>
+                  <option value="Hybrid">Hybrid</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAddingBranch(false);
+                  setEditingBranchId(null);
+                }}
+                className="px-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveBranch}
+                className="px-3 py-1.5 text-xs rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700"
+              >
+                {editingBranchId ? "Update Location" : "Save Location"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Branch Locations List */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {branches.map((b) => {
+            const isActive = activeBranchId === b.id;
+            return (
+              <div
+                key={b.id}
+                className={cn(
+                  "p-3.5 rounded-xl border transition-all flex flex-col justify-between relative",
+                  isActive
+                    ? "bg-indigo-50/70 dark:bg-indigo-950/30 border-indigo-500 shadow-sm ring-1 ring-indigo-500/50"
+                    : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700"
+                )}
+              >
+                <div>
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="flex items-center gap-1.5">
+                      {b.type === 'Telehealth' ? (
+                        <Laptop className={cn("w-4 h-4", isActive ? "text-indigo-600 dark:text-indigo-400" : "text-slate-400")} />
+                      ) : (
+                        <Building2 className={cn("w-4 h-4", isActive ? "text-indigo-600 dark:text-indigo-400" : "text-slate-400")} />
+                      )}
+                      <h3 className="text-xs font-bold text-slate-900 dark:text-white leading-tight">
+                        {b.name}
+                      </h3>
+                      {b.type && (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 font-semibold uppercase tracking-wider ml-1">
+                          {b.type}
+                        </span>
+                      )}
+                    </div>
+                    {isActive ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-600 text-white shrink-0">
+                        <CheckCircle2 className="w-3 h-3" /> Active Prescribing
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleSelectActiveBranch(b)}
+                        className="text-[10px] font-medium text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 underline cursor-pointer shrink-0"
+                      >
+                        Set Active
+                      </button>
+                    )}
+                  </div>
+                  <div className="space-y-1.5 text-xs text-slate-600 dark:text-slate-400">
+                    <div className="flex items-start gap-1">
+                      <MapPin className="w-3.5 h-3.5 shrink-0 text-slate-400 mt-0.5" />
+                      <span className="line-clamp-2">
+                        {b.address || "No address provided"}, {b.city} {b.state} {b.zip}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Phone className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+                      <span>{b.phone || "No phone provided"}</span>
+                    </div>
+                    {b.email && (
+                      <div className="flex items-center gap-1">
+                        <Mail className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+                        <span className="truncate">{b.email}</span>
+                      </div>
+                    )}
+                    {b.website && (
+                      <div className="flex items-center gap-1">
+                        <Globe className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+                        <span className="truncate">{b.website}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-3 mt-3 border-t border-slate-100 dark:border-slate-800">
+                  <span className="text-[10px] font-medium text-slate-400">
+                    {b.isDefault ? "Primary Facility" : "Secondary Branch"}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingBranchId(b.id);
+                        setBranchForm({
+                          name: b.name,
+                          address: b.address,
+                          city: b.city,
+                          state: b.state,
+                          zip: b.zip,
+                          phone: b.phone,
+                          email: b.email || "",
+                          website: b.website || "",
+                          type: b.type || "Physical Clinic",
+                          isDefault: b.isDefault
+                        });
+                        setIsAddingBranch(false);
+                      }}
+                      className="text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 p-1 rounded transition-colors"
+                      title="Edit Branch"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                    {branches.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteBranch(b.id)}
+                        className="text-slate-400 hover:text-red-600 dark:hover:text-red-400 p-1 rounded transition-colors"
+                        title="Delete Branch"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       <div className="card-panel">
-        <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-4">Practice Information</h2>
+        <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100 dark:border-slate-800">
+          <div>
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white">Active Branch Practice Profile & Bilingual Info</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Configure dual-language details for printed prescription headers and official practice documents.</p>
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-1">
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Practice Name</label>
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Practice Name (English)</label>
             <input type="text" value={practiceName} onChange={(e) => setPracticeName(e.target.value)} className="w-full p-2 border rounded-lg dark:bg-slate-800 dark:border-slate-700" />
           </div>
           <div className="space-y-1">
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Address</label>
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">اسم المركز / العيادة (بالعربية)</label>
+            <input type="text" dir="rtl" value={practiceNameAr} onChange={(e) => setPracticeNameAr(e.target.value)} className="w-full p-2 border rounded-lg dark:bg-slate-800 dark:border-slate-700" placeholder="مثال: عيادة المجمع الطبي التخصصي" />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Address (English)</label>
             <input type="text" value={practiceAddress} onChange={(e) => setPracticeAddress(e.target.value)} className="w-full p-2 border rounded-lg dark:bg-slate-800 dark:border-slate-700" />
           </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">عنوان المركز (بالعربية)</label>
+            <input type="text" dir="rtl" value={practiceAddressAr} onChange={(e) => setPracticeAddressAr(e.target.value)} className="w-full p-2 border rounded-lg dark:bg-slate-800 dark:border-slate-700" placeholder="مثال: ١٢٣ شارع المركز الطبي، المجمع الرئيسي" />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Clinic Motto / Slogan (English)</label>
+            <input type="text" value={practiceMotto} onChange={(e) => setPracticeMotto(e.target.value)} className="w-full p-2 border rounded-lg dark:bg-slate-800 dark:border-slate-700" placeholder="e.g. Excellence in Compassionate Care" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">شعار العيادة / المقولة (بالعربية)</label>
+            <input type="text" dir="rtl" value={practiceMottoAr} onChange={(e) => setPracticeMottoAr(e.target.value)} className="w-full p-2 border rounded-lg dark:bg-slate-800 dark:border-slate-700" placeholder="مثال: التميز والريادة في الرعاية الصحية" />
+          </div>
+
           <div className="space-y-1">
             <label className="text-sm font-medium text-slate-700 dark:text-slate-300">City</label>
             <input type="text" value={practiceCity} onChange={(e) => setPracticeCity(e.target.value)} className="w-full p-2 border rounded-lg dark:bg-slate-800 dark:border-slate-700" />
           </div>
           <div className="space-y-1">
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">State</label>
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">State / Province</label>
             <input type="text" value={practiceState} onChange={(e) => setPracticeState(e.target.value)} className="w-full p-2 border rounded-lg dark:bg-slate-800 dark:border-slate-700" />
           </div>
           <div className="space-y-1">
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">ZIP</label>
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">ZIP / Postal Code</label>
             <input type="text" value={practiceZip} onChange={(e) => setPracticeZip(e.target.value)} className="w-full p-2 border rounded-lg dark:bg-slate-800 dark:border-slate-700" />
           </div>
           <div className="space-y-1">
             <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Phone</label>
             <input type="text" value={practicePhone} onChange={(e) => setPracticePhone(e.target.value)} className="w-full p-2 border rounded-lg dark:bg-slate-800 dark:border-slate-700" />
           </div>
-          <div className="space-y-1">
+          <div className="space-y-1 md:col-span-2">
             <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Patient ID Prefix</label>
             <input type="text" value={patientIdPrefix} onChange={(e) => setPatientIdPrefix(e.target.value)} className="w-full p-2 border rounded-lg dark:bg-slate-800 dark:border-slate-700" placeholder="e.g. PAT" />
           </div>
@@ -378,6 +919,86 @@ export function GeneralSettings() {
         </div>
       </div>
 
+      {/* RTL / LTR Header Layout Presets */}
+      <div className="card-panel">
+        <div className="flex items-center gap-2 mb-2">
+          <Layout className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+          <h2 className="text-lg font-bold text-slate-900 dark:text-white">Prescription Header Layout Presets (RTL / LTR)</h2>
+        </div>
+        <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+          Choose how English and Arabic physician and clinic credentials align on printed prescriptions and generated PDFs.
+        </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {[
+            {
+              id: 'en-left-ar-right',
+              title: 'Standard Bilingual (LTR / RTL)',
+              desc: 'English doctor info on left, Logo in center, Arabic doctor info on right.',
+              badge: 'Default Balanced'
+            },
+            {
+              id: 'ar-left-en-right',
+              title: 'Inverted Alignment',
+              desc: 'Arabic doctor info on left, Logo in center, English doctor info on right.',
+              badge: 'Arabic Primary'
+            },
+            {
+              id: 'stacked-en-top',
+              title: 'Stacked Header (English First)',
+              desc: 'Full English credential header at top with logo, Arabic header immediately below.',
+              badge: 'Vertical Stack'
+            },
+            {
+              id: 'stacked-ar-top',
+              title: 'Stacked Header (Arabic First)',
+              desc: 'Full Arabic credential header at top with logo, English header immediately below.',
+              badge: 'Vertical Stack'
+            },
+            {
+              id: 'center-logo-split',
+              title: 'Center Logo & Split Columns',
+              desc: 'Prominent center logo on top, with side-by-side English and Arabic columns below.',
+              badge: 'Symmetrical'
+            }
+          ].map((preset) => {
+            const isSelected = headerLayoutPreset === preset.id;
+            return (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => setHeaderLayoutPreset(preset.id as any)}
+                className={cn(
+                  "p-3.5 rounded-xl border text-left transition-all relative flex flex-col justify-between cursor-pointer",
+                  isSelected
+                    ? "bg-indigo-50/80 dark:bg-indigo-950/40 border-indigo-600 dark:border-indigo-500 shadow-sm ring-2 ring-indigo-600/30"
+                    : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700"
+                )}
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                      {preset.title}
+                    </span>
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                      {preset.badge}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-normal">
+                    {preset.desc}
+                  </p>
+                </div>
+                {isSelected && (
+                  <div className="mt-3 pt-2 border-t border-indigo-200 dark:border-indigo-900/60 flex items-center justify-end text-indigo-600 dark:text-indigo-400 text-xs font-bold">
+                    <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Selected Preset
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       <div className="card-panel">
         <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-4">Prescription Header & Footer</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -488,16 +1109,51 @@ export function GeneralSettings() {
                   type="file" 
                   accept="image/*" 
                   onChange={handleSignatureUpload} 
-                  className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" 
+                  className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 dark:file:bg-indigo-900/20 dark:file:text-indigo-300" 
                 />
                 <p className="text-xs text-slate-500 mt-1">Upload an image of your signature (transparent PNG recommended).</p>
               </div>
               {doctorSignature && (
-                <div className="relative group">
-                  <img src={doctorSignature} alt="Signature Preview" className="w-32 h-16 object-contain border rounded-lg shadow-sm bg-white" />
+                <div className="relative group shrink-0">
+                  <img src={doctorSignature} alt="Signature Preview" className="w-32 h-16 object-contain border rounded-lg shadow-sm bg-white p-1" />
                   <button 
+                    type="button"
                     onClick={() => setDoctorSignature('')}
-                    className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                  >
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="col-span-1 md:col-span-2 space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+            <div className="flex items-center gap-2">
+              <Stamp className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+              <label className="text-sm font-bold text-slate-900 dark:text-white">Facility / Clinic Official Digital Stamp</label>
+            </div>
+            <div className="flex items-start gap-4 bg-slate-50/60 dark:bg-slate-900/40 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
+              <div className="flex-1">
+                <input 
+                  type="file" 
+                  accept="image/png,image/*" 
+                  onChange={handleFacilityStampUpload} 
+                  className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 dark:file:bg-indigo-900/20 dark:file:text-indigo-300" 
+                />
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  Upload official clinic seal / circular stamp. Rendered alongside physician signature on prescriptions (PNG with transparent background recommended).
+                </p>
+              </div>
+              {facilityStamp && (
+                <div className="relative group shrink-0">
+                  <div className="p-1 border border-dashed border-indigo-400 rounded-lg bg-white">
+                    <img src={facilityStamp} alt="Facility Stamp Preview" className="w-16 h-16 object-contain" />
+                  </div>
+                  <button 
+                    type="button"
+                    onClick={() => setFacilityStamp('')}
+                    className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
                   >
                     <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                   </button>
@@ -558,18 +1214,380 @@ export function GeneralSettings() {
           </div>
         </div>
       </div>
+
+      {/* Official Licenses & Security Compliance Panel */}
+      <div className="card-panel">
+        <div className="flex items-center gap-2 mb-3 pb-2 border-b border-slate-100 dark:border-slate-800">
+          <ShieldCheck className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+          <div>
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white">License, Regulatory & Security Compliance</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Configure health authority license IDs and e-prescription verification settings.</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+              <Award className="w-3.5 h-3.5 text-slate-400" /> Facility License Number
+            </label>
+            <input 
+              type="text" 
+              value={facilityLicenseNo} 
+              onChange={(e) => setFacilityLicenseNo(e.target.value)} 
+              className="w-full p-2 text-xs border rounded-lg dark:bg-slate-800 dark:border-slate-700 font-mono" 
+              placeholder="e.g. FAC-984210-CA" 
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+              <FileCheck2 className="w-3.5 h-3.5 text-slate-400" /> National Health Authority ID
+            </label>
+            <input 
+              type="text" 
+              value={healthAuthorityId} 
+              onChange={(e) => setHealthAuthorityId(e.target.value)} 
+              className="w-full p-2 text-xs border rounded-lg dark:bg-slate-800 dark:border-slate-700 font-mono" 
+              placeholder="e.g. NHA-883201-MED" 
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+              <Building2 className="w-3.5 h-3.5 text-slate-400" /> Tax Registration ID
+            </label>
+            <input 
+              type="text" 
+              value={taxRegistrationId} 
+              onChange={(e) => setTaxRegistrationId(e.target.value)} 
+              className="w-full p-2 text-xs border rounded-lg dark:bg-slate-800 dark:border-slate-700 font-mono" 
+              placeholder="e.g. TAX-300192847" 
+            />
+          </div>
+        </div>
+
+        {/* Verification QR Code Settings */}
+        <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <QrCode className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+              <div>
+                <h3 className="text-xs font-bold text-slate-900 dark:text-white">Digital Verification QR Code</h3>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">Embed a scannable QR verification code in prescription headers and footers for instant authentication.</p>
+              </div>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input 
+                type="checkbox" 
+                checked={enableVerificationQRCode} 
+                onChange={(e) => setEnableVerificationQRCode(e.target.checked)} 
+                className="sr-only peer"
+              />
+              <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:peer-checked:after:border-slate-600 peer-checked:bg-indigo-600"></div>
+            </label>
+          </div>
+
+          {enableVerificationQRCode && (
+            <div className="pt-2 border-t border-slate-200 dark:border-slate-800 space-y-1">
+              <label className="text-xs font-medium text-slate-700 dark:text-slate-300">Custom Verification Portal Endpoint / URL</label>
+              <input 
+                type="text" 
+                value={verificationPortalUrl} 
+                onChange={(e) => setVerificationPortalUrl(e.target.value)} 
+                className="w-full p-2 text-xs border rounded-lg dark:bg-slate-800 dark:border-slate-700 font-mono" 
+                placeholder="https://rx-verify.healthportal.org/verify" 
+              />
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                When specified, QR codes link directly to <code className="text-indigo-600 dark:text-indigo-400 font-mono">{verificationPortalUrl}?rxId=...</code>. Leave blank to generate full encrypted text summaries inside the QR code.
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Paper Size, Margins & Watermark Opacity Panel */}
+      <div className="card-panel">
+        <div className="flex items-center gap-2 mb-3 pb-2 border-b border-slate-100 dark:border-slate-800">
+          <Printer className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+          <div>
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white">Print Paper Formatting & Watermark Opacity</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Configure prescription paper dimensions, top/bottom print margins, and background watermark transparency.</p>
+          </div>
+        </div>
+
+        {/* Paper Size Presets */}
+        <div className="mb-6">
+          <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-2.5 block">Paper Size Presets</label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {[
+              { id: 'a4', title: 'A4 Standard', size: '210 × 297 mm', badge: 'ISO Standard' },
+              { id: 'a5', title: 'A5 Rx Pad', size: '148 × 210 mm', badge: 'Standard Rx Pad' },
+              { id: 'letter', title: 'US Letter', size: '8.5 × 11 inches', badge: 'North America' },
+              { id: 'thermal80mm', title: '80mm Thermal Roll', size: '80mm Continuous', badge: 'Point-of-Care' }
+            ].map((preset) => {
+              const isSelected = paperSize === preset.id;
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => setPaperSize(preset.id as any)}
+                  className={cn(
+                    "p-3.5 rounded-xl border text-left transition-all relative flex flex-col justify-between cursor-pointer",
+                    isSelected
+                      ? "bg-indigo-50/80 dark:bg-indigo-950/40 border-indigo-600 dark:border-indigo-500 shadow-sm ring-2 ring-indigo-600/30"
+                      : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700"
+                  )}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-bold text-slate-900 dark:text-white">{preset.title}</span>
+                      <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">{preset.badge}</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">{preset.size}</p>
+                  </div>
+                  {isSelected && (
+                    <div className="mt-2.5 pt-1.5 border-t border-indigo-200 dark:border-indigo-900/60 flex items-center text-indigo-600 dark:text-indigo-400 text-[11px] font-bold">
+                      <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Active Size
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Page Margins & Watermark Sliders */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-slate-50 dark:bg-slate-900/60 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                <Sliders className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" /> Top Margin (mm)
+              </label>
+              <span className="text-xs font-mono font-bold px-2 py-0.5 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 rounded">{topMargin} mm</span>
+            </div>
+            <input 
+              type="range" 
+              min="0" 
+              max="80" 
+              value={topMargin} 
+              onChange={(e) => setTopMargin(parseInt(e.target.value) || 0)}
+              className="w-full accent-indigo-600 cursor-pointer" 
+            />
+            <p className="text-[10px] text-slate-500 dark:text-slate-400">Increase to avoid printing over pre-printed letterhead headers.</p>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                <Sliders className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" /> Bottom Margin (mm)
+              </label>
+              <span className="text-xs font-mono font-bold px-2 py-0.5 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 rounded">{bottomMargin} mm</span>
+            </div>
+            <input 
+              type="range" 
+              min="0" 
+              max="80" 
+              value={bottomMargin} 
+              onChange={(e) => setBottomMargin(parseInt(e.target.value) || 0)}
+              className="w-full accent-indigo-600 cursor-pointer" 
+            />
+            <p className="text-[10px] text-slate-500 dark:text-slate-400">Increase to avoid printing over pre-printed stationary footers.</p>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" /> Watermark / BG Opacity
+              </label>
+              <span className="text-xs font-mono font-bold px-2 py-0.5 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 rounded">{watermarkOpacity}%</span>
+            </div>
+            <input 
+              type="range" 
+              min="10" 
+              max="100" 
+              step="5"
+              value={watermarkOpacity} 
+              onChange={(e) => setWatermarkOpacity(parseInt(e.target.value) || 10)}
+              className="w-full accent-indigo-600 cursor-pointer" 
+            />
+            <p className="text-[10px] text-slate-500 dark:text-slate-400">Controls background image transparency (10% faint to 100% full).</p>
+          </div>
+        </div>
+      </div>
+      
+      {/* Clinical Defaults & Unit Preferences */}
+      <div className="card-panel">
+        <div className="flex items-center gap-2 mb-4 pb-2 border-b border-slate-100 dark:border-slate-800">
+          <Activity className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+          <div>
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white">Clinical Defaults & Unit Preferences</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Configure default measurement units and scheduling durations across the clinic.</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-1.5">
+              <Thermometer className="w-3.5 h-3.5 text-slate-400" /> Temperature Unit
+            </label>
+            <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
+              <button
+                type="button"
+                onClick={() => setTempUnit('C')}
+                className={cn("flex-1 text-xs py-1.5 rounded-md font-semibold transition-colors", tempUnit === 'C' ? "bg-white dark:bg-slate-700 shadow-sm text-indigo-600 dark:text-indigo-400" : "text-slate-500")}
+              >
+                °C (Celsius)
+              </button>
+              <button
+                type="button"
+                onClick={() => setTempUnit('F')}
+                className={cn("flex-1 text-xs py-1.5 rounded-md font-semibold transition-colors", tempUnit === 'F' ? "bg-white dark:bg-slate-700 shadow-sm text-indigo-600 dark:text-indigo-400" : "text-slate-500")}
+              >
+                °F (Fahrenheit)
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-1.5">
+              <Activity className="w-3.5 h-3.5 text-slate-400" /> Weight Unit
+            </label>
+            <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
+              <button
+                type="button"
+                onClick={() => setWeightUnit('kg')}
+                className={cn("flex-1 text-xs py-1.5 rounded-md font-semibold transition-colors", weightUnit === 'kg' ? "bg-white dark:bg-slate-700 shadow-sm text-indigo-600 dark:text-indigo-400" : "text-slate-500")}
+              >
+                kg (Kilograms)
+              </button>
+              <button
+                type="button"
+                onClick={() => setWeightUnit('lbs')}
+                className={cn("flex-1 text-xs py-1.5 rounded-md font-semibold transition-colors", weightUnit === 'lbs' ? "bg-white dark:bg-slate-700 shadow-sm text-indigo-600 dark:text-indigo-400" : "text-slate-500")}
+              >
+                lbs (Pounds)
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-1.5">
+              <Ruler className="w-3.5 h-3.5 text-slate-400" /> Height Unit
+            </label>
+            <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
+              <button
+                type="button"
+                onClick={() => setHeightUnit('cm')}
+                className={cn("flex-1 text-xs py-1.5 rounded-md font-semibold transition-colors", heightUnit === 'cm' ? "bg-white dark:bg-slate-700 shadow-sm text-indigo-600 dark:text-indigo-400" : "text-slate-500")}
+              >
+                cm
+              </button>
+              <button
+                type="button"
+                onClick={() => setHeightUnit('in')}
+                className={cn("flex-1 text-xs py-1.5 rounded-md font-semibold transition-colors", heightUnit === 'in' ? "bg-white dark:bg-slate-700 shadow-sm text-indigo-600 dark:text-indigo-400" : "text-slate-500")}
+              >
+                inches
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-1.5">
+              <Activity className="w-3.5 h-3.5 text-slate-400" /> Blood Glucose
+            </label>
+            <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
+              <button
+                type="button"
+                onClick={() => setBgUnit('mg/dL')}
+                className={cn("flex-1 text-xs py-1.5 rounded-md font-semibold transition-colors", bgUnit === 'mg/dL' ? "bg-white dark:bg-slate-700 shadow-sm text-indigo-600 dark:text-indigo-400" : "text-slate-500")}
+              >
+                mg/dL
+              </button>
+              <button
+                type="button"
+                onClick={() => setBgUnit('mmol/L')}
+                className={cn("flex-1 text-xs py-1.5 rounded-md font-semibold transition-colors", bgUnit === 'mmol/L' ? "bg-white dark:bg-slate-700 shadow-sm text-indigo-600 dark:text-indigo-400" : "text-slate-500")}
+              >
+                mmol/L
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Scheduling Defaults */}
+        <div className="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+          <div className="flex items-center gap-2 mb-3">
+            <Clock className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white">Default Appointment Duration</h3>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            {[10, 15, 20, 30, 45, 60].map((mins) => (
+              <button
+                key={mins}
+                type="button"
+                onClick={() => setDefaultApptDuration(mins)}
+                className={cn(
+                  "px-4 py-2 rounded-lg text-xs font-bold border transition-colors",
+                  defaultApptDuration === mins
+                    ? "bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-indigo-900/40 dark:border-indigo-400 dark:text-indigo-300"
+                    : "bg-white border-slate-200 text-slate-600 hover:border-slate-300 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300 dark:hover:border-slate-600"
+                )}
+              >
+                {mins} Minutes
+              </button>
+            ))}
+          </div>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-2">
+            Used as the default time block length for newly scheduled consultations and auto-scheduling slots.
+          </p>
+        </div>
+      </div>
       
       <div className="card-panel">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold text-slate-900 dark:text-white">Prescription Templates</h2>
-          {!isAddingTemplate && (
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+          <div>
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white">Prescription Templates</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Manage your custom medication presets and import/export libraries.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="px-3 py-1.5 bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 rounded-lg text-xs font-bold flex items-center gap-1.5 hover:bg-slate-200 cursor-pointer transition-colors">
+              <Upload className="w-3.5 h-3.5" /> Import
+              <input type="file" accept=".json" className="hidden" onChange={handleImportTemplates} />
+            </label>
             <button 
-              onClick={() => setIsAddingTemplate(true)}
-              className="px-3 py-1.5 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 rounded-lg text-xs font-bold flex items-center gap-1.5 hover:bg-indigo-100 transition-colors"
+              onClick={handleExportTemplates}
+              className="px-3 py-1.5 bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 rounded-lg text-xs font-bold flex items-center gap-1.5 hover:bg-slate-200 transition-colors"
             >
-              <Plus className="w-3.5 h-3.5" /> Add Template
+              <Download className="w-3.5 h-3.5" /> Export
             </button>
-          )}
+            {!isAddingTemplate && (
+              <button 
+                onClick={() => setIsAddingTemplate(true)}
+                className="px-3 py-1.5 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 rounded-lg text-xs font-bold flex items-center gap-1.5 hover:bg-indigo-100 transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" /> Add Template
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Preset Libraries */}
+        <div className="mb-6 bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-3 flex items-center gap-1.5">
+            <FolderHeart className="w-4 h-4 text-pink-500" /> Install Specialty Template Libraries
+          </h3>
+          <div className="flex flex-wrap gap-2">
+            {['General Practice', 'Pediatrics', 'Cardiology', 'Dermatology'].map((lib) => (
+              <button
+                key={lib}
+                onClick={() => installPresetLibrary(lib)}
+                className="px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 hover:border-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all flex items-center gap-1.5"
+              >
+                <Download className="w-3 h-3 opacity-60" /> {lib}
+              </button>
+            ))}
+          </div>
         </div>
 
         {isAddingTemplate && (
@@ -767,19 +1785,28 @@ export function GeneralSettings() {
       </div>
       
       <div className="card-panel">
-        <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-4">Preferences</h2>
+        <div className="flex items-center gap-2 mb-4 pb-2 border-b border-slate-100 dark:border-slate-800">
+          <Settings className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+          <div>
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white">Preferences</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Configure global application behaviors and display modes.</p>
+          </div>
+        </div>
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-sm font-medium text-slate-900 dark:text-slate-200">Compact Mode</h3>
               <p className="text-sm text-slate-500 dark:text-slate-400">Reduce spacing in tables and lists to show more content.</p>
             </div>
-            <button 
-              onClick={() => updateSettings({ compactMode: !compactMode })}
-              className={`w-11 h-6 rounded-full relative cursor-pointer transition-colors ${compactMode ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'}`}
-            >
-              <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 shadow-sm transition-transform ${compactMode ? 'right-0.5 translate-x-0' : 'left-0.5 dark:bg-slate-400'}`}></div>
-            </button>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input 
+                type="checkbox" 
+                checked={compactMode} 
+                onChange={(e) => updateSettings({ compactMode: e.target.checked })} 
+                className="sr-only peer"
+              />
+              <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:peer-checked:after:border-slate-600 peer-checked:bg-indigo-600"></div>
+            </label>
           </div>
           <div className="w-full h-px bg-slate-100 dark:bg-slate-800"></div>
           <div className="flex items-center justify-between">
@@ -787,12 +1814,15 @@ export function GeneralSettings() {
               <h3 className="text-sm font-medium text-slate-900 dark:text-slate-200">Show Patient IDs</h3>
               <p className="text-sm text-slate-500 dark:text-slate-400">Display patient IDs next to their names in lists.</p>
             </div>
-            <button 
-              onClick={() => updateSettings({ showPatientIds: !showPatientIds })}
-              className={`w-11 h-6 rounded-full relative cursor-pointer transition-colors ${showPatientIds ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'}`}
-            >
-              <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 shadow-sm transition-transform ${showPatientIds ? 'right-0.5 translate-x-0' : 'left-0.5 dark:bg-slate-400'}`}></div>
-            </button>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input 
+                type="checkbox" 
+                checked={showPatientIds} 
+                onChange={(e) => updateSettings({ showPatientIds: e.target.checked })} 
+                className="sr-only peer"
+              />
+              <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:peer-checked:after:border-slate-600 peer-checked:bg-indigo-600"></div>
+            </label>
           </div>
         </div>
       </div>

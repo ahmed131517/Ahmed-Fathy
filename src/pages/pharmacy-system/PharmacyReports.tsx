@@ -37,7 +37,8 @@ export function PharmacyReports() {
   };
 
   const generateSalesReport = async () => {
-    const prescriptions = await db.prescriptions.where('status').equals('completed').toArray();
+    const allPrescriptions = await db.prescriptions.toArray();
+    const prescriptions = allPrescriptions.filter(p => p.status === 'completed' || p.status === 'Completed');
     const patients = await db.patients.toArray();
     const prescriptionItems = await db.prescription_items.toArray();
     const inventory = await db.pharmacy_inventory.toArray();

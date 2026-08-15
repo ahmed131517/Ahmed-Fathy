@@ -28,8 +28,14 @@ const initialInventory: InventoryItem[] = [
 ];
 
 export function PharmacyInventory() {
-  const inventory = useLiveQuery(() => db.pharmacy_inventory.where('isDeleted').equals(0).toArray()) || [];
-  const batches = useLiveQuery(() => db.pharmacy_batches.where('isDeleted').equals(0).toArray()) || [];
+  const inventory = useLiveQuery(async () => {
+    const all = await db.pharmacy_inventory.toArray();
+    return all.filter(i => !i.isDeleted);
+  }) || [];
+  const batches = useLiveQuery(async () => {
+    const all = await db.pharmacy_batches.toArray();
+    return all.filter(b => !b.isDeleted);
+  }) || [];
   
   const [viewMode, setViewMode] = useState<'list' | 'dashboard'>('dashboard');
   const [searchQuery, setSearchQuery] = useState("");
@@ -60,6 +66,7 @@ export function PharmacyInventory() {
   useEffect(() => {
     PharmacyInventoryService.checkLowStock();
     PharmacyInventoryService.checkExpiringBatches();
+    PharmacyInventoryService.ensureSeedBatches();
   }, []);
 
   const seedInventory = async () => {
@@ -285,7 +292,8 @@ export function PharmacyInventory() {
                     <th className="px-4 py-3">Medication Name</th>
                     <th className="px-4 py-3">Unit</th>
                     <th className="px-4 py-3">Price</th>
-                    <th className="px-4 py-3">Stock Level</th>
+                    <th className="px-4 py-3">Total Stock</th>
+                    <th className="px-4 py-3">FEFO Recommended Lot</th>
                     <th className="px-4 py-3">Status</th>
                     <th className="px-4 py-3 text-right">Actions</th>
                   </tr>
@@ -294,6 +302,12 @@ export function PharmacyInventory() {
                   {filteredInventory.length > 0 ? (
                     filteredInventory.map((item) => {
                       const status = item.stock === 0 ? "Out of Stock" : item.stock <= item.minStock ? "Low Stock" : "In Stock";
+                      
+                      // Find FEFO recommended batch for this item
+                      const itemId = item.id || String(item.localId);
+                      const itemBatches = batches.filter(b => b.inventoryItemId === itemId && b.isDeleted === 0 && b.quantity > 0);
+                      const fefoBatch = [...itemBatches].sort((a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime())[0];
+
                       return (
                         <tr key={item.localId} className="hover:bg-slate-50 transition-colors">
                           <td className="px-4 py-3 font-medium text-slate-900">{item.medicationName}</td>
@@ -306,6 +320,20 @@ export function PharmacyInventory() {
                                 <AlertTriangle className="w-3 h-3 text-amber-500" />
                               )}
                             </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            {fefoBatch ? (
+                              <div className="text-xs">
+                                <span className="font-mono font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded">
+                                  {fefoBatch.batchNumber}
+                                </span>
+                                <span className="text-[11px] text-slate-500 ml-2">
+                                  Exp: {fefoBatch.expiryDate} ({fefoBatch.quantity} left)
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-slate-400 italic">No Active Batches</span>
+                            )}
                           </td>
                           <td className="px-4 py-3">
                             <span className={cn(

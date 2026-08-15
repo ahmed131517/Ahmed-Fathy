@@ -128,6 +128,8 @@ export const medicationService = {
       { id: 13, generic_name: 'Omeprazole', drug_class: 'PPI', atc_code: 'A02BC01' },
       { id: 14, generic_name: 'Losartan', drug_class: 'ARB', atc_code: 'C09CA01' },
       { id: 15, generic_name: 'Spironolactone', drug_class: 'Diuretic', atc_code: 'C03DA01' },
+      { id: 16, generic_name: 'Lithium', drug_class: 'Mood Stabilizer', atc_code: 'N05AN01' },
+      { id: 17, generic_name: 'Clopidogrel', drug_class: 'Antiplatelet', atc_code: 'B01AC04' },
       { id: 18, generic_name: 'Metoprolol', drug_class: 'Beta Blocker', atc_code: 'C07AB02' },
       { id: 19, generic_name: 'Gabapentin', drug_class: 'Anticonvulsant', atc_code: 'N03AX12' },
       { id: 20, generic_name: 'Hydrochlorothiazide', drug_class: 'Diuretic', atc_code: 'C03AA03' },
@@ -139,27 +141,27 @@ export const medicationService = {
     await db.drugs.bulkAdd(drugs);
 
     await db.drug_brands.bulkAdd([
-      { drug_id: 1, brand_name: 'Amoxil', manufacturer: 'GSK' },
-      { drug_id: 2, brand_name: 'Prinivil', manufacturer: 'Merck' },
-      { drug_id: 3, brand_name: 'Advil', manufacturer: 'Pfizer' },
-      { drug_id: 4, brand_name: 'Coumadin', manufacturer: 'BMS' },
-      { drug_id: 7, brand_name: 'Glucophage', manufacturer: 'Merck' },
-      { drug_id: 8, brand_name: 'Lipitor', manufacturer: 'Pfizer' },
-      { drug_id: 9, brand_name: 'Zithromax', manufacturer: 'Pfizer' },
-      { drug_id: 10, brand_name: 'Zoloft', manufacturer: 'Pfizer' },
-      { drug_id: 11, brand_name: 'Synthroid', manufacturer: 'AbbVie' },
-      { drug_id: 12, brand_name: 'Norvasc', manufacturer: 'Pfizer' },
-      { drug_id: 13, brand_name: 'Prilosec', manufacturer: 'AstraZeneca' },
-      { drug_id: 14, brand_name: 'Cozaar', manufacturer: 'Merck' },
-      { drug_id: 15, brand_name: 'Aldactone', manufacturer: 'Pfizer' },
-      { drug_id: 16, brand_name: 'Lithobid', manufacturer: 'Novartis' },
-      { drug_id: 17, brand_name: 'Plavix', manufacturer: 'Sanofi' },
-      { drug_id: 18, brand_name: 'Lopressor', manufacturer: 'Novartis' },
-      { drug_id: 19, brand_name: 'Neurontin', manufacturer: 'Pfizer' },
-      { drug_id: 20, brand_name: 'Microzide', manufacturer: 'Watson' },
-      { drug_id: 21, brand_name: 'Deltasone', manufacturer: 'Pfizer' },
-      { drug_id: 22, brand_name: 'Lasix', manufacturer: 'Sanofi' },
-      { drug_id: 23, brand_name: 'Ventolin', manufacturer: 'GSK' }
+      { drug_id: 1, brand_name: 'Ibiamox (Amoxicillin)', manufacturer: 'GSK' },
+      { drug_id: 2, brand_name: 'Zestril (Lisinopril)', manufacturer: 'Merck' },
+      { drug_id: 3, brand_name: 'Brufen (Ibuprofen)', manufacturer: 'Pfizer' },
+      { drug_id: 4, brand_name: 'Marevan (Warfarin)', manufacturer: 'BMS' },
+      { drug_id: 7, brand_name: 'Cidophage (Metformin)', manufacturer: 'Merck' },
+      { drug_id: 8, brand_name: 'Ator (Atorvastatin)', manufacturer: 'Pfizer' },
+      { drug_id: 9, brand_name: 'Zithrokan (Azithromycin)', manufacturer: 'Pfizer' },
+      { drug_id: 10, brand_name: 'Lustral (Sertraline)', manufacturer: 'Pfizer' },
+      { drug_id: 11, brand_name: 'Eltroxin (Levothyroxine)', manufacturer: 'AbbVie' },
+      { drug_id: 12, brand_name: 'Alkacap (Amlodipine)', manufacturer: 'Pfizer' },
+      { drug_id: 13, brand_name: 'Losec (Omeprazole)', manufacturer: 'AstraZeneca' },
+      { drug_id: 14, brand_name: 'Amzaar (Losartan)', manufacturer: 'Merck' },
+      { drug_id: 15, brand_name: 'Aldactone (Spironolactone)', manufacturer: 'Pfizer' },
+      { drug_id: 16, brand_name: 'Lithobid (Lithium)', manufacturer: 'Novartis' },
+      { drug_id: 17, brand_name: 'Plavix (Clopidogrel)', manufacturer: 'Sanofi' },
+      { drug_id: 18, brand_name: 'Betaloc (Metoprolol)', manufacturer: 'Novartis' },
+      { drug_id: 19, brand_name: 'Gaptin (Gabapentin)', manufacturer: 'Pfizer' },
+      { drug_id: 20, brand_name: 'Esidrex (Hydrochlorothiazide)', manufacturer: 'Watson' },
+      { drug_id: 21, brand_name: 'Hostacortin (Prednisone)', manufacturer: 'Pfizer' },
+      { drug_id: 22, brand_name: 'Lasix (Furosemide)', manufacturer: 'Sanofi' },
+      { drug_id: 23, brand_name: 'Ventolin (Albuterol)', manufacturer: 'GSK' }
     ]);
 
     await db.drug_interactions.bulkAdd([
@@ -346,7 +348,8 @@ export const medicationService = {
     }
     if (drugInfo.side_effects?.length) {
       for (const effect of drugInfo.side_effects) {
-        const effectExists = await db.drug_side_effects.where({ drug_id: drugId, side_effect: effect }).first();
+        const effects = await db.drug_side_effects.where('drug_id').equals(drugId).toArray();
+        const effectExists = effects.find(e => e.side_effect === effect);
         if (!effectExists) {
           await db.drug_side_effects.add({ drug_id: drugId, side_effect: effect, frequency: 'Unknown' });
         }
@@ -354,9 +357,10 @@ export const medicationService = {
     }
     if (drugInfo.contraindications?.length) {
       for (const contra of drugInfo.contraindications) {
-        const contraExists = await db.drug_contraindications.where({ drug_id: drugId, condition: contra }).first();
+        const contras = await db.drug_contraindications.where('drug_id').equals(drugId).toArray();
+        const contraExists = contras.find(c => c.condition === contra);
         if (!contraExists) {
-          await db.drug_contraindications.add({ drug_id: drugId, condition: contra, severity: 'Major', description: 'AI Discovered' });
+          await db.drug_contraindications.add({ drug_id: drugId, condition: contra, severity: 'Major' });
         }
       }
     }

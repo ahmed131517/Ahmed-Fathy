@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Search, X } from 'lucide-react';
 import { medicationsDatabase } from '@/data/medications';
 import { ALL_TESTS } from '@/data/labReferenceData';
-import { HEAD_MODELS, EAR_MODELS, EYE_MODELS, THROAT_MODELS, BACK_MODELS } from '@/data/symptomModels';
+import { ALL_MODELS } from '@/data/symptomModels';
 
 export function GlobalSearch() {
   const [query, setQuery] = useState('');
@@ -11,7 +11,7 @@ export function GlobalSearch() {
   const allData = useMemo(() => [
     ...Object.values(medicationsDatabase).flat().map(m => ({ ...m, title: m.name, category: 'Medication' })),
     ...ALL_TESTS.map(l => ({ ...l, title: l.name, category: 'Lab Reference' })),
-    ...[...HEAD_MODELS, ...EAR_MODELS, ...EYE_MODELS, ...THROAT_MODELS, ...BACK_MODELS].map(s => ({ ...s, title: s.label, category: 'Encyclopedia' })),
+    ...Object.values(ALL_MODELS).flat().map(s => ({ ...s, title: s.label, category: 'Encyclopedia' })),
   ], []);
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {

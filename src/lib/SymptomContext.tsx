@@ -7,6 +7,32 @@ export interface Symptom {
   label: string;
   category: string;
   status: SymptomStatus;
+  
+  // Enterprise EMR Architecture
+  symptom_id?: string; // e.g. "SYM000123"
+  snomed_code?: string; // e.g. "29857009"
+  icd_mapping?: string; // e.g. "R07.9"
+  synonyms?: string[]; // e.g. ["Chest Pressure", "Tight Chest"]
+  attributes?: {
+    severity?: string;
+    duration?: string;
+    onset?: string;
+    radiation?: string;
+    character?: string;
+    laterality?: string;
+    location?: string;
+    [key: string]: string | undefined;
+  };
+  attributeConfig?: {
+    supportsSeverity?: boolean;
+    supportsDuration?: boolean;
+    supportsOnset?: boolean;
+    supportsRadiation?: boolean;
+    supportsCharacter?: boolean;
+    supportsLaterality?: boolean;
+    supportsLocation?: boolean;
+  };
+  
   analysisData?: Record<string, string[]>;
   severityTimeline?: { date: string, value: number }[];
   followUpQuestions?: string[];
@@ -19,12 +45,15 @@ interface SymptomContextType {
   addSymptom: (symptom: Symptom) => void;
   removeSymptom: (id: string) => void;
   updateSymptom: (id: string, updates: Partial<Symptom>) => void;
+  chiefComplaint: string;
+  setChiefComplaint: (cc: string) => void;
 }
 
 const SymptomContext = createContext<SymptomContextType | undefined>(undefined);
 
 export function SymptomProvider({ children }: { children: ReactNode }) {
   const [symptoms, setSymptoms] = useState<Symptom[]>([]);
+  const [chiefComplaint, setChiefComplaint] = useState<string>('Acute Chest Pain & Dyspnea');
 
   const addSymptom = useCallback((symptom: Symptom) => {
     setSymptoms(prev => [...prev, symptom]);
@@ -43,8 +72,10 @@ export function SymptomProvider({ children }: { children: ReactNode }) {
     setSymptoms, 
     addSymptom, 
     removeSymptom, 
-    updateSymptom 
-  }), [symptoms, addSymptom, removeSymptom, updateSymptom]);
+    updateSymptom,
+    chiefComplaint,
+    setChiefComplaint
+  }), [symptoms, addSymptom, removeSymptom, updateSymptom, chiefComplaint, setChiefComplaint]);
 
   return (
     <SymptomContext.Provider value={contextValue}>

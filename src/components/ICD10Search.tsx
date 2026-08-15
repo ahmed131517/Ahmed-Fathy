@@ -90,15 +90,15 @@ export function ICD10Search({ onSelect, initialValue = "", placeholder = "Search
         )}
       </div>
 
-      {isOpen && results.length > 0 && (
-        <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-[300px] overflow-y-auto overflow-x-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+      {isOpen && (
+        <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-[320px] overflow-y-auto overflow-x-hidden animate-in fade-in slide-in-from-top-2 duration-200 divide-y divide-slate-100">
           {results.map((item, index) => (
             <button
               key={item.code}
               onClick={() => handleSelect(item)}
               onMouseEnter={() => setSelectedIndex(index)}
               className={cn(
-                "w-full text-left px-4 py-3 flex items-start gap-3 transition-colors border-b border-slate-50 last:border-none",
+                "w-full text-left px-4 py-3 flex items-start gap-3 transition-colors",
                 selectedIndex === index ? "bg-indigo-50" : "hover:bg-slate-50"
               )}
             >
@@ -112,20 +112,40 @@ export function ICD10Search({ onSelect, initialValue = "", placeholder = "Search
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="font-mono text-xs font-bold text-indigo-600">{item.code}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-xs font-bold text-indigo-600">{item.code}</span>
+                    {item.category && (
+                      <span className="px-1.5 py-0.5 text-[9px] font-semibold bg-slate-100 text-slate-600 rounded">
+                        {item.category}
+                      </span>
+                    )}
+                  </div>
                   {selectedIndex === index && <Check className="w-3 h-3 text-indigo-600" />}
                 </div>
                 <p className="text-sm text-slate-700 truncate">{item.description}</p>
               </div>
             </button>
           ))}
-        </div>
-      )}
 
-      {isOpen && results.length === 0 && query.length > 1 && (
-        <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl p-4 text-center">
-          <p className="text-sm text-slate-500 italic">No matching ICD-10 codes found.</p>
-          <p className="text-xs text-slate-400 mt-1">You can still enter a custom diagnosis.</p>
+          {query.trim().length > 0 && (
+            <button
+              type="button"
+              onClick={() => handleSelect({ code: "CUSTOM", description: query.trim() })}
+              className="w-full text-left px-4 py-3 bg-indigo-50/60 hover:bg-indigo-100/80 text-indigo-900 transition-colors flex items-center gap-2.5 font-medium text-xs border-t border-indigo-100"
+            >
+              <span className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-bold">+</span>
+              <div className="flex-1 min-w-0">
+                <span className="text-slate-500 font-normal">Use custom diagnosis:</span>{" "}
+                <span className="font-semibold text-indigo-900 truncate">"{query.trim()}"</span>
+              </div>
+            </button>
+          )}
+
+          {results.length === 0 && query.length > 1 && (
+            <div className="p-3 text-center bg-slate-50">
+              <p className="text-xs text-slate-500">No exact ICD-10 code match for "{query}".</p>
+            </div>
+          )}
         </div>
       )}
     </div>

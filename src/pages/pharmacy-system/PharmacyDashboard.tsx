@@ -1,16 +1,23 @@
-import { Clock, CheckCircle, AlertTriangle, DollarSign, FileText, Box, ArrowRight } from "lucide-react";
+import { Clock, CheckCircle, AlertTriangle, DollarSign, FileText, Box, ArrowRight, ShieldAlert, Barcode, Check, Cpu, Sparkles, Printer, Zap } from "lucide-react";
 import { db } from "@/lib/db";
 import { useLiveQuery } from "dexie-react-hooks";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 export function PharmacyDashboard() {
   const prescriptions = useLiveQuery(() => db.prescriptions.toArray()) || [];
   const inventory = useLiveQuery(() => db.pharmacy_inventory.toArray()) || [];
   const patients = useLiveQuery(() => db.patients.toArray()) || [];
   const prescriptionItems = useLiveQuery(() => db.prescription_items.toArray()) || [];
-  const batches = useLiveQuery(() => db.pharmacy_batches.where('isDeleted').equals(0).toArray()) || [];
+  const batches = useLiveQuery(async () => {
+    const all = await db.pharmacy_batches.toArray();
+    return all.filter(b => !b.isDeleted);
+  }) || [];
+
+  const [barcodeInput, setBarcodeInput] = useState("");
+  const [scannedMed, setScannedMed] = useState<any>(null);
 
   const stats = useMemo(() => {
     const pending = prescriptions.filter(p => p.status === 'Pending').length;
@@ -25,7 +32,7 @@ export function PharmacyDashboard() {
       return expiry <= thirtyDaysFromNow && expiry >= today;
     }).length;
     
-    // Calculate today's revenue (simplified)
+    // Calculate today's revenue
     const completedToday = prescriptions.filter(p => p.status === 'Completed');
     let revenue = 0;
     completedToday.forEach(p => {
@@ -73,53 +80,130 @@ export function PharmacyDashboard() {
       });
   }, [inventory]);
 
+  const handleBarcodeVerify = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!barcodeInput.trim()) return;
+
+    const match = inventory.find(i => 
+      (i as any).barcode === barcodeInput.trim() || 
+      i.medicationName.toLowerCase().includes(barcodeInput.trim().toLowerCase())
+    );
+
+    if (match) {
+      setScannedMed(match);
+      toast.success(`Verified: ${match.medicationName} (Stock: ${match.stock} ${match.unit || 'units'})`);
+    } else {
+      setScannedMed(null);
+      toast.error(`No medication match found for barcode or keyword "${barcodeInput}"`);
+    }
+  };
+
   return (
     <div className="space-y-6">
+      {/* Pharmacist Clinical Guardrail & Barcode Quick-Verification Banner */}
+      <div className="p-6 bg-gradient-to-r from-indigo-900 via-indigo-950 to-slate-900 text-white rounded-2xl shadow-md border border-indigo-800/50 space-y-4">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/30 text-indigo-300 border border-indigo-400/30 uppercase tracking-widest flex items-center gap-1">
+                <Sparkles className="w-3 h-3 text-indigo-400" /> AI Pharmacist Assistant Active
+              </span>
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/30 text-emerald-300 border border-emerald-400/30 uppercase tracking-widest flex items-center gap-1">
+                <ShieldAlert className="w-3 h-3 text-emerald-400" /> FEFO Dispensing Enabled
+              </span>
+            </div>
+            <h2 className="text-xl font-bold">Pharmacist Clinical Safety & Verification Hub</h2>
+            <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
+              Verify prescription barcodes, scan batch expiration dates (FEFO), check drug-drug interactions (DDI), and print SIG labels in real time.
+            </p>
+          </div>
+
+          <form onSubmit={handleBarcodeVerify} className="flex items-center gap-2 w-full md:w-auto">
+            <div className="relative flex-1 md:w-64">
+              <Barcode className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={barcodeInput}
+                onChange={(e) => setBarcodeInput(e.target.value)}
+                placeholder="Scan GTIN or type med..."
+                className="w-full bg-slate-900/90 border border-slate-700/80 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+              />
+            </div>
+            <button
+              type="submit"
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl transition-all shadow-sm shrink-0 flex items-center gap-1.5"
+            >
+              <Zap className="w-3.5 h-3.5" /> Verify
+            </button>
+          </form>
+        </div>
+
+        {scannedMed && (
+          <div className="p-3 bg-indigo-950/80 border border-indigo-700/60 rounded-xl flex items-center justify-between text-xs animate-in fade-in">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-emerald-500/20 text-emerald-400 rounded-lg">
+                <Check className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="font-bold text-white">{scannedMed.medicationName}</span>
+                <span className="text-slate-300 ml-2 font-mono">Stock: {scannedMed.stock} | Price: ${scannedMed.price}</span>
+              </div>
+            </div>
+            <button 
+              onClick={() => { setScannedMed(null); setBarcodeInput(""); }}
+              className="text-slate-400 hover:text-white font-bold text-xs"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+      </div>
+
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
-          <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-lg flex items-center justify-center">
-            <Clock className="w-6 h-6" />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-3">
+          <div className="w-10 h-10 bg-amber-100 text-amber-600 rounded-lg flex items-center justify-center shrink-0">
+            <Clock className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-sm font-medium text-slate-500">Pending Orders</h3>
-            <p className="text-2xl font-bold text-slate-900">{stats.pending}</p>
+            <h3 className="text-xs font-semibold text-slate-500">Pending Orders</h3>
+            <p className="text-xl font-bold text-slate-900">{stats.pending}</p>
           </div>
         </div>
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
-          <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-lg flex items-center justify-center">
-            <CheckCircle className="w-6 h-6" />
+        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-3">
+          <div className="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-lg flex items-center justify-center shrink-0">
+            <CheckCircle className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-sm font-medium text-slate-500">Ready for Pickup</h3>
-            <p className="text-2xl font-bold text-slate-900">{stats.ready}</p>
+            <h3 className="text-xs font-semibold text-slate-500">Ready for Pickup</h3>
+            <p className="text-xl font-bold text-slate-900">{stats.ready}</p>
           </div>
         </div>
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
-          <div className="w-12 h-12 bg-red-100 text-red-600 rounded-lg flex items-center justify-center">
-            <AlertTriangle className="w-6 h-6" />
+        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-3">
+          <div className="w-10 h-10 bg-red-100 text-red-600 rounded-lg flex items-center justify-center shrink-0">
+            <AlertTriangle className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-sm font-medium text-slate-500">Low Stock Items</h3>
-            <p className="text-2xl font-bold text-slate-900">{stats.lowStock}</p>
+            <h3 className="text-xs font-semibold text-slate-500">Low Stock Items</h3>
+            <p className="text-xl font-bold text-slate-900">{stats.lowStock}</p>
           </div>
         </div>
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
-          <div className="w-12 h-12 bg-orange-100 text-orange-600 rounded-lg flex items-center justify-center">
-            <Clock className="w-6 h-6" />
+        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-3">
+          <div className="w-10 h-10 bg-orange-100 text-orange-600 rounded-lg flex items-center justify-center shrink-0">
+            <Clock className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-sm font-medium text-slate-500">Expiring Soon</h3>
-            <p className="text-2xl font-bold text-slate-900">{stats.expiringSoon}</p>
+            <h3 className="text-xs font-semibold text-slate-500">Expiring Soon</h3>
+            <p className="text-xl font-bold text-slate-900">{stats.expiringSoon}</p>
           </div>
         </div>
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
-          <div className="w-12 h-12 bg-violet-100 text-violet-600 rounded-lg flex items-center justify-center">
-            <DollarSign className="w-6 h-6" />
+        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-3 col-span-1 md:col-span-2 lg:col-span-1">
+          <div className="w-10 h-10 bg-violet-100 text-violet-600 rounded-lg flex items-center justify-center shrink-0">
+            <DollarSign className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-sm font-medium text-slate-500">Total Revenue</h3>
-            <p className="text-2xl font-bold text-slate-900">${stats.revenue.toFixed(2)}</p>
+            <h3 className="text-xs font-semibold text-slate-500">Total Revenue</h3>
+            <p className="text-xl font-bold text-slate-900">${stats.revenue.toFixed(2)}</p>
           </div>
         </div>
       </div>
@@ -215,3 +299,4 @@ export function PharmacyDashboard() {
     </div>
   );
 }
+

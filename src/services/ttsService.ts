@@ -8,12 +8,25 @@ export const generateSpeech = async (text: string, voiceId?: string): Promise<st
       body: JSON.stringify({ text, voiceId }),
     });
 
+    const responseText = await response.text();
+
     if (!response.ok) {
-      const errData = await response.json();
-      throw new Error(errData.error || "TTS generation failed");
+      let errorMsg = "TTS generation failed";
+      try {
+        const errData = JSON.parse(responseText);
+        errorMsg = errData.error || errData.details || errorMsg;
+      } catch {
+        if (responseText) errorMsg = responseText;
+      }
+      throw new Error(errorMsg);
     }
 
-    const data = await response.json();
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      throw new Error(responseText || "Invalid JSON response from server");
+    }
     if (!data.base64Audio) {
       throw new Error("No audio data returned from Gemini TTS");
     }

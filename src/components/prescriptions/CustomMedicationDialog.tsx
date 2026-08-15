@@ -1,5 +1,6 @@
 import React from 'react';
 import { X, PlusCircle } from 'lucide-react';
+import { ALL_DOSAGE_FORMS } from '@/data/medications';
 
 interface CustomMedicationDialogProps {
   isOpen: boolean;
@@ -46,12 +47,26 @@ export function CustomMedicationDialog({
             />
           </div>
           <div>
-            <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Form</label>
+            <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Dosage Form</label>
+            <select
+              value={customMedForm}
+              onChange={(e) => setCustomMedForm(e.target.value)}
+              className="w-full px-3 py-2 mb-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+            >
+              <option value="">Select Standardized Dosage Form...</option>
+              {ALL_DOSAGE_FORMS.map((group) => (
+                <optgroup key={group.category} label={group.category}>
+                  {group.forms.map((form) => (
+                    <option key={form} value={form}>{form}</option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
             <input 
               type="text" 
               value={customMedForm}
               onChange={(e) => setCustomMedForm(e.target.value)}
-              placeholder="e.g., Tablet, Syrup, Injection"
+              placeholder="Or enter custom form (e.g., Tablet, Syrup, Eye Drops)"
               className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
             />
           </div>

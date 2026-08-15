@@ -11,7 +11,7 @@ import { cn } from "../../lib/utils";
 import { toast } from "sonner";
 import { medicationsDatabase } from '@/data/medications';
 import { ALL_TESTS } from '@/data/labReferenceData';
-import { HEAD_MODELS, EAR_MODELS, EYE_MODELS, THROAT_MODELS, BACK_MODELS } from '@/data/symptomModels';
+import { ALL_MODELS } from '@/data/symptomModels';
 
 // Mock patient data
 const mockPatients = [
@@ -25,7 +25,7 @@ const mockPatients = [
 const allClinicalData = [
   ...Object.values(medicationsDatabase).flat().map(m => ({ id: m.id, title: m.name, category: 'Medication', icon: Pill })),
   ...ALL_TESTS.map(l => ({ id: l.name, title: l.name, category: 'Lab Reference', icon: FileText })),
-  ...[...HEAD_MODELS, ...EAR_MODELS, ...EYE_MODELS, ...THROAT_MODELS, ...BACK_MODELS].map(s => ({ id: s.id, title: s.label, category: 'Encyclopedia', icon: Book })),
+  ...Object.values(ALL_MODELS).flat().map(s => ({ id: s.id, title: s.label, category: 'Encyclopedia', icon: Book })),
 ];
 
 const mockNotifications = [

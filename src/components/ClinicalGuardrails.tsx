@@ -2,8 +2,10 @@ import React, { useMemo, useState } from 'react';
 import { AlertTriangle, ShieldCheck, ArrowRight, Info, AlertOctagon, Activity, FileWarning, Search, Zap, Pill, Baby, BrainCircuit, X, Stethoscope } from 'lucide-react';
 import { ClinicalPathwayRule } from '@/data/clinicalPathways';
 import { ALL_MODELS } from '@/data/symptomModels';
+import { isSymptomMatch } from '@/services/clinicalAI/differentialEngine';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
+import { ClinicalSafetyOrchestrator } from '@/services/ClinicalSafetyOrchestrator';
 
 // --- TYPES & LOGIC (Merged from clinicalGuardrailService) ---
 
@@ -99,8 +101,8 @@ export function evaluateClinicalGuardrails(state: EncounterState): GuardrailAler
   const hasCardiac = selectedSymptoms.some(s => s.category === 'heart' || s.id.startsWith('heart_'));
   const hasResp = selectedSymptoms.some(s => s.category === 'lungs' || s.id.startsWith('lungs_'));
   const hasGI = selectedSymptoms.some(s => s.category === 'digestive' || s.id.startsWith('digestive_'));
-  const hasWeightLoss = selectedSymptoms.some(s => s.id === 'gen_weight_loss');
-  const hasFever = selectedSymptoms.some(s => s.id === 'gen_fever');
+  const hasWeightLoss = selectedSymptoms.some(s => isSymptomMatch('gen_weight_loss', s));
+  const hasFever = selectedSymptoms.some(s => isSymptomMatch('gen_fever', s));
   const hasRash = selectedSymptoms.some(s => s.category === 'skin' || s.id.startsWith('skin_'));
 
   if (hasNeuro && hasEye) {
@@ -160,7 +162,7 @@ export function evaluateClinicalGuardrails(state: EncounterState): GuardrailAler
     });
   }
 
-  const hasHematuria = selectedSymptoms.some(s => s.id === 'kidney_blood_urine');
+  const hasHematuria = selectedSymptoms.some(s => isSymptomMatch('kidney_blood_urine', s));
   if (hasHematuria) {
     alerts.push({
       id: 'cluster-hematuria',
@@ -198,7 +200,7 @@ export function evaluateClinicalGuardrails(state: EncounterState): GuardrailAler
     }
 
     const hasDizzy = selectedSymptoms.some(s => s.id.includes('dizziness'));
-    const hasHeavyBleeding = selectedSymptoms.some(s => s.id === 'female_abnormal_bleeding');
+    const hasHeavyBleeding = selectedSymptoms.some(s => s.id === 'female_heavy_menstrual_bleeding' || s.id.includes('bleeding'));
     if (hasDizzy && hasHeavyBleeding && vitals.heartRate && vitals.heartRate > 100) {
       alerts.push({
         id: 'consistency-bleeding-dizzy',
@@ -366,6 +368,36 @@ export function evaluateClinicalGuardrails(state: EncounterState): GuardrailAler
       message: 'Sudden onset weakness is Stroke until proven otherwise.',
       actionRequired: 'Check time of onset and transport to nearest Stroke Center.'
     });
+  }
+
+  // --- SINGLE AUTHORITATIVE CLINICAL SAFETY ORCHESTRATOR LAYER ---
+  if (patient) {
+    const orchestratorReport = ClinicalSafetyOrchestrator.evaluateSync({
+      patient: patient as any,
+      vitals: vitals
+    });
+
+    for (const orchAlert of orchestratorReport.alerts) {
+      let mappedSev: GuardrailSeverity = 'warning';
+      if (orchAlert.severity === 'Contraindicated' || orchAlert.severity === 'Severe') {
+        mappedSev = 'emergency';
+      } else if (orchAlert.severity === 'Major') {
+        mappedSev = 'critical';
+      } else if (orchAlert.severity === 'Moderate') {
+        mappedSev = 'warning';
+      } else {
+        mappedSev = 'info';
+      }
+
+      alerts.push({
+        id: `orch-${orchAlert.id}`,
+        layer: 'Medication-Symptom Interaction',
+        severity: mappedSev,
+        title: `Clinical Safety Orchestrator: ${orchAlert.title}`,
+        message: orchAlert.message,
+        actionRequired: orchAlert.actionRequired || 'Review unified safety orchestrator guidance.'
+      });
+    }
   }
 
   return alerts;

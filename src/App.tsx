@@ -2,7 +2,7 @@ import { Tasks } from "./pages/Tasks";
 import { MobileVitals } from "./pages/MobileVitals";
 import { LoginScreen } from "./components/LoginScreen";
 import { useUser } from "./lib/UserContext";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Layout } from "./components/layout/Layout";
 import { Dashboard } from "./pages/Dashboard";
 import { Appointments } from "./pages/Appointments";
@@ -13,6 +13,7 @@ import { PhysicalExam } from "./pages/PhysicalExam";
 import { LabRequests } from "./pages/LabRequests";
 import { FinalDiagnosis } from "./pages/FinalDiagnosis";
 import { Prescriptions } from "./pages/Prescriptions";
+import { ClinicalIntelligenceHub } from "./pages/ClinicalIntelligenceHub";
 import { ClinicalAudit } from "./pages/ClinicalAudit";
 import { Pharmacies } from "./pages/Pharmacies";
 import { MedicalRecords } from "./pages/MedicalRecords";
@@ -119,12 +120,15 @@ function AppContent() {
           <Route index element={<Dashboard />} />
           <Route path="appointments" element={<Appointments />} />
           <Route path="new-patient" element={<NewPatient />} />
+          <Route path="patients/new" element={<Navigate to="/new-patient" replace />} />
           <Route path="symptom-analysis" element={<SymptomAnalysis />} />
           <Route path="active-encounter" element={<ActiveEncounter />} />
           <Route path="physical-exam" element={<PhysicalExam />} />
           <Route path="lab-requests" element={<LabRequests />} />
+          <Route path="labs" element={<Navigate to="/lab-requests" replace />} />
           <Route path="final-diagnosis" element={<FinalDiagnosis />} />
           <Route path="prescriptions" element={<Prescriptions />} />
+          <Route path="clinical-hub" element={<ClinicalIntelligenceHub />} />
           <Route path="clinical-audit" element={<ClinicalAudit />} />
           <Route path="pharmacies" element={<Pharmacies />} />
           <Route path="medical-records" element={<MedicalRecords />} />
@@ -141,6 +145,7 @@ function AppContent() {
           <Route path="patient-report" element={<PatientReport />} />
           <Route path="soap-editor" element={<SOAPNotePage />} />
           <Route path="audit-dashboard" element={<AuditDashboard />} />
+          <Route path="users" element={<UserManagement />} />
           <Route path="*" element={<div className="p-6 text-slate-500">Page under construction</div>} />
         </Route>
 

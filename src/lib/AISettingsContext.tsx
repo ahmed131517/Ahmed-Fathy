@@ -26,7 +26,7 @@ const defaultSettings: AISettings = {
   detailLevel: 'comprehensive',
   clinicalTone: 'professional',
   specialty: 'General Practice',
-  anonymizePHI: false,
+  anonymizePHI: true,
   sendOnEnter: true,
   useElevenLabs: true,
   elevenLabsApiKey: 'sk_a57245443c2c81e578231fdb1f797491af0b4b52afd39d8d',

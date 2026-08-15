@@ -27,8 +27,8 @@ export function StaffCommunication() {
   const { profile: currentUser } = useUser();
   const [limit, setLimit] = useState(50);
   const messages = useLiveQuery(() => db.internal_messages.orderBy('createdAt').reverse().limit(limit).toArray()) || [];
-  const staff = useLiveQuery(() => db.users.where('isDeleted').equals(0).toArray()) || [];
-  const patients = useLiveQuery(() => db.patients.where('isDeleted').equals(0).toArray()) || [];
+  const staff = useLiveQuery(() => db.users.toArray().then(arr => arr.filter(x => !x.isDeleted))) || [];
+  const patients = useLiveQuery(() => db.patients.toArray().then(arr => arr.filter(x => !x.isDeleted))) || [];
 
   const [activeTab, setActiveTab] = useState<'chat' | 'handover'>('chat');
   const [searchQuery, setSearchQuery] = useState("");

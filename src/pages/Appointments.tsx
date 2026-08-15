@@ -104,15 +104,17 @@ export function Appointments() {
   const [activeDragItem, setActiveDragItem] = useState<any>(null);
 
   const filteredAppointments = useLiveQuery(
-    () => db.appointments
-      .where('isDeleted').equals(0)
-      .filter((app) => 
-        (statusFilter === "all" || (app.status && app.status.toLowerCase() === statusFilter.toLowerCase())) &&
-        (doctorFilter === "all" || app.doctor === doctorFilter) &&
-        (typeFilter === "all" || (app.type && app.type.toLowerCase() === typeFilter.toLowerCase())) &&
-        (!searchQuery || (app.patientName && app.patientName.toLowerCase().includes(searchQuery.toLowerCase())))
-      )
-      .toArray(),
+    async () => {
+      const all = await db.appointments.toArray();
+      return all
+        .filter(x => !x.isDeleted)
+        .filter((app) => 
+          (statusFilter === "all" || (app.status && app.status.toLowerCase() === statusFilter.toLowerCase())) &&
+          (doctorFilter === "all" || app.doctor === doctorFilter) &&
+          (typeFilter === "all" || (app.type && app.type.toLowerCase() === typeFilter.toLowerCase())) &&
+          (!searchQuery || (app.patientName && app.patientName.toLowerCase().includes(searchQuery.toLowerCase())))
+        );
+    },
     [statusFilter, doctorFilter, typeFilter, searchQuery]
   ) || [];
 
@@ -163,10 +165,10 @@ export function Appointments() {
 
         if (activeId) {
           const normalizeTime = (t: string) => t.replace(/^0/, '');
-          const existingAppts = await db.appointments
-            .where('isDeleted').equals(0)
-            .filter(app => app.date === dateString && normalizeTime(app.time || '') === normalizeTime(time))
-            .toArray();
+          const allAppts = await db.appointments.toArray();
+          const existingAppts = allAppts
+            .filter(x => !x.isDeleted)
+            .filter(app => app.date === dateString && normalizeTime(app.time || '') === normalizeTime(time));
 
           if (existingAppts.length > 0 && existingAppts.some(app => app.localId !== activeId)) {
             toast.error("This slot is already occupied");

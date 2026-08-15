@@ -1,6 +1,290 @@
+import { findClinicalMedicationByName } from "@/database/medications";
+
+export interface DosageFormCategoryGroup {
+  category: string;
+  forms: string[];
+}
+
+export interface StructuredStrength {
+  strength_value: number | null;
+  strength_unit: string;
+  concentration_volume: number | null;
+  concentration_volume_unit: string;
+  is_liquid_concentration: boolean;
+  formatted_concentration: string;
+}
+
+export function parseStructuredStrength(inputStr: string, formStr: string = ""): StructuredStrength {
+  if (!inputStr) {
+    return {
+      strength_value: null,
+      strength_unit: 'mg',
+      concentration_volume: 1,
+      concentration_volume_unit: 'ml',
+      is_liquid_concentration: false,
+      formatted_concentration: ''
+    };
+  }
+
+  const clean = inputStr.trim().replace(/,/g, '');
+  
+  // 1. Ratio/Concentration: e.g., 250mg/5ml, 125 mg / 5 mL, 100mcg/puff, 10000 IU/ml
+  const ratioRegex = /(\d+(?:\.\d+)?)\s*(mg|mcg|µg|g|iu|i\.?u\.|units?|mmol|mEq|%)\s*\/\s*(\d+(?:\.\d+)?)?\s*(ml|l|puff|spray|actuation|tablet|tab|capsule|cap|g|mg|drop|drops)?/i;
+  const ratioMatch = clean.match(ratioRegex);
+
+  if (ratioMatch) {
+    const sValue = parseFloat(ratioMatch[1]);
+    const rawUnit = ratioMatch[2].toLowerCase();
+    const cVol = ratioMatch[3] ? parseFloat(ratioMatch[3]) : 1;
+    const cVolUnit = (ratioMatch[4] || 'ml').toLowerCase();
+    
+    let normUnit = rawUnit;
+    if (rawUnit === 'i.u.' || rawUnit === 'iu' || rawUnit === 'units' || rawUnit === 'unit') normUnit = 'IU';
+    else if (rawUnit === 'µg' || rawUnit === 'mcg') normUnit = 'mcg';
+    else if (rawUnit === 'mg') normUnit = 'mg';
+    else if (rawUnit === 'g') normUnit = 'g';
+    else if (rawUnit === '%') normUnit = '%';
+
+    const isLiquid = ['ml', 'l', 'drop', 'drops'].includes(cVolUnit) || /syrup|suspension|drop|solution|liquid|elixir|emulsion/i.test(formStr || inputStr);
+
+    return {
+      strength_value: isNaN(sValue) ? null : sValue,
+      strength_unit: normUnit,
+      concentration_volume: isNaN(cVol) ? 1 : cVol,
+      concentration_volume_unit: cVolUnit,
+      is_liquid_concentration: isLiquid,
+      formatted_concentration: `${sValue}${normUnit}/${cVol}${cVolUnit}`
+    };
+  }
+
+  // 2. Percentage e.g. 0.5%
+  const pctMatch = clean.match(/(\d+(?:\.\d+)?)\s*%/);
+  if (pctMatch) {
+    const sValue = parseFloat(pctMatch[1]);
+    return {
+      strength_value: isNaN(sValue) ? null : sValue,
+      strength_unit: '%',
+      concentration_volume: 100,
+      concentration_volume_unit: 'ml',
+      is_liquid_concentration: true,
+      formatted_concentration: `${sValue}%`
+    };
+  }
+
+  // 3. Single strength e.g., 500 mg, 100mcg, 10g, 400 IU
+  const singleRegex = /(\d+(?:\.\d+)?)\s*(mg|mcg|µg|g|iu|i\.?u\.|units?|mmol|mEq)/i;
+  const singleMatch = clean.match(singleRegex);
+
+  if (singleMatch) {
+    const sValue = parseFloat(singleMatch[1]);
+    const rawUnit = singleMatch[2].toLowerCase();
+    let normUnit = rawUnit;
+    if (rawUnit === 'i.u.' || rawUnit === 'iu' || rawUnit === 'units' || rawUnit === 'unit') normUnit = 'IU';
+    else if (rawUnit === 'µg' || rawUnit === 'mcg') normUnit = 'mcg';
+    else if (rawUnit === 'mg') normUnit = 'mg';
+    else if (rawUnit === 'g') normUnit = 'g';
+
+    const isLiquid = /syrup|suspension|drop|solution|liquid|elixir|emulsion/i.test(formStr || inputStr);
+    const defaultVol = isLiquid ? 5 : 1;
+    const defaultVolUnit = isLiquid ? 'ml' : 'tablet';
+
+    return {
+      strength_value: isNaN(sValue) ? null : sValue,
+      strength_unit: normUnit,
+      concentration_volume: defaultVol,
+      concentration_volume_unit: defaultVolUnit,
+      is_liquid_concentration: isLiquid,
+      formatted_concentration: isLiquid ? `${sValue}${normUnit}/${defaultVol}${defaultVolUnit}` : `${sValue}${normUnit}`
+    };
+  }
+
+  return {
+    strength_value: null,
+    strength_unit: 'mg',
+    concentration_volume: 1,
+    concentration_volume_unit: 'ml',
+    is_liquid_concentration: false,
+    formatted_concentration: inputStr
+  };
+}
+
+export const ROUTE_MAP_BY_DOSAGE_FORM: Record<string, string> = {
+  // Oral Liquids
+  "Syrup": "Oral",
+  "Suspension": "Oral",
+  "Oral Drops": "Oral",
+  "Oral Solution": "Oral",
+  "Elixir": "Oral",
+  "Oral Emulsion": "Oral",
+
+  // Oral Solids
+  "Tablet": "Oral",
+  "Capsule": "Oral",
+  "Chewable Tablet": "Oral",
+  "Dispersible Tablet": "Oral",
+  "Effervescent Tablet": "Oral",
+  "Sublingual Tablet": "Sublingual",
+  "Softgel Capsule": "Oral",
+  "Extended Release Tablet": "Oral",
+
+  // Injections & Parenteral
+  "Injection / Vial": "IV / IM",
+  "Ampoule": "IV / IM",
+  "IV Infusion": "IV",
+  "Pre-filled Syringe": "SC / IV",
+
+  // Respiratory & Inhalants
+  "Inhaler": "Inhalation",
+  "Nebulizer Solution / Respule": "Inhalation",
+  "Nasal Spray": "Nasal",
+
+  // Topical & Transdermal
+  "Cream": "Topical",
+  "Ointment": "Topical",
+  "Gel": "Topical",
+  "Topical Lotion": "Topical",
+  "Transdermal Patch": "Transdermal",
+
+  // Ophthalmic & Otic
+  "Eye Drops": "Ophthalmic",
+  "Eye Ointment": "Ophthalmic",
+  "Ear Drops": "Otic",
+
+  // Rectal & Vaginal
+  "Suppository": "Rectal",
+  "Pessary / Vaginal Tablet": "Vaginal",
+  "Enema": "Rectal",
+
+  // Powders & Granules
+  "Sachet / Powder": "Oral",
+  "Powder for Suspension": "Oral",
+  "Oral Granules": "Oral"
+};
+
+export const STRICT_ROUTES = [
+  "Oral",
+  "IV",
+  "IM",
+  "IV / IM",
+  "SC",
+  "Sublingual",
+  "Topical",
+  "Inhalation",
+  "Nasal",
+  "Ophthalmic",
+  "Otic",
+  "Rectal",
+  "Vaginal",
+  "Transdermal"
+] as const;
+
+export function getRouteForDosageForm(formName: string = ""): string {
+  if (!formName) return "Oral";
+  const trimmed = formName.trim();
+  if (ROUTE_MAP_BY_DOSAGE_FORM[trimmed]) {
+    return ROUTE_MAP_BY_DOSAGE_FORM[trimmed];
+  }
+  const lower = trimmed.toLowerCase();
+  if (lower.includes("sublingual")) return "Sublingual";
+  if (lower.includes("eye") || lower.includes("ophthalmic")) return "Ophthalmic";
+  if (lower.includes("ear") || lower.includes("otic")) return "Otic";
+  if (lower.includes("nasal")) return "Nasal";
+  if (lower.includes("inhaler") || lower.includes("respule") || lower.includes("nebulizer") || lower.includes("inhal")) return "Inhalation";
+  if (lower.includes("suppository") || lower.includes("enema") || lower.includes("rectal")) return "Rectal";
+  if (lower.includes("pessary") || lower.includes("vaginal")) return "Vaginal";
+  if (lower.includes("cream") || lower.includes("ointment") || lower.includes("gel") || lower.includes("lotion") || lower.includes("topical")) return "Topical";
+  if (lower.includes("patch") || lower.includes("transdermal")) return "Transdermal";
+  if (lower.includes("iv infusion") || lower.includes("infusion")) return "IV";
+  if (lower.includes("injection") || lower.includes("vial") || lower.includes("ampoule")) return "IV / IM";
+  if (lower.includes("syringe")) return "SC / IV";
+  return "Oral";
+}
+
+export const ALL_DOSAGE_FORMS: DosageFormCategoryGroup[] = [
+  {
+    category: "Oral Liquids",
+    forms: ["Syrup", "Suspension", "Oral Drops", "Oral Solution", "Elixir", "Oral Emulsion"]
+  },
+  {
+    category: "Oral Solids",
+    forms: [
+      "Tablet",
+      "Capsule",
+      "Chewable Tablet",
+      "Dispersible Tablet",
+      "Effervescent Tablet",
+      "Sublingual Tablet",
+      "Softgel Capsule",
+      "Extended Release Tablet"
+    ]
+  },
+  {
+    category: "Injections & Parenteral",
+    forms: ["Injection / Vial", "Ampoule", "IV Infusion", "Pre-filled Syringe"]
+  },
+  {
+    category: "Respiratory & Inhalants",
+    forms: ["Inhaler", "Nebulizer Solution / Respule", "Nasal Spray"]
+  },
+  {
+    category: "Topical & Transdermal",
+    forms: ["Cream", "Ointment", "Gel", "Topical Lotion", "Transdermal Patch"]
+  },
+  {
+    category: "Ophthalmic & Otic",
+    forms: ["Eye Drops", "Eye Ointment", "Ear Drops"]
+  },
+  {
+    category: "Rectal & Vaginal",
+    forms: ["Suppository", "Pessary / Vaginal Tablet", "Enema"]
+  },
+  {
+    category: "Powders & Granules",
+    forms: ["Sachet / Powder", "Powder for Suspension", "Oral Granules"]
+  }
+];
+
+export const ALL_DOSAGE_FORM_NAMES: string[] = ALL_DOSAGE_FORMS.flatMap(group => group.forms);
+
+export function getPreciseInstructionsFromCounseling(pc: any, drugClass: string, name: string): string {
+  if (!pc) return "";
+  
+  const parts: string[] = [];
+  const lowerClass = (drugClass || "").toLowerCase();
+  const lowerName = (name || "").toLowerCase();
+
+  // 1. Food Relation
+  if (pc.food) {
+    parts.push(pc.food);
+  }
+
+  // 2. Alcohol Warning
+  if (pc.alcohol && /avoid|do not combine|strictly avoid|limit/i.test(pc.alcohol)) {
+    parts.push(pc.alcohol);
+  }
+
+  // 3. Driving Alert
+  if (pc.driving && /caution|impairment|dizzy|drowsy|sleepy/i.test(pc.driving)) {
+    parts.push(pc.driving);
+  }
+
+  // 4. Pregnancy caution
+  if (pc.pregnancyAdvice && /strictly avoid|contraindicated|discontinue|mandatory contraception/i.test(pc.pregnancyAdvice)) {
+    parts.push(pc.pregnancyAdvice);
+  }
+
+  // 5. Class-specific rule
+  if (lowerClass.includes("antibiotic") && !parts.some(p => p.toLowerCase().includes("complete"))) {
+    parts.push("Complete full therapeutic course as directed by physician.");
+  }
+
+  return parts.join(" ").trim();
+}
+
 export function enrichDrug(med: any, categoryName?: string) {
   if (!med) return med;
   const genericName = med.generic_name || med.name || "Unknown Medication";
+  const clinicalMed = findClinicalMedicationByName(genericName);
   const forms = med.forms || [];
   const formNames = forms.map((f: any) => typeof f === 'string' ? f : f?.name || "").join(", ");
 
@@ -29,24 +313,100 @@ export function enrichDrug(med: any, categoryName?: string) {
     ? rawContra.map((c: any) => (typeof c === 'string' ? c : c?.condition || c?.description || c?.name || String(c)))
     : ["Hypersensitivity to active compound"];
 
+  const rawStrength = med.strength || (forms.length > 0 && forms[0]?.name ? forms[0].name.split(" ")[0] : "Standard Strength");
+  const rawForm = med.dosage_form || (forms.length > 0 && forms[0]?.name ? forms[0].name.split(" ").slice(1).join(" ") : "Oral Tablet / Capsule");
+  const parsedStrength = parseStructuredStrength(rawStrength, rawForm);
+
+  const enrichedForms = (forms.length > 0 ? forms : [{ id: "form_default", name: "Standard Form" }]).map((f: any) => {
+    const formName = typeof f === 'string' ? f : f?.name || "";
+    const formConc = typeof f === 'object' && f?.concentration ? f.concentration : formName;
+    const pForm = parseStructuredStrength(formConc, formName);
+    return typeof f === 'string' ? {
+      name: f,
+      strength_value: pForm.strength_value,
+      strength_unit: pForm.strength_unit,
+      concentration_volume: pForm.concentration_volume,
+      concentration_volume_unit: pForm.concentration_volume_unit
+    } : {
+      ...f,
+      strength_value: f.strength_value ?? pForm.strength_value,
+      strength_unit: f.strength_unit || pForm.strength_unit,
+      concentration_volume: f.concentration_volume ?? pForm.concentration_volume,
+      concentration_volume_unit: f.concentration_volume_unit || pForm.concentration_volume_unit
+    };
+  });
+
   return {
     ...med,
     id: med.id || `med_${Math.random().toString(36).substr(2, 9)}`,
     name: genericName,
     generic_name: genericName,
     brand_names_egypt: brandsList,
-    strength: med.strength || (forms.length > 0 && forms[0]?.name ? forms[0].name.split(" ")[0] : "Standard Strength"),
-    dosage_form: med.dosage_form || (forms.length > 0 && forms[0]?.name ? forms[0].name.split(" ").slice(1).join(" ") : "Oral Tablet / Capsule"),
-    route: med.route || (formNames.toLowerCase().includes("injection") || formNames.toLowerCase().includes("iv") ? "Parenteral (IV/IM)" : formNames.toLowerCase().includes("topical") || formNames.toLowerCase().includes("cream") ? "Topical" : formNames.toLowerCase().includes("drop") ? "Ophthalmic/Otic" : "Oral"),
+    strength: rawStrength,
+    strength_value: med.strength_value !== undefined ? med.strength_value : parsedStrength.strength_value,
+    strength_unit: med.strength_unit || parsedStrength.strength_unit,
+    concentration_volume: med.concentration_volume !== undefined ? med.concentration_volume : parsedStrength.concentration_volume,
+    concentration_volume_unit: med.concentration_volume_unit || parsedStrength.concentration_volume_unit,
+    dosage_form: rawForm,
+    route: med.route || getRouteForDosageForm(rawForm || formNames),
     drug_class: med.drug_class || categoryName || "Therapeutic Agent",
     mechanism_of_action: med.mechanism_of_action || `Pharmacological action via selective pathway/receptor target modulation for ${genericName}.`,
     indications: Array.isArray(med.indications) ? med.indications.map((ind: any) => typeof ind === 'string' ? ind : String(ind)) : med.indications_list || [`Clinical management of conditions indicated for ${genericName}`],
     contraindications: contraindicationsList,
     adult_dose: med.adult_dose || (forms.length > 0 && forms[0]?.name ? `Standard adult dose: ${forms[0].name}` : "As prescribed by physician"),
+    adult_default_dose: med.adult_default_dose || (forms.length > 0 && forms[0]?.name ? forms[0].name : "500 mg"),
     pediatric_dose: med.pediatric_dose || "Weight-based dosing as recommended in pediatric guidelines",
+    pediatric_mg_kg: med.pediatric_mg_kg || (
+      genericName.toLowerCase().includes("paracetamol") ? "10 - 15 mg/kg/dose" :
+      genericName.toLowerCase().includes("ibuprofen") ? "5 - 10 mg/kg/dose" :
+      genericName.toLowerCase().includes("amoxicillin") ? "20 - 40 mg/kg/day" :
+      genericName.toLowerCase().includes("azithromycin") ? "10 mg/kg/day" :
+      "10 - 20 mg/kg/day"
+    ),
+    default_frequency: med.default_frequency || "TID (Every 8 hours)",
+    default_duration: med.default_duration || "5 - 7 days",
+    food_relation: med.food_relation || "Take after meals",
     renal_dose: med.renal_dose || "Adjust dosage based on creatinine clearance (CrCl / eGFR)",
+    renal_adjustment_required: med.renal_adjustment_required !== undefined ? Boolean(med.renal_adjustment_required) : (
+      /amoxicillin|augmentin|ciprofloxacin|metformin|enalapril|captopril|gentamicin|vancomycin|atenolol|gabapentin/i.test(genericName)
+    ),
+    renal_dose_guidance: med.renal_dose_guidance || med.renal_dose || (
+      /amoxicillin|augmentin|ciprofloxacin|metformin|enalapril|captopril|gentamicin|vancomycin|atenolol|gabapentin/i.test(genericName)
+        ? "Adjust dose or extend dosing interval if CrCl / eGFR < 50 mL/min"
+        : "No routine dose adjustment required in mild-to-moderate renal impairment"
+    ),
     hepatic_dose: med.hepatic_dose || "Use with caution in moderate to severe hepatic impairment",
-    pregnancy_category: med.pregnancy_category || "Category C (Consult prescribing information)",
+    pregnancy_category: med.pregnancy_category || (
+      /methotrexate|statin|atorvastatin|simvastatin|warfarin|isotretinoin/i.test(genericName) ? "Category X (Contraindicated in pregnancy)" :
+      /enalapril|captopril|losartan|valsartan|doxycycline|ciprofloxacin|aspirin/i.test(genericName) ? "Category D (Positive evidence of risk)" :
+      /paracetamol|acetaminophen|amoxicillin|penicillin|ceftriaxone|cefuroxime|azithromycin|insulin|erythromycin/i.test(genericName) ? "Category B (No evidence of risk in humans)" :
+      "Category C (Use only if potential benefit outweighs risk)"
+    ),
+    lactation_safety: med.lactation_safety || (
+      /methotrexate|warfarin|doxycycline|isotretinoin/i.test(genericName) || (med.pregnancy_category && med.pregnancy_category.includes("Category X")) ? "Contraindicated" :
+      /paracetamol|acetaminophen|ibuprofen|amoxicillin|ceftriaxone|azithromycin/i.test(genericName) ? "Safe" :
+      "Caution"
+    ),
+    pediatric_min_age: med.pediatric_min_age || (
+      /aspirin/i.test(genericName) ? "18 years (Reye's syndrome risk)" :
+      /doxycycline|tetracycline/i.test(genericName) ? "8 years (Teeth discoloration risk)" :
+      /ciprofloxacin|levofloxacin|fluoroquinolone/i.test(genericName) ? "18 years (Articular cartilage toxicity risk)" :
+      /ibuprofen/i.test(genericName) ? "6 months" :
+      /paracetamol|acetaminophen|cetal/i.test(genericName) ? "2 months" :
+      /amoxicillin|augmentin/i.test(genericName) ? "3 months" :
+      "2 months"
+    ),
+    max_daily_dose_mg: med.max_daily_dose_mg !== undefined ? med.max_daily_dose_mg : (
+      /paracetamol|acetaminophen|cetal|panadol/i.test(genericName) ? 4000 :
+      /ibuprofen|brufen/i.test(genericName) ? 2400 :
+      /amoxicillin|augmentin/i.test(genericName) ? 4000 :
+      /ciprofloxacin/i.test(genericName) ? 1500 :
+      /metformin/i.test(genericName) ? 2550 :
+      /aspirin/i.test(genericName) ? 4000 :
+      /azithromycin/i.test(genericName) ? 500 :
+      /diclofenac|voltaren|cataflam/i.test(genericName) ? 150 :
+      null
+    ),
     lactation: med.lactation || "Use with caution during lactation; monitor infant",
     sideEffects: sideEffectsList,
     side_effects: sideEffectsList,
@@ -56,14 +416,44 @@ export function enrichDrug(med: any, categoryName?: string) {
     monitoring_parameters: Array.isArray(med.monitoring_parameters) ? med.monitoring_parameters.map((p: any) => typeof p === 'string' ? p : String(p)) : ["Vital signs", "Clinical response", "Adverse reaction monitoring"],
     lab_tests: Array.isArray(med.lab_tests) ? med.lab_tests.map((l: any) => typeof l === 'string' ? l : String(l)) : ["Baseline LFTs and Renal Function Panel where appropriate"],
     storage: med.storage || "Store at controlled room temperature (15-30°C) away from moisture and light",
-    patient_counseling: Array.isArray(med.patient_counseling) ? med.patient_counseling.map((pc: any) => typeof pc === 'string' ? pc : String(pc)) : [
-      "Take medication exactly as prescribed by your physician",
-      "Do not alter dose or stop treatment abruptly",
-      "Report any adverse events or unexpected symptoms promptly"
-    ],
+    patient_counseling: (() => {
+      const pcObj = med.patient_counseling || (clinicalMed && clinicalMed.patient_counseling);
+      if (Array.isArray(pcObj)) {
+        return pcObj.map((pc: any) => typeof pc === 'string' ? pc : String(pc));
+      } else if (pcObj && typeof pcObj === 'object') {
+        const list: string[] = [];
+        if (pcObj.food) list.push(`Food Interaction: ${pcObj.food}`);
+        if (pcObj.alcohol) list.push(`Alcohol Precaution: ${pcObj.alcohol}`);
+        if (pcObj.missedDose) list.push(`Missed Dose Instructions: ${pcObj.missedDose}`);
+        if (pcObj.driving) list.push(`Driving Safety: ${pcObj.driving}`);
+        if (pcObj.pregnancyAdvice) list.push(`Pregnancy Advice: ${pcObj.pregnancyAdvice}`);
+        if (pcObj.warningSymptoms && Array.isArray(pcObj.warningSymptoms) && pcObj.warningSymptoms.length > 0) {
+          list.push(`Common Warning Symptoms: Watch for ${pcObj.warningSymptoms.join(", ")}`);
+        }
+        if (pcObj.emergencySymptoms && Array.isArray(pcObj.emergencySymptoms) && pcObj.emergencySymptoms.length > 0) {
+          list.push(`Emergency Action Required: Seek immediate care for ${pcObj.emergencySymptoms.join(", ")}`);
+        }
+        return list;
+      }
+      return [
+        "Take medication exactly as prescribed by your physician",
+        "Do not alter dose or stop treatment abruptly",
+        "Report any adverse events or unexpected symptoms promptly"
+      ];
+    })(),
     references: Array.isArray(med.references) ? med.references.map((r: any) => typeof r === 'string' ? r : String(r)) : ["OpenFDA labeling", "DailyMed package insert", "RxNorm", "Egyptian Drug Authority (EDA)"],
-    forms: forms.length > 0 ? forms : [{ id: "form_default", name: "Standard Form" }]
+    forms: enrichedForms
   };
+}
+
+export function extractConcentrationFromFormName(formName: string): string {
+  if (!formName) return "";
+  // Match patterns like: 125mg/5ml, 80/400mg, 0.5mg/0.4mg, 30mg/ml, 250mg, 10mcg, 10%, 10mcg/hr
+  const match = formName.match(/^([0-9./\s]+(?:mg|g|mcg|iu|i\.u\.|ml|%|mcg\/hr)(?:\/[0-9./\s]*(?:mg|g|mcg|iu|i\.u\.|ml|%)?)?)/i);
+  if (match) {
+    return match[1].trim();
+  }
+  return "";
 }
 
 export function deriveMedicationDefaults(medName: string, form: any, fullMed?: any) {
@@ -81,8 +471,11 @@ export function deriveMedicationDefaults(medName: string, form: any, fullMed?: a
 
   // 1. CONCENTRATION
   let concentration = "";
+  const extractedFromForm = extractConcentrationFromFormName(formName);
   if (!isCustom && form.concentration) {
     concentration = form.concentration;
+  } else if (extractedFromForm) {
+    concentration = extractedFromForm;
   } else if (med.strength) {
     concentration = med.strength;
   } else {
@@ -199,51 +592,146 @@ export function deriveMedicationDefaults(medName: string, form: any, fullMed?: a
   if (!isCustom && form.instructions) {
     instructions = form.instructions;
   } else {
-    const customAdvice: string[] = [];
-    if (lowerName.includes("suppos") || lowerName.includes("pessary") || lowerName.includes("ovule") || lowerName.includes("urethral")) {
-      if (lowerName.includes("urethral")) {
-        customAdvice.push("Insert 1 urethral suppository as directed prior to activity");
-      } else if (lowerName.includes("vaginal") || lowerName.includes("pessary") || lowerName.includes("ovule")) {
-        customAdvice.push("Insert 1 pessary/suppository vaginally at bedtime");
+    const clinicalMed = findClinicalMedicationByName(medName) || (med.generic_name || med.name ? findClinicalMedicationByName(med.generic_name || med.name) : undefined);
+    if (clinicalMed && clinicalMed.patient_counseling && typeof clinicalMed.patient_counseling === 'object' && !Array.isArray(clinicalMed.patient_counseling)) {
+      instructions = getPreciseInstructionsFromCounseling(clinicalMed.patient_counseling, clinicalMed.Drug_Class || drugClass, medName);
+    } else if (med.patient_counseling && typeof med.patient_counseling === 'object' && !Array.isArray(med.patient_counseling)) {
+      instructions = getPreciseInstructionsFromCounseling(med.patient_counseling, drugClass, medName);
+    }
+
+    if (!instructions) {
+      const customAdvice: string[] = [];
+      if (lowerName.includes("suppos") || lowerName.includes("pessary") || lowerName.includes("ovule") || lowerName.includes("urethral")) {
+        if (lowerName.includes("urethral")) {
+          customAdvice.push("Insert 1 urethral suppository as directed prior to activity");
+        } else if (lowerName.includes("vaginal") || lowerName.includes("pessary") || lowerName.includes("ovule")) {
+          customAdvice.push("Insert 1 pessary/suppository vaginally at bedtime");
+        } else {
+          customAdvice.push("Insert 1 suppository rectally as directed");
+        }
+      } else if (lowerName.includes("cream") || lowerName.includes("ointment") || lowerName.includes("gel") || lowerName.includes("topical")) {
+        customAdvice.push("Apply thin layer to affected area after washing & drying skin");
+      } else if (lowerName.includes("ophthalmic") || lowerName.includes("eye drop")) {
+        customAdvice.push("Instill into affected eye(s) and keep tip sterile");
+      } else if (lowerName.includes("otic") || lowerName.includes("ear drop")) {
+        customAdvice.push("Instill into affected ear canal and lie still for 2 minutes");
+      } else if (lowerName.includes("inhaler") || lowerName.includes("puff")) {
+        customAdvice.push("Inhale deeply and rinse mouth with water after use");
+      } else if (foodInteractions.toLowerCase().includes("empty stomach") || foodInteractions.toLowerCase().includes("before meals")) {
+        customAdvice.push("Take on an empty stomach 1 hour before or 2 hours after meals");
+      } else if (foodInteractions.toLowerCase().includes("food") || foodInteractions.toLowerCase().includes("meal")) {
+        customAdvice.push("Take after meals with plenty of water");
       } else {
-        customAdvice.push("Insert 1 suppository rectally as directed");
+        customAdvice.push("Take after meals with a full glass of water");
       }
-    } else if (lowerName.includes("cream") || lowerName.includes("ointment") || lowerName.includes("gel") || lowerName.includes("topical")) {
-      customAdvice.push("Apply thin layer to affected area after washing & drying skin");
-    } else if (lowerName.includes("ophthalmic") || lowerName.includes("eye drop")) {
-      customAdvice.push("Instill into affected eye(s) and keep tip sterile");
-    } else if (lowerName.includes("otic") || lowerName.includes("ear drop")) {
-      customAdvice.push("Instill into affected ear canal and lie still for 2 minutes");
-    } else if (lowerName.includes("inhaler") || lowerName.includes("puff")) {
-      customAdvice.push("Inhale deeply and rinse mouth with water after use");
-    } else if (foodInteractions.toLowerCase().includes("empty stomach") || foodInteractions.toLowerCase().includes("before meals")) {
-      customAdvice.push("Take on an empty stomach 1 hour before or 2 hours after meals");
-    } else if (foodInteractions.toLowerCase().includes("food") || foodInteractions.toLowerCase().includes("meal")) {
-      customAdvice.push("Take after meals with plenty of water");
-    } else {
-      customAdvice.push("Take after meals with a full glass of water");
-    }
 
-    if (patientCounseling.length > 0) {
-      const selectedCounseling = patientCounseling.find((c: any) => typeof c === 'string' && !c.toLowerCase().includes("exact"));
-      if (selectedCounseling) {
-        customAdvice.push(selectedCounseling);
+      if (patientCounseling.length > 0) {
+        const selectedCounseling = patientCounseling.find((c: any) => typeof c === 'string' && !c.toLowerCase().includes("exact"));
+        if (selectedCounseling) {
+          customAdvice.push(selectedCounseling);
+        }
       }
-    }
 
-    if (drugClass.includes("antibiotic")) {
-      customAdvice.push("Complete full therapeutic course as directed by physician");
-    }
+      if (drugClass.includes("antibiotic")) {
+        customAdvice.push("Complete full therapeutic course as directed by physician");
+      }
 
-    instructions = customAdvice.slice(0, 2).join(". ");
+      instructions = customAdvice.slice(0, 2).join(". ");
+    }
   }
+
+  const foodRelation = med.food_relation || (
+    foodInteractions.toLowerCase().includes("empty stomach") || foodInteractions.toLowerCase().includes("before meals")
+      ? "Take on an empty stomach"
+      : foodInteractions.toLowerCase().includes("food") || foodInteractions.toLowerCase().includes("meal") || drugClass.includes("nsaid") || lowerName.includes("ibuprofen") || lowerName.includes("diclofenac") || lowerName.includes("aspirin")
+      ? "Take after meals"
+      : "Take with or without food"
+  );
+
+  const pediatricMgKg = med.pediatric_mg_kg || (
+    med.pediatric_dose && med.pediatric_dose.includes("mg/kg")
+      ? med.pediatric_dose
+      : lowerName.includes("paracetamol") || lowerName.includes("acetaminophen") || lowerName.includes("cetal")
+      ? "10 - 15 mg/kg/dose"
+      : lowerName.includes("ibuprofen")
+      ? "5 - 10 mg/kg/dose"
+      : lowerName.includes("amoxicillin") || lowerName.includes("augmentin")
+      ? "20 - 40 mg/kg/day"
+      : lowerName.includes("azithromycin")
+      ? "10 mg/kg/day"
+      : "10 - 20 mg/kg/day"
+  );
+
+  const pregnancyCat = med.pregnancy_category || (
+    /methotrexate|statin|atorvastatin|simvastatin|warfarin|isotretinoin/i.test(lowerName) ? "Category X (Contraindicated in pregnancy)" :
+    /enalapril|captopril|losartan|valsartan|doxycycline|ciprofloxacin|aspirin/i.test(lowerName) ? "Category D (Positive evidence of risk)" :
+    /paracetamol|acetaminophen|amoxicillin|penicillin|ceftriaxone|cefuroxime|azithromycin|insulin|erythromycin/i.test(lowerName) ? "Category B (No evidence of risk in humans)" :
+    "Category C (Use only if potential benefit outweighs risk)"
+  );
+
+  const lactationSaf = med.lactation_safety || (
+    /methotrexate|warfarin|doxycycline|isotretinoin/i.test(lowerName) || pregnancyCat.includes("Category X") ? "Contraindicated" :
+    /paracetamol|acetaminophen|ibuprofen|amoxicillin|ceftriaxone|azithromycin/i.test(lowerName) ? "Safe" :
+    "Caution"
+  );
+
+  const pedsMinAge = med.pediatric_min_age || (
+    /aspirin/i.test(lowerName) ? "18 years (Reye's syndrome risk)" :
+    /doxycycline|tetracycline/i.test(lowerName) ? "8 years (Teeth discoloration risk)" :
+    /ciprofloxacin|levofloxacin|fluoroquinolone/i.test(lowerName) ? "18 years (Articular cartilage toxicity risk)" :
+    /ibuprofen/i.test(lowerName) ? "6 months" :
+    /paracetamol|acetaminophen|cetal/i.test(lowerName) ? "2 months" :
+    /amoxicillin|augmentin/i.test(lowerName) ? "3 months" :
+    "2 months"
+  );
+
+  const renalAdjReq = med.renal_adjustment_required !== undefined ? Boolean(med.renal_adjustment_required) : (
+    /amoxicillin|augmentin|ciprofloxacin|metformin|enalapril|captopril|gentamicin|vancomycin|atenolol|gabapentin/i.test(lowerName)
+  );
+
+  const renalGuidance = med.renal_dose_guidance || med.renal_dose || (
+    renalAdjReq ? "Adjust dose or extend dosing interval if CrCl / eGFR < 50 mL/min" : "No routine dose adjustment required in mild-to-moderate renal impairment"
+  );
+
+  const maxDailyDose = med.max_daily_dose_mg !== undefined ? med.max_daily_dose_mg : (
+    /paracetamol|acetaminophen|cetal|panadol/i.test(lowerName) ? 4000 :
+    /ibuprofen|brufen/i.test(lowerName) ? 2400 :
+    /amoxicillin|augmentin/i.test(lowerName) ? 4000 :
+    /ciprofloxacin/i.test(lowerName) ? 1500 :
+    /metformin/i.test(lowerName) ? 2550 :
+    /aspirin/i.test(lowerName) ? 4000 :
+    /azithromycin/i.test(lowerName) ? 500 :
+    /diclofenac|voltaren|cataflam/i.test(lowerName) ? 150 :
+    null
+  );
+
+  const adultDefaultDose = med.adult_default_dose || med.adult_dose || dosage;
+
+  const structured = parseStructuredStrength(concentration, formName);
 
   return {
     concentration,
     dosage,
     frequency,
     duration,
-    instructions
+    instructions,
+    adult_default_dose: adultDefaultDose,
+    pediatric_mg_kg: pediatricMgKg,
+    default_frequency: frequency,
+    default_duration: duration,
+    food_relation: foodRelation,
+    route: med.route || getRouteForDosageForm(formName),
+    pregnancy_category: pregnancyCat,
+    lactation_safety: lactationSaf,
+    pediatric_min_age: pedsMinAge,
+    renal_adjustment_required: renalAdjReq,
+    renal_dose_guidance: renalGuidance,
+    max_daily_dose_mg: maxDailyDose,
+    strength_value: structured.strength_value,
+    strength_unit: structured.strength_unit,
+    concentration_volume: structured.concentration_volume,
+    concentration_volume_unit: structured.concentration_volume_unit,
+    structured_strength: structured
   };
 }
 
@@ -252,6 +740,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med1",
       name: "Amoxicillin",
+      genericName: "Amoxicillin",
+      tradeName: "Ibiamox ",
       contraindications: ["penicillin allergy", "infectious mononucleosis"],
       sideEffects: ["Nausea", "Vomiting", "Diarrhea", "Rash"],
       interactions: ["Methotrexate", "Oral contraceptives", "Allopurinol"],
@@ -264,6 +754,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med2",
       name: "Azithromycin",
+      genericName: "Azithromycin",
+      tradeName: "Zithrokan (Azithromycin)",
       contraindications: ["liver disease", "QT prolongation"],
       sideEffects: ["Diarrhea", "Nausea", "Abdominal pain", "Headache"],
       interactions: ["Antacids", "Digoxin", "Warfarin"],
@@ -276,6 +768,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med3",
       name: "Ciprofloxacin",
+      genericName: "Ciprofloxacin",
+      tradeName: "Ciprocin (Ciprofloxacin)",
       contraindications: ["myasthenia gravis", "tendinitis"],
       sideEffects: ["Nausea", "Diarrhea", "Dizziness", "Tendon rupture (rare)"],
       interactions: ["Theophylline", "Tizanidine", "Antacids with Mg/Al"],
@@ -288,6 +782,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med25",
       name: "Cephalexin",
+      genericName: "Cephalexin",
+      tradeName: "Keflex (Cephalexin)",
       contraindications: ["cephalosporin allergy"],
       sideEffects: ["Diarrhea", "Nausea", "Vomiting", "Indigestion"],
       interactions: ["Metformin", "Probenecid"],
@@ -299,6 +795,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med26",
       name: "Doxycycline",
+      genericName: "Doxycycline",
+      tradeName: "Vibramycin (Doxycycline)",
       contraindications: ["pregnancy", "children under 8"],
       sideEffects: ["Photosensitivity", "Nausea", "Vomiting", "Diarrhea"],
       interactions: ["Antacids", "Iron supplements", "Warfarin"],
@@ -310,6 +808,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med31",
       name: "Clarithromycin",
+      genericName: "Clarithromycin",
+      tradeName: "Klacid (Clarithromycin)",
       contraindications: ["QT prolongation", "hypokalemia"],
       sideEffects: ["Nausea", "Diarrhea", "Abdominal pain", "Taste perversion"],
       interactions: ["Statins", "Colchicine", "Warfarin"],
@@ -321,6 +821,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med32",
       name: "Levofloxacin",
+      genericName: "Levofloxacin",
+      tradeName: "Tavanic (Levofloxacin)",
       contraindications: ["tendon disorders", "epilepsy"],
       sideEffects: ["Nausea", "Diarrhea", "Insomnia", "Headache"],
       interactions: ["Antacids", "Iron", "Warfarin"],
@@ -332,6 +834,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med33",
       name: "Metronidazole",
+      genericName: "Metronidazole",
+      tradeName: "Flagyl (Metronidazole)",
       contraindications: ["first trimester of pregnancy", "alcohol use"],
       sideEffects: ["Metallic taste", "Nausea", "Headache", "Dizziness"],
       interactions: ["Alcohol", "Warfarin", "Lithium"],
@@ -343,6 +847,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med34",
       name: "Nitrofurantoin",
+      genericName: "Nitrofurantoin",
+      tradeName: "Macrofuran (Nitrofurantoin)",
       contraindications: ["renal impairment", "late pregnancy"],
       sideEffects: ["Nausea", "Headache", "Flatulence", "Dark urine"],
       interactions: ["Antacids with magnesium trisilicate", "Probenecid"],
@@ -354,6 +860,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med35",
       name: "Trimethoprim/Sulfamethoxazole",
+      genericName: "Trimethoprim/Sulfamethoxazole",
+      tradeName: "Septrin (Trimethoprim/Sulfamethoxazole)",
       contraindications: ["sulfa allergy", "severe renal/hepatic disease"],
       sideEffects: ["Nausea", "Vomiting", "Rash", "Photosensitivity"],
       interactions: ["Warfarin", "Methotrexate", "Digoxin"],
@@ -367,6 +875,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med4",
       name: "Ibuprofen",
+      genericName: "Ibuprofen",
+      tradeName: "Brufen (Ibuprofen)",
       contraindications: ["renal impairment", "gastric ulcer"],
       sideEffects: ["Stomach pain", "Heartburn", "Nausea", "Dizziness"],
       interactions: ["Aspirin", "Anticoagulants", "Lithium"],
@@ -380,6 +890,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med5",
       name: "Acetaminophen",
+      genericName: "Acetaminophen",
+      tradeName: "Panadol (Acetaminophen)",
       contraindications: ["liver failure", "alcoholism"],
       sideEffects: ["Nausea", "Stomach pain", "Loss of appetite", "Liver damage (high doses)"],
       interactions: ["Warfarin", "Isoniazid", "Carbamazepine"],
@@ -392,6 +904,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med6",
       name: "Naproxen",
+      genericName: "Naproxen",
+      tradeName: "Proxen (Naproxen)",
       contraindications: ["aspirin allergy", "severe heart failure"],
       sideEffects: ["Indigestion", "Nausea", "Stomach pain", "Drowsiness"],
       interactions: ["Antidepressants", "Blood pressure medications", "Lithium"],
@@ -404,6 +918,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med27",
       name: "Celecoxib",
+      genericName: "Celecoxib",
+      tradeName: "Celebrex (Celecoxib)",
       contraindications: ["sulfonamide allergy", "CABG surgery"],
       sideEffects: ["Stomach pain", "Diarrhea", "Flatulence", "Dizziness"],
       interactions: ["Fluconazole", "Lithium", "Warfarin"],
@@ -415,6 +931,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med28",
       name: "Tramadol",
+      genericName: "Tramadol",
+      tradeName: "Tramal (Tramadol)",
       contraindications: ["severe respiratory depression", "acute asthma"],
       sideEffects: ["Dizziness", "Nausea", "Constipation", "Headache"],
       interactions: ["MAO inhibitors", "SSRIs", "Quinidine"],
@@ -426,6 +944,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med36",
       name: "Diclofenac",
+      genericName: "Diclofenac",
+      tradeName: "Voltaren (Diclofenac)",
       contraindications: ["active GI bleeding", "severe heart failure"],
       sideEffects: ["Stomach pain", "Nausea", "Headache", "Dizziness"],
       interactions: ["Anticoagulants", "Lithium", "Methotrexate"],
@@ -437,6 +957,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med37",
       name: "Meloxicam",
+      genericName: "Meloxicam",
+      tradeName: "Anti-cox (Meloxicam)",
       contraindications: ["peri-operative pain in CABG", "asthma"],
       sideEffects: ["Diarrhea", "Upper respiratory tract infection", "Dyspepsia"],
       interactions: ["ACE inhibitors", "Diuretics", "Lithium"],
@@ -448,6 +970,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med38",
       name: "Morphine",
+      genericName: "Morphine",
+      tradeName: "Morphine (Morphine)",
       contraindications: ["respiratory depression", "paralytic ileus"],
       sideEffects: ["Constipation", "Nausea", "Sedation", "Respiratory depression"],
       interactions: ["CNS depressants", "MAO inhibitors"],
@@ -459,6 +983,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med39",
       name: "Oxycodone",
+      genericName: "Oxycodone",
+      tradeName: "OxyContin (Oxycodone)",
       contraindications: ["severe asthma", "GI obstruction"],
       sideEffects: ["Nausea", "Constipation", "Dizziness", "Pruritus"],
       interactions: ["CYP3A4 inhibitors", "Benzodiazepines"],
@@ -470,6 +996,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med40",
       name: "Gabapentin",
+      genericName: "Gabapentin",
+      tradeName: "Gaptin (Gabapentin)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Dizziness", "Somnolence", "Peripheral edema", "Ataxia"],
       interactions: ["Antacids", "Morphine"],
@@ -484,6 +1012,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med7",
       name: "Lisinopril",
+      genericName: "Lisinopril",
+      tradeName: "Zestril (Lisinopril)",
       contraindications: ["pregnancy", "angioedema"],
       sideEffects: ["Dry cough", "Dizziness", "Headache", "High potassium"],
       interactions: ["Diuretics", "Potassium supplements", "NSAIDs"],
@@ -496,6 +1026,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med8",
       name: "Atorvastatin",
+      genericName: "Atorvastatin",
+      tradeName: "Ator (Atorvastatin)",
       contraindications: ["active liver disease", "pregnancy"],
       sideEffects: ["Muscle pain", "Diarrhea", "Nausea", "Joint pain"],
       interactions: ["Grapefruit juice", "Cyclosporine", "Gemfibrozil"],
@@ -508,6 +1040,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med9",
       name: "Metoprolol",
+      genericName: "Metoprolol",
+      tradeName: "Betaloc (Metoprolol)",
       contraindications: ["bradycardia", "decompensated heart failure"],
       sideEffects: ["Fatigue", "Dizziness", "Depression", "Slow heart rate"],
       interactions: ["Amiodarone", "Clonidine", "Diltiazem"],
@@ -520,6 +1054,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med29",
       name: "Losartan",
+      genericName: "Losartan",
+      tradeName: "Amzaar (Losartan)",
       contraindications: ["pregnancy", "concomitant aliskiren in diabetes"],
       sideEffects: ["Dizziness", "Back pain", "Fatigue", "Diarrhea"],
       interactions: ["Lithium", "Potassium-sparing diuretics", "NSAIDs"],
@@ -532,6 +1068,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med30",
       name: "Amlodipine",
+      genericName: "Amlodipine",
+      tradeName: "Alkacap (Amlodipine)",
       contraindications: ["severe hypotension", "aortic stenosis"],
       sideEffects: ["Edema", "Dizziness", "Flushing", "Palpitations"],
       interactions: ["Simvastatin", "Cyclosporine", "Strong CYP3A4 inhibitors"],
@@ -544,6 +1082,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med41",
       name: "Enalapril",
+      genericName: "Enalapril",
+      tradeName: "Ezapril (Enalapril)",
       contraindications: ["history of angioedema", "pregnancy"],
       sideEffects: ["Cough", "Dizziness", "Hypotension", "Hyperkalemia"],
       interactions: ["Diuretics", "Lithium", "NSAIDs"],
@@ -555,6 +1095,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med42",
       name: "Valsartan",
+      genericName: "Valsartan",
+      tradeName: "Tareg (Valsartan)",
       contraindications: ["pregnancy", "severe hepatic impairment"],
       sideEffects: ["Dizziness", "Hypotension", "Hyperkalemia", "Fatigue"],
       interactions: ["Lithium", "Potassium-sparing diuretics", "NSAIDs"],
@@ -566,6 +1108,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med43",
       name: "Carvedilol",
+      genericName: "Carvedilol",
+      tradeName: "Dilatrol (Carvedilol)",
       contraindications: ["bronchial asthma", "severe bradycardia"],
       sideEffects: ["Dizziness", "Fatigue", "Weight gain", "Bradycardia"],
       interactions: ["Digoxin", "Insulin", "Calcium channel blockers"],
@@ -577,6 +1121,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med44",
       name: "Spironolactone",
+      genericName: "Spironolactone",
+      tradeName: "Aldactone (Spironolactone)",
       contraindications: ["hyperkalemia", "Addison's disease"],
       sideEffects: ["Hyperkalemia", "Gynecomastia", "Nausea", "Dizziness"],
       interactions: ["ACE inhibitors", "Lithium", "Digoxin"],
@@ -588,6 +1134,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med45",
       name: "Warfarin",
+      genericName: "Warfarin",
+      tradeName: "Marevan (Warfarin)",
       contraindications: ["active bleeding", "pregnancy"],
       sideEffects: ["Bleeding", "Bruising", "Nausea", "Stomach pain"],
       interactions: ["Vitamin K", "NSAIDs", "Antibiotics"],
@@ -602,6 +1150,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med10",
       name: "Albuterol",
+      genericName: "Albuterol",
+      tradeName: "Ventolin (Albuterol)",
       contraindications: ["cardiac arrhythmias", "hypertension"],
       sideEffects: ["Tremor", "Nervousness", "Headache", "Palpitations"],
       interactions: ["Beta-blockers", "Diuretics", "Digoxin"],
@@ -614,6 +1164,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med46",
       name: "Tiotropium",
+      genericName: "Tiotropium",
+      tradeName: "Tiotropium (Tiotropium)",
       contraindications: ["hypersensitivity to ipratropium"],
       sideEffects: ["Dry mouth", "Upper respiratory tract infection", "Sinusitis"],
       interactions: ["Anticholinergics"],
@@ -622,6 +1174,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med47",
       name: "Ipratropium",
+      genericName: "Ipratropium",
+      tradeName: "Ipratropium (Ipratropium)",
       contraindications: ["hypersensitivity to atropine"],
       sideEffects: ["Dry mouth", "Nausea", "Dizziness", "Headache"],
       interactions: ["Anticholinergics"],
@@ -633,6 +1187,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med49",
       name: "Salmeterol",
+      genericName: "Salmeterol",
+      tradeName: "Salmeterol (Salmeterol)",
       contraindications: ["acute asthma symptoms"],
       sideEffects: ["Headache", "Tremor", "Palpitations", "Cough"],
       interactions: ["Beta-blockers", "MAO inhibitors"],
@@ -641,6 +1197,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med50",
       name: "Terbutaline",
+      genericName: "Terbutaline",
+      tradeName: "Terbutaline (Terbutaline)",
       contraindications: ["tachyarrhythmias"],
       sideEffects: ["Tremor", "Nervousness", "Dizziness", "Headache"],
       interactions: ["Beta-blockers", "Diuretics"],
@@ -652,6 +1210,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med51",
       name: "Theophylline",
+      genericName: "Theophylline",
+      tradeName: "Theophylline (Theophylline)",
       contraindications: ["peptic ulcer", "seizure disorders"],
       sideEffects: ["Nausea", "Vomiting", "Headache", "Insomnia"],
       interactions: ["Ciprofloxacin", "Erythromycin", "Phenytoin"],
@@ -663,6 +1223,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med501",
       name: "Formoterol",
+      genericName: "Formoterol",
+      tradeName: "Formoterol (Formoterol)",
       contraindications: ["acute asthma symptoms"],
       sideEffects: ["Tremor", "Palpitations", "Headache", "Nervousness"],
       interactions: ["Beta-blockers", "MAO inhibitors", "Diuretics"],
@@ -671,6 +1233,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med502",
       name: "Levalbuterol",
+      genericName: "Levalbuterol",
+      tradeName: "Levalbuterol (Levalbuterol)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Tremor", "Nervousness", "Tachycardia", "Headache"],
       interactions: ["Beta-blockers", "Diuretics", "Digoxin"],
@@ -679,6 +1243,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med503",
       name: "Umeclidinium",
+      genericName: "Umeclidinium",
+      tradeName: "Umeclidinium (Umeclidinium)",
       contraindications: ["severe hypersensitivity to milk proteins"],
       sideEffects: ["Nasopharyngitis", "Upper respiratory tract infection", "Cough"],
       interactions: ["Anticholinergics"],
@@ -687,6 +1253,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med504",
       name: "Indacaterol",
+      genericName: "Indacaterol",
+      tradeName: "Indacaterol (Indacaterol)",
       contraindications: ["asthma without use of a long-term asthma control medication"],
       sideEffects: ["Cough", "Oropharyngeal pain", "Nasopharyngitis", "Headache"],
       interactions: ["Beta-blockers", "MAO inhibitors", "Diuretics"],
@@ -697,6 +1265,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med11",
       name: "Fluticasone",
+      genericName: "Fluticasone",
+      tradeName: "Flixonase (Fluticasone)",
       contraindications: ["untreated infections", "nasal trauma"],
       sideEffects: ["Nosebleeds", "Headache", "Sore throat", "Cough"],
       interactions: ["Ritonavir", "Ketoconazole", "Itraconazole"],
@@ -709,6 +1279,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med48",
       name: "Budesonide",
+      genericName: "Budesonide",
+      tradeName: "Budesonide (Budesonide)",
       contraindications: ["status asthmaticus"],
       sideEffects: ["Oral candidiasis", "Throat irritation", "Cough"],
       interactions: ["CYP3A4 inhibitors"],
@@ -720,6 +1292,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med505",
       name: "Beclomethasone",
+      genericName: "Beclomethasone",
+      tradeName: "Beclomethasone (Beclomethasone)",
       contraindications: ["status asthmaticus"],
       sideEffects: ["Oral candidiasis", "Throat irritation", "Hoarseness"],
       interactions: ["None significant"],
@@ -728,6 +1302,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med506",
       name: "Ciclesonide",
+      genericName: "Ciclesonide",
+      tradeName: "Ciclesonide (Ciclesonide)",
       contraindications: ["status asthmaticus"],
       sideEffects: ["Headache", "Nasopharyngitis", "Upper respiratory tract infection"],
       interactions: ["CYP3A4 inhibitors"],
@@ -736,6 +1312,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med507",
       name: "Mometasone",
+      genericName: "Mometasone",
+      tradeName: "Mometasone (Mometasone)",
       contraindications: ["status asthmaticus"],
       sideEffects: ["Headache", "Allergic rhinitis", "Pharyngitis"],
       interactions: ["CYP3A4 inhibitors"],
@@ -744,6 +1322,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med508",
       name: "Flunisolide",
+      genericName: "Flunisolide",
+      tradeName: "Flunisolide (Flunisolide)",
       contraindications: ["status asthmaticus"],
       sideEffects: ["Oral candidiasis", "Throat irritation", "Hoarseness"],
       interactions: ["None significant"],
@@ -752,6 +1332,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med509",
       name: "Triamcinolone Acetonide (Inhaled)",
+      genericName: "Triamcinolone Acetonide (Inhaled)",
+      tradeName: "Triamcinolone Acetonide (Inhaled) (Triamcinolone Acetonide (Inhaled))",
       contraindications: ["status asthmaticus"],
       sideEffects: ["Oral candidiasis", "Throat irritation", "Cough"],
       interactions: ["None significant"],
@@ -760,6 +1342,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med510",
       name: "Budesonide/Formoterol",
+      genericName: "Budesonide/Formoterol",
+      tradeName: "Symbicort (Budesonide/Formoterol)",
       contraindications: ["status asthmaticus"],
       sideEffects: ["Nasopharyngitis", "Headache", "Upper respiratory tract infection"],
       interactions: ["CYP3A4 inhibitors", "Beta-blockers", "MAO inhibitors"],
@@ -768,6 +1352,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med511",
       name: "Fluticasone/Salmeterol",
+      genericName: "Fluticasone/Salmeterol",
+      tradeName: "Advair (Fluticasone/Salmeterol)",
       contraindications: ["status asthmaticus"],
       sideEffects: ["Upper respiratory tract infection", "Headache", "Pharyngitis"],
       interactions: ["CYP3A4 inhibitors", "Beta-blockers", "MAO inhibitors"],
@@ -776,6 +1362,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med512",
       name: "Mometasone/Formoterol",
+      genericName: "Mometasone/Formoterol",
+      tradeName: "Mometasone/Formoterol (Mometasone/Formoterol)",
       contraindications: ["status asthmaticus"],
       sideEffects: ["Nasopharyngitis", "Headache", "Sinusitis"],
       interactions: ["CYP3A4 inhibitors", "Beta-blockers", "MAO inhibitors"],
@@ -786,6 +1374,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med12",
       name: "Montelukast",
+      genericName: "Montelukast",
+      tradeName: "Singulair (Montelukast)",
       contraindications: ["neuropsychiatric events", "aspirin-sensitive asthma"],
       sideEffects: ["Stomach pain", "Diarrhea", "Fever", "Headache"],
       interactions: ["Phenobarbital", "Rifampin", "Gemfibrozil"],
@@ -798,6 +1388,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med513",
       name: "Zafirlukast",
+      genericName: "Zafirlukast",
+      tradeName: "Zafirlukast (Zafirlukast)",
       contraindications: ["hepatic impairment"],
       sideEffects: ["Headache", "Infection", "Nausea", "Diarrhea"],
       interactions: ["Warfarin", "Erythromycin", "Theophylline"],
@@ -806,6 +1398,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med514",
       name: "Zileuton",
+      genericName: "Zileuton",
+      tradeName: "Zileuton (Zileuton)",
       contraindications: ["active liver disease"],
       sideEffects: ["Headache", "Abdominal pain", "Asthenia", "Dyspepsia"],
       interactions: ["Theophylline", "Warfarin", "Propranolol"],
@@ -814,6 +1408,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med515",
       name: "Pranlukast",
+      genericName: "Pranlukast",
+      tradeName: "Pranlukast (Pranlukast)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Nausea", "Diarrhea", "Abdominal pain", "Rash"],
       interactions: ["None significant"],
@@ -822,6 +1418,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med516",
       name: "Ibudilast",
+      genericName: "Ibudilast",
+      tradeName: "Ibudilast (Ibudilast)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Nausea", "Vomiting", "Anorexia", "Dizziness"],
       interactions: ["None significant"],
@@ -830,6 +1428,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med517",
       name: "Pemirolast",
+      genericName: "Pemirolast",
+      tradeName: "Pemirolast (Pemirolast)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Headache", "Rhinitis", "Cold symptoms"],
       interactions: ["None significant"],
@@ -838,6 +1438,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med518",
       name: "Seratrodast",
+      genericName: "Seratrodast",
+      tradeName: "Seratrodast (Seratrodast)",
       contraindications: ["hepatic impairment"],
       sideEffects: ["Nausea", "Abdominal pain", "Elevated liver enzymes"],
       interactions: ["None significant"],
@@ -846,6 +1448,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med519",
       name: "Tomelukast",
+      genericName: "Tomelukast",
+      tradeName: "Tomelukast (Tomelukast)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Headache", "Nausea", "Fatigue"],
       interactions: ["None significant"],
@@ -854,6 +1458,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med520",
       name: "Verlukast",
+      genericName: "Verlukast",
+      tradeName: "Verlukast (Verlukast)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Headache", "Nausea", "Dizziness"],
       interactions: ["None significant"],
@@ -862,6 +1468,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med521",
       name: "Ablukast",
+      genericName: "Ablukast",
+      tradeName: "Ablukast (Ablukast)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Headache", "Nausea", "Fatigue"],
       interactions: ["None significant"],
@@ -872,6 +1480,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med522",
       name: "Dextromethorphan",
+      genericName: "Dextromethorphan",
+      tradeName: "Dextromethorphan (Dextromethorphan)",
       contraindications: ["MAO inhibitor use within 14 days"],
       sideEffects: ["Dizziness", "Lightheadedness", "Drowsiness", "Nausea"],
       interactions: ["MAO inhibitors", "SSRIs", "CNS depressants"],
@@ -880,6 +1490,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med523",
       name: "Codeine",
+      genericName: "Codeine",
+      tradeName: "Codeine (Codeine)",
       contraindications: ["respiratory depression", "acute asthma", "children under 12"],
       sideEffects: ["Drowsiness", "Constipation", "Nausea", "Vomiting"],
       interactions: ["CNS depressants", "Alcohol", "Anticholinergics"],
@@ -888,6 +1500,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med524",
       name: "Benzonatate",
+      genericName: "Benzonatate",
+      tradeName: "Benzonatate (Benzonatate)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Drowsiness", "Dizziness", "Headache", "Constipation"],
       interactions: ["None significant"],
@@ -896,6 +1510,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med525",
       name: "Pholcodine",
+      genericName: "Pholcodine",
+      tradeName: "Pholcodine (Pholcodine)",
       contraindications: ["respiratory depression", "asthma attack", "hepatic impairment"],
       sideEffects: ["Drowsiness", "Nausea", "Vomiting", "Constipation"],
       interactions: ["CNS depressants", "Alcohol", "MAO inhibitors"],
@@ -904,6 +1520,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med526",
       name: "Noscapine",
+      genericName: "Noscapine",
+      tradeName: "Noscapine (Noscapine)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Drowsiness", "Dizziness", "Nausea", "Headache"],
       interactions: ["CNS depressants", "Alcohol"],
@@ -912,6 +1530,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med527",
       name: "Butamirate",
+      genericName: "Butamirate",
+      tradeName: "Butamirate (Butamirate)",
       contraindications: ["first trimester of pregnancy"],
       sideEffects: ["Rash", "Nausea", "Diarrhea", "Dizziness"],
       interactions: ["Expectorants"],
@@ -920,6 +1540,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med528",
       name: "Clobutinol",
+      genericName: "Clobutinol",
+      tradeName: "Clobutinol (Clobutinol)",
       contraindications: ["history of seizures", "QT prolongation"],
       sideEffects: ["Drowsiness", "Dizziness", "Nausea", "Insomnia"],
       interactions: ["Drugs that prolong QT interval"],
@@ -928,6 +1550,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med529",
       name: "Dropropizine",
+      genericName: "Dropropizine",
+      tradeName: "Dropropizine (Dropropizine)",
       contraindications: ["severe hepatic impairment", "severe renal impairment"],
       sideEffects: ["Nausea", "Drowsiness", "Dizziness"],
       interactions: ["CNS depressants"],
@@ -936,6 +1560,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med530",
       name: "Levodropropizine",
+      genericName: "Levodropropizine",
+      tradeName: "Levodropropizine (Levodropropizine)",
       contraindications: ["severe hepatic impairment", "excessive mucus discharge"],
       sideEffects: ["Nausea", "Vomiting", "Heartburn", "Diarrhea"],
       interactions: ["Sedatives"],
@@ -944,6 +1570,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med531",
       name: "Oxeladin",
+      genericName: "Oxeladin",
+      tradeName: "Oxeladin (Oxeladin)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Nausea", "Dizziness", "Rash"],
       interactions: ["None significant"],
@@ -954,6 +1582,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med52",
       name: "Guaifenesin",
+      genericName: "Guaifenesin",
+      tradeName: "Guaifenesin (Guaifenesin)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Nausea", "Vomiting", "Dizziness", "Headache"],
       interactions: ["None significant"],
@@ -965,6 +1595,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med532",
       name: "Acetylcysteine",
+      genericName: "Acetylcysteine",
+      tradeName: "Acetylcysteine (Acetylcysteine)",
       contraindications: ["acute asthma"],
       sideEffects: ["Stomatitis", "Nausea", "Vomiting", "Fever"],
       interactions: ["Nitroglycerin", "Activated charcoal"],
@@ -973,6 +1605,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med533",
       name: "Bromhexine",
+      genericName: "Bromhexine",
+      tradeName: "Bromhexine (Bromhexine)",
       contraindications: ["peptic ulcer"],
       sideEffects: ["Nausea", "Vomiting", "Diarrhea", "Upper abdominal pain"],
       interactions: ["Antibiotics (increases concentration)"],
@@ -981,6 +1615,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med534",
       name: "Ambroxol",
+      genericName: "Ambroxol",
+      tradeName: "Ambroxol (Ambroxol)",
       contraindications: ["peptic ulcer"],
       sideEffects: ["Nausea", "Vomiting", "Diarrhea", "Dyspepsia"],
       interactions: ["Antibiotics (increases concentration)"],
@@ -989,6 +1625,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med535",
       name: "Carbocisteine",
+      genericName: "Carbocisteine",
+      tradeName: "Carbocisteine (Carbocisteine)",
       contraindications: ["active peptic ulcer"],
       sideEffects: ["Nausea", "Diarrhea", "Gastric discomfort", "Rash"],
       interactions: ["Antitussives"],
@@ -997,6 +1635,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med536",
       name: "Erdosteine",
+      genericName: "Erdosteine",
+      tradeName: "Erdosteine (Erdosteine)",
       contraindications: ["severe hepatic impairment", "severe renal impairment", "active peptic ulcer"],
       sideEffects: ["Epigastric pain", "Nausea", "Headache", "Alteration of taste"],
       interactions: ["None significant"],
@@ -1005,6 +1645,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med537",
       name: "Dornase Alfa",
+      genericName: "Dornase Alfa",
+      tradeName: "Dornase Alfa (Dornase Alfa)",
       contraindications: ["hypersensitivity to Chinese Hamster Ovary cell products"],
       sideEffects: ["Pharyngitis", "Voice alteration", "Chest pain", "Rash"],
       interactions: ["None significant"],
@@ -1013,6 +1655,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med538",
       name: "Mesna (as mucolytic)",
+      genericName: "Mesna (as mucolytic)",
+      tradeName: "Mesna (as mucolytic) (Mesna (as mucolytic))",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Nausea", "Vomiting", "Cough", "Pharyngitis"],
       interactions: ["None significant"],
@@ -1021,6 +1665,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med539",
       name: "Letosteine",
+      genericName: "Letosteine",
+      tradeName: "Letosteine (Letosteine)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Nausea", "Gastric discomfort", "Rash"],
       interactions: ["None significant"],
@@ -1029,6 +1675,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med540",
       name: "Stepronin",
+      genericName: "Stepronin",
+      tradeName: "Stepronin (Stepronin)",
       contraindications: ["severe hepatic impairment"],
       sideEffects: ["Nausea", "Diarrhea", "Gastric discomfort"],
       interactions: ["None significant"],
@@ -1040,6 +1688,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med13",
       name: "Metformin",
+      genericName: "Metformin",
+      tradeName: "Cidophage (Metformin)",
       contraindications: ["renal impairment", "metabolic acidosis"],
       sideEffects: ["Diarrhea", "Nausea", "Vomiting", "Flatulence"],
       interactions: ["Contrast agents", "Alcohol", "Cimetidine"],
@@ -1052,6 +1702,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med14",
       name: "Glipizide",
+      genericName: "Glipizide",
+      tradeName: "Minidiab (Glipizide)",
       contraindications: ["type 1 diabetes", "diabetic ketoacidosis"],
       sideEffects: ["Hypoglycemia", "Dizziness", "Nausea", "Weight gain"],
       interactions: ["Fluconazole", "Beta-blockers", "NSAIDs"],
@@ -1063,6 +1715,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med53",
       name: "Sitagliptin",
+      genericName: "Sitagliptin",
+      tradeName: "Januvia (Sitagliptin)",
       contraindications: ["renal impairment", "history of pancreatitis"],
       sideEffects: ["Upper respiratory tract infection", "Headache", "Nasopharyngitis"],
       interactions: ["Digoxin"],
@@ -1075,6 +1729,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med54",
       name: "Empagliflozin",
+      genericName: "Empagliflozin",
+      tradeName: "Jardiance (Empagliflozin)",
       contraindications: ["severe renal impairment", "dialysis"],
       sideEffects: ["Urinary tract infection", "Yeast infection", "Increased urination"],
       interactions: ["Diuretics", "Insulin"],
@@ -1086,6 +1742,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med55",
       name: "Liraglutide",
+      genericName: "Liraglutide",
+      tradeName: "Liraglutide (Liraglutide)",
       contraindications: ["medullary thyroid carcinoma", "MEN 2"],
       sideEffects: ["Nausea", "Diarrhea", "Vomiting", "Decreased appetite"],
       interactions: ["Oral medications (delayed absorption)"],
@@ -1096,6 +1754,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med56",
       name: "Pioglitazone",
+      genericName: "Pioglitazone",
+      tradeName: "Pioglitazone (Pioglitazone)",
       contraindications: ["NYHA Class III/IV heart failure", "bladder cancer"],
       sideEffects: ["Edema", "Weight gain", "Upper respiratory tract infection"],
       interactions: ["Gemfibrozil", "Rifampin"],
@@ -1107,6 +1767,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med57",
       name: "Gliclazide",
+      genericName: "Gliclazide",
+      tradeName: "Gliclazide (Gliclazide)",
       contraindications: ["type 1 diabetes", "severe renal/hepatic insufficiency"],
       sideEffects: ["Hypoglycemia", "Gastrointestinal disturbances", "Rash"],
       interactions: ["Miconazole", "Phenylbutazone", "Alcohol"],
@@ -1118,6 +1780,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med58",
       name: "Insulin Glargine",
+      genericName: "Insulin Glargine",
+      tradeName: "Lantus (Insulin Glargine)",
       contraindications: ["hypoglycemia"],
       sideEffects: ["Hypoglycemia", "Injection site reactions", "Lipodystrophy"],
       interactions: ["Beta-blockers", "Alcohol"],
@@ -1128,6 +1792,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med59",
       name: "Insulin Lispro",
+      genericName: "Insulin Lispro",
+      tradeName: "Insulin Lispro (Insulin Lispro)",
       contraindications: ["hypoglycemia"],
       sideEffects: ["Hypoglycemia", "Injection site reactions", "Pruritus"],
       interactions: ["Beta-blockers", "Alcohol"],
@@ -1138,6 +1804,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med60",
       name: "Acarbose",
+      genericName: "Acarbose",
+      tradeName: "Acarbose (Acarbose)",
       contraindications: ["inflammatory bowel disease", "colonic ulceration"],
       sideEffects: ["Flatulence", "Diarrhea", "Abdominal pain"],
       interactions: ["Digoxin", "Intestinal adsorbents"],
@@ -1151,6 +1819,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med15",
       name: "Sertraline",
+      genericName: "Sertraline",
+      tradeName: "Lustral (Sertraline)",
       contraindications: ["MAO inhibitor use", "pimozide use"],
       sideEffects: ["Nausea", "Insomnia", "Diarrhea", "Dry mouth"],
       interactions: ["MAO inhibitors", "Warfarin", "NSAIDs"],
@@ -1163,6 +1833,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med16",
       name: "Fluoxetine",
+      genericName: "Fluoxetine",
+      tradeName: "Prozac (Fluoxetine)",
       contraindications: ["MAO inhibitor use", "thioridazine use"],
       sideEffects: ["Nausea", "Insomnia", "Anxiety", "Weight loss"],
       interactions: ["MAO inhibitors", "Tryptophan", "Warfarin"],
@@ -1175,6 +1847,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med61",
       name: "Escitalopram",
+      genericName: "Escitalopram",
+      tradeName: "Cipralex (Escitalopram)",
       contraindications: ["MAO inhibitor use", "pimozide use"],
       sideEffects: ["Nausea", "Insomnia", "Ejaculation disorder", "Fatigue"],
       interactions: ["MAO inhibitors", "NSAIDs", "Warfarin"],
@@ -1187,6 +1861,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med62",
       name: "Paroxetine",
+      genericName: "Paroxetine",
+      tradeName: "Paroxetine (Paroxetine)",
       contraindications: ["MAO inhibitor use", "thioridazine use"],
       sideEffects: ["Nausea", "Somnolence", "Dry mouth", "Sweating"],
       interactions: ["MAO inhibitors", "Tamoxifen", "Warfarin"],
@@ -1198,6 +1874,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med63",
       name: "Citalopram",
+      genericName: "Citalopram",
+      tradeName: "Citalopram (Citalopram)",
       contraindications: ["MAO inhibitor use", "congenital long QT syndrome"],
       sideEffects: ["Nausea", "Dry mouth", "Somnolence", "Increased sweating"],
       interactions: ["MAO inhibitors", "NSAIDs", "Warfarin"],
@@ -1210,6 +1888,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med64",
       name: "Venlafaxine",
+      genericName: "Venlafaxine",
+      tradeName: "Effexor (Venlafaxine)",
       contraindications: ["MAO inhibitor use"],
       sideEffects: ["Nausea", "Somnolence", "Dry mouth", "Sweating"],
       interactions: ["MAO inhibitors", "Haloperidol", "Warfarin"],
@@ -1222,6 +1902,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med65",
       name: "Duloxetine",
+      genericName: "Duloxetine",
+      tradeName: "Cymbalta (Duloxetine)",
       contraindications: ["MAO inhibitor use", "uncontrolled narrow-angle glaucoma"],
       sideEffects: ["Nausea", "Dry mouth", "Somnolence", "Fatigue"],
       interactions: ["MAO inhibitors", "Ciprofloxacin", "NSAIDs"],
@@ -1234,6 +1916,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med66",
       name: "Amitriptyline",
+      genericName: "Amitriptyline",
+      tradeName: "Amitriptyline (Amitriptyline)",
       contraindications: ["MAO inhibitor use", "recent MI"],
       sideEffects: ["Dry mouth", "Somnolence", "Dizziness", "Constipation"],
       interactions: ["MAO inhibitors", "Anticholinergics", "CNS depressants"],
@@ -1246,6 +1930,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med67",
       name: "Mirtazapine",
+      genericName: "Mirtazapine",
+      tradeName: "Remeron (Mirtazapine)",
       contraindications: ["MAO inhibitor use"],
       sideEffects: ["Somnolence", "Increased appetite", "Weight gain", "Dizziness"],
       interactions: ["MAO inhibitors", "Alcohol", "Benzodiazepines"],
@@ -1258,6 +1944,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med68",
       name: "Bupropion",
+      genericName: "Bupropion",
+      tradeName: "Wellbutrin (Bupropion)",
       contraindications: ["seizure disorder", "bulimia/anorexia"],
       sideEffects: ["Insomnia", "Dry mouth", "Dizziness", "Headache"],
       interactions: ["MAO inhibitors", "Levodopa", "Ritonavir"],
@@ -1272,6 +1960,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med17",
       name: "Omeprazole",
+      genericName: "Omeprazole",
+      tradeName: "Losec (Omeprazole)",
       contraindications: ["hypersensitivity to substituted benzimidazoles"],
       sideEffects: ["Headache", "Abdominal pain", "Nausea", "Diarrhea"],
       interactions: ["Clopidogrel", "Digoxin", "Methotrexate"],
@@ -1284,6 +1974,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med18",
       name: "Famotidine",
+      genericName: "Famotidine",
+      tradeName: "Antodine (Famotidine)",
       contraindications: ["hypersensitivity to H2-receptor antagonists"],
       sideEffects: ["Headache", "Dizziness", "Constipation", "Diarrhea"],
       interactions: ["Atazanavir", "Itraconazole", "Ketoconazole"],
@@ -1296,6 +1988,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med69",
       name: "Lansoprazole",
+      genericName: "Lansoprazole",
+      tradeName: "Lansoprazole (Lansoprazole)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Diarrhea", "Abdominal pain", "Nausea", "Constipation"],
       interactions: ["Sucralfate", "Digoxin", "Theophylline"],
@@ -1307,6 +2001,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med70",
       name: "Pantoprazole",
+      genericName: "Pantoprazole",
+      tradeName: "Controloc (Pantoprazole)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Headache", "Diarrhea", "Nausea", "Flatulence"],
       interactions: ["Atazanavir", "Nelfinavir", "Warfarin"],
@@ -1318,6 +2014,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med71",
       name: "Cimetidine",
+      genericName: "Cimetidine",
+      tradeName: "Cimetidine (Cimetidine)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Diarrhea", "Dizziness", "Drowsiness", "Headache"],
       interactions: ["Warfarin", "Theophylline", "Phenytoin"],
@@ -1329,6 +2027,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med72",
       name: "Loperamide",
+      genericName: "Loperamide",
+      tradeName: "Diax (Loperamide)",
       contraindications: ["abdominal pain without diarrhea", "acute dysentery"],
       sideEffects: ["Constipation", "Dizziness", "Nausea", "Abdominal cramps"],
       interactions: ["Quinidine", "Ritonavir"],
@@ -1339,6 +2039,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med73",
       name: "Metoclopramide",
+      genericName: "Metoclopramide",
+      tradeName: "Metoclopramide (Metoclopramide)",
       contraindications: ["GI hemorrhage", "mechanical obstruction", "perforation"],
       sideEffects: ["Restlessness", "Drowsiness", "Fatigue", "Lassitude"],
       interactions: ["Anticholinergics", "Opioid analgesics"],
@@ -1350,6 +2052,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med74",
       name: "Ondansetron",
+      genericName: "Ondansetron",
+      tradeName: "Danset (Ondansetron)",
       contraindications: ["concomitant apomorphine use"],
       sideEffects: ["Headache", "Malaise", "Fatigue", "Constipation"],
       interactions: ["Apomorphine", "Phenytoin", "Carbamazepine"],
@@ -1361,6 +2065,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med75",
       name: "Hyoscine",
+      genericName: "Hyoscine",
+      tradeName: "Hyoscine (Hyoscine)",
       contraindications: ["glaucoma", "myasthenia gravis"],
       sideEffects: ["Dry mouth", "Blurred vision", "Tachycardia", "Urinary retention"],
       interactions: ["Anticholinergics", "Antihistamines"],
@@ -1371,6 +2077,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med76",
       name: "Mebeverine",
+      genericName: "Mebeverine",
+      tradeName: "Mebeverine (Mebeverine)",
       contraindications: ["paralytic ileus"],
       sideEffects: ["Rash", "Urticaria", "Angioedema"],
       interactions: ["None significant"],
@@ -1383,6 +2091,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med19",
       name: "Cetirizine",
+      genericName: "Cetirizine",
+      tradeName: "Cetirizine (Cetirizine)",
       contraindications: ["severe renal impairment"],
       sideEffects: ["Drowsiness", "Dry mouth", "Fatigue", "Dizziness"],
       interactions: ["Alcohol", "Theophylline"],
@@ -1395,6 +2105,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med20",
       name: "Loratadine",
+      genericName: "Loratadine",
+      tradeName: "Loratadine (Loratadine)",
       contraindications: ["liver disease", "severe renal impairment"],
       sideEffects: ["Headache", "Somnolence", "Fatigue", "Dry mouth"],
       interactions: ["Ketoconazole", "Erythromycin", "Cimetidine"],
@@ -1406,6 +2118,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med77",
       name: "Fexofenadine",
+      genericName: "Fexofenadine",
+      tradeName: "Fexofenadine (Fexofenadine)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Headache", "Dizziness", "Drowsiness", "Nausea"],
       interactions: ["Antacids", "Erythromycin", "Ketoconazole"],
@@ -1417,6 +2131,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med78",
       name: "Desloratadine",
+      genericName: "Desloratadine",
+      tradeName: "Desloratadine (Desloratadine)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Pharyngitis", "Dry mouth", "Myalgia", "Fatigue"],
       interactions: ["Erythromycin", "Ketoconazole"],
@@ -1427,6 +2143,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med79",
       name: "Diphenhydramine",
+      genericName: "Diphenhydramine",
+      tradeName: "Diphenhydramine (Diphenhydramine)",
       contraindications: ["newborns", "lactation"],
       sideEffects: ["Drowsiness", "Dizziness", "Dry mouth", "Coordination loss"],
       interactions: ["Alcohol", "MAO inhibitors"],
@@ -1438,6 +2156,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med80",
       name: "Chlorphenamine",
+      genericName: "Chlorphenamine",
+      tradeName: "Chlorphenamine (Chlorphenamine)",
       contraindications: ["narrow-angle glaucoma", "stenosing peptic ulcer"],
       sideEffects: ["Drowsiness", "Dizziness", "Dry mouth", "Blurred vision"],
       interactions: ["Alcohol", "MAO inhibitors"],
@@ -1448,6 +2168,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med81",
       name: "Promethazine",
+      genericName: "Promethazine",
+      tradeName: "Phenergan (Promethazine)",
       contraindications: ["comatose states", "children under 2"],
       sideEffects: ["Drowsiness", "Dry mouth", "Blurred vision", "Dizziness"],
       interactions: ["CNS depressants", "MAO inhibitors"],
@@ -1459,6 +2181,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med82",
       name: "Hydroxyzine",
+      genericName: "Hydroxyzine",
+      tradeName: "Hydroxyzine (Hydroxyzine)",
       contraindications: ["early pregnancy", "porphyria"],
       sideEffects: ["Drowsiness", "Dry mouth", "Fatigue", "Headache"],
       interactions: ["Alcohol", "CNS depressants"],
@@ -1470,6 +2194,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med83",
       name: "Azelastine",
+      genericName: "Azelastine",
+      tradeName: "Azelastine (Azelastine)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Bitter taste", "Headache", "Somnolence", "Nasal burning"],
       interactions: ["Alcohol", "Cimetidine"],
@@ -1480,6 +2206,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med84",
       name: "Olopatadine",
+      genericName: "Olopatadine",
+      tradeName: "Olopatadine (Olopatadine)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Headache", "Blurred vision", "Burning/stinging", "Dry eye"],
       interactions: ["None significant"],
@@ -1492,6 +2220,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med21",
       name: "Oseltamivir",
+      genericName: "Oseltamivir",
+      tradeName: "Oseltamivir (Oseltamivir)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Nausea", "Vomiting", "Headache", "Pain"],
       interactions: ["Probenecid", "Live attenuated influenza vaccine"],
@@ -1504,6 +2234,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med22",
       name: "Acyclovir",
+      genericName: "Acyclovir",
+      tradeName: "Acyclovir (Acyclovir)",
       contraindications: ["renal impairment", "dehydration"],
       sideEffects: ["Nausea", "Diarrhea", "Headache", "Dizziness"],
       interactions: ["Probenecid", "Zidovudine", "Nephrotoxic drugs"],
@@ -1516,6 +2248,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med85",
       name: "Valacyclovir",
+      genericName: "Valacyclovir",
+      tradeName: "Valtrex (Valacyclovir)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Headache", "Nausea", "Abdominal pain", "Dizziness"],
       interactions: ["Probenecid", "Cimetidine"],
@@ -1527,6 +2261,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med86",
       name: "Famciclovir",
+      genericName: "Famciclovir",
+      tradeName: "Famciclovir (Famciclovir)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Headache", "Nausea", "Diarrhea", "Dizziness"],
       interactions: ["Probenecid"],
@@ -1539,6 +2275,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med87",
       name: "Ganciclovir",
+      genericName: "Ganciclovir",
+      tradeName: "Ganciclovir (Ganciclovir)",
       contraindications: ["neutropenia", "thrombocytopenia"],
       sideEffects: ["Fever", "Diarrhea", "Nausea", "Anemia"],
       interactions: ["Zidovudine", "Didanosine", "Probenecid"],
@@ -1550,6 +2288,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med88",
       name: "Ribavirin",
+      genericName: "Ribavirin",
+      tradeName: "Ribavirin (Ribavirin)",
       contraindications: ["pregnancy", "autoimmune hepatitis"],
       sideEffects: ["Hemolytic anemia", "Fatigue", "Headache", "Insomnia"],
       interactions: ["Didanosine", "Zidovudine", "Azathioprine"],
@@ -1560,6 +2300,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med89",
       name: "Tenofovir",
+      genericName: "Tenofovir",
+      tradeName: "Tenofovir (Tenofovir)",
       contraindications: ["renal impairment"],
       sideEffects: ["Nausea", "Rash", "Diarrhea", "Headache"],
       interactions: ["Didanosine", "Atazanavir", "Lopinavir/Ritonavir"],
@@ -1570,6 +2312,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med90",
       name: "Entecavir",
+      genericName: "Entecavir",
+      tradeName: "Entecavir (Entecavir)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Headache", "Fatigue", "Dizziness", "Nausea"],
       interactions: ["Drugs that reduce renal function"],
@@ -1581,6 +2325,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med91",
       name: "Lamivudine",
+      genericName: "Lamivudine",
+      tradeName: "Lamivudine (Lamivudine)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Headache", "Nausea", "Malaise", "Fatigue"],
       interactions: ["Trimethoprim/Sulfamethoxazole"],
@@ -1592,6 +2338,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med92",
       name: "Remdesivir",
+      genericName: "Remdesivir",
+      tradeName: "Remdesivir (Remdesivir)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Nausea", "Increased transaminases", "Hypersensitivity reactions"],
       interactions: ["Chloroquine", "Hydroxychloroquine"],
@@ -1604,6 +2352,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med23",
       name: "Vitamin D3 (Cholecalciferol)",
+      genericName: "Vitamin D3 (Cholecalciferol)",
+      tradeName: "Vitamin D3 (Cholecalciferol) (Vitamin D3 (Cholecalciferol))",
       contraindications: ["hypercalcemia", "vitamin D toxicity"],
       sideEffects: ["Nausea", "Constipation", "Weakness (if excessive)"],
       interactions: ["Orlistat", "Cholestyramine", "Phenytoin"],
@@ -1616,6 +2366,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med24",
       name: "Folic Acid",
+      genericName: "Folic Acid",
+      tradeName: "Folic Acid (Folic Acid)",
       contraindications: ["vitamin B12 deficiency (unmasked)"],
       sideEffects: ["Nausea", "Abdominal distension", "Flatulence"],
       interactions: ["Methotrexate", "Phenytoin", "Pyrimethamine"],
@@ -1627,6 +2379,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med93",
       name: "Vitamin B12 (Cyanocobalamin)",
+      genericName: "Vitamin B12 (Cyanocobalamin)",
+      tradeName: "Vitamin B12 (Cyanocobalamin) (Vitamin B12 (Cyanocobalamin))",
       contraindications: ["Leber's disease"],
       sideEffects: ["Diarrhea", "Itching", "Feeling of swelling"],
       interactions: ["Chloramphenicol", "Metformin", "Proton pump inhibitors"],
@@ -1638,6 +2392,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med94",
       name: "Vitamin C (Ascorbic Acid)",
+      genericName: "Vitamin C (Ascorbic Acid)",
+      tradeName: "Vitamin C (Ascorbic Acid) (Vitamin C (Ascorbic Acid))",
       contraindications: ["kidney stones"],
       sideEffects: ["Nausea", "Diarrhea", "Stomach cramps"],
       interactions: ["Aluminum-containing antacids", "Estrogens", "Warfarin"],
@@ -1649,6 +2405,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med95",
       name: "Vitamin B6 (Pyridoxine)",
+      genericName: "Vitamin B6 (Pyridoxine)",
+      tradeName: "Vitamin B6 (Pyridoxine) (Vitamin B6 (Pyridoxine))",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Nausea", "Headache", "Somnolence", "Paresthesia"],
       interactions: ["Levodopa", "Phenytoin", "Phenobarbital"],
@@ -1660,6 +2418,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med96",
       name: "Vitamin B1 (Thiamine)",
+      genericName: "Vitamin B1 (Thiamine)",
+      tradeName: "Vitamin B1 (Thiamine) (Vitamin B1 (Thiamine))",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Nausea", "Restlessness", "Sweating", "Feeling of warmth"],
       interactions: ["Neuromuscular blocking agents"],
@@ -1671,6 +2431,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med97",
       name: "Vitamin E",
+      genericName: "Vitamin E",
+      tradeName: "Vitamin E (Vitamin E)",
       contraindications: ["vitamin K deficiency", "bleeding disorders"],
       sideEffects: ["Nausea", "Fatigue", "Headache", "Blurred vision"],
       interactions: ["Warfarin", "Iron supplements", "Orlistat"],
@@ -1681,6 +2443,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med98",
       name: "Iron (Ferrous Sulfate)",
+      genericName: "Iron (Ferrous Sulfate)",
+      tradeName: "Iron (Ferrous Sulfate) (Iron (Ferrous Sulfate))",
       contraindications: ["hemochromatosis", "hemosiderosis"],
       sideEffects: ["Constipation", "Stomach cramps", "Black stools", "Nausea"],
       interactions: ["Antacids", "Tetracyclines", "Fluoroquinolones"],
@@ -1691,6 +2455,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med99",
       name: "Calcium Carbonate",
+      genericName: "Calcium Carbonate",
+      tradeName: "Calcium Carbonate (Calcium Carbonate)",
       contraindications: ["hypercalcemia", "renal calculi"],
       sideEffects: ["Constipation", "Flatulence", "Nausea"],
       interactions: ["Tetracyclines", "Iron", "Digoxin"],
@@ -1702,6 +2468,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med100",
       name: "Magnesium Oxide",
+      genericName: "Magnesium Oxide",
+      tradeName: "Magnesium Oxide (Magnesium Oxide)",
       contraindications: ["renal failure", "heart block"],
       sideEffects: ["Diarrhea", "Abdominal cramping"],
       interactions: ["Tetracyclines", "Fluoroquinolones", "Digoxin"],
@@ -1714,6 +2482,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med101",
       name: "Fluconazole",
+      genericName: "Fluconazole",
+      tradeName: "Diflucan (Fluconazole)",
       contraindications: ["concomitant use of QT prolonging drugs"],
       sideEffects: ["Headache", "Nausea", "Abdominal pain", "Rash"],
       interactions: ["Warfarin", "Phenytoin", "Cyclosporine"],
@@ -1726,6 +2496,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med102",
       name: "Ketoconazole",
+      genericName: "Ketoconazole",
+      tradeName: "Ketoconazole (Ketoconazole)",
       contraindications: ["liver disease"],
       sideEffects: ["Nausea", "Vomiting", "Abdominal pain", "Pruritus"],
       interactions: ["Antacids", "Rifampin", "Isoniazid"],
@@ -1736,6 +2508,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med103",
       name: "Itraconazole",
+      genericName: "Itraconazole",
+      tradeName: "Itraconazole (Itraconazole)",
       contraindications: ["ventricular dysfunction", "heart failure"],
       sideEffects: ["Nausea", "Diarrhea", "Abdominal pain", "Headache"],
       interactions: ["Statins", "Midazolam", "Quinidine"],
@@ -1746,6 +2520,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med104",
       name: "Terbinafine",
+      genericName: "Terbinafine",
+      tradeName: "Terbinafine (Terbinafine)",
       contraindications: ["chronic or active liver disease"],
       sideEffects: ["Diarrhea", "Dyspepsia", "Abdominal pain", "Nausea"],
       interactions: ["Rifampin", "Cimetidine"],
@@ -1756,6 +2532,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med105",
       name: "Nystatin",
+      genericName: "Nystatin",
+      tradeName: "Nystatin (Nystatin)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Diarrhea", "Nausea", "Vomiting", "Stomach pain"],
       interactions: ["None significant"],
@@ -1767,6 +2545,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med106",
       name: "Clotrimazole",
+      genericName: "Clotrimazole",
+      tradeName: "Clotrimazole (Clotrimazole)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Erythema", "Stinging", "Blistering", "Peeling"],
       interactions: ["None significant"],
@@ -1777,6 +2557,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med107",
       name: "Miconazole",
+      genericName: "Miconazole",
+      tradeName: "Miconazole (Miconazole)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Nausea", "Vomiting", "Diarrhea", "Rash"],
       interactions: ["Warfarin"],
@@ -1787,6 +2569,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med108",
       name: "Griseofulvin",
+      genericName: "Griseofulvin",
+      tradeName: "Griseofulvin (Griseofulvin)",
       contraindications: ["porphyria", "hepatocellular failure", "pregnancy"],
       sideEffects: ["Headache", "Gastrointestinal distress", "Rash", "Urticaria"],
       interactions: ["Alcohol", "Warfarin", "Oral contraceptives"],
@@ -1798,6 +2582,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med109",
       name: "Amphotericin B",
+      genericName: "Amphotericin B",
+      tradeName: "Amphotericin B (Amphotericin B)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Fever", "Chills", "Headache", "Nausea", "Vomiting"],
       interactions: ["Nephrotoxic drugs", "Digitalis glycosides"],
@@ -1808,6 +2594,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med110",
       name: "Voriconazole",
+      genericName: "Voriconazole",
+      tradeName: "Voriconazole (Voriconazole)",
       contraindications: ["concomitant use of CYP3A4 substrates"],
       sideEffects: ["Visual disturbances", "Fever", "Nausea", "Rash"],
       interactions: ["Sirolimus", "Rifampin", "Ritonavir"],
@@ -1821,6 +2609,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med111",
       name: "Risperidone",
+      genericName: "Risperidone",
+      tradeName: "Risperdal (Risperidone)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Somnolence", "Increased appetite", "Fatigue", "Insomnia"],
       interactions: ["Levodopa", "Carbamazepine", "Fluoxetine"],
@@ -1833,6 +2623,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med112",
       name: "Quetiapine",
+      genericName: "Quetiapine",
+      tradeName: "Seroquel (Quetiapine)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Somnolence", "Dry mouth", "Dizziness", "Constipation"],
       interactions: ["Phenytoin", "Thioridazine", "Ketoconazole"],
@@ -1845,6 +2637,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med113",
       name: "Olanzapine",
+      genericName: "Olanzapine",
+      tradeName: "Zyprexa (Olanzapine)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Somnolence", "Weight gain", "Dizziness", "Increased appetite"],
       interactions: ["Diazepam", "Alcohol", "Carbamazepine"],
@@ -1857,6 +2651,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med114",
       name: "Aripiprazole",
+      genericName: "Aripiprazole",
+      tradeName: "Abilify (Aripiprazole)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Nausea", "Vomiting", "Constipation", "Headache"],
       interactions: ["Ketoconazole", "Quinidine", "Carbamazepine"],
@@ -1869,6 +2665,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med115",
       name: "Haloperidol",
+      genericName: "Haloperidol",
+      tradeName: "Haloperidol (Haloperidol)",
       contraindications: ["Parkinson's disease", "CNS depression", "coma"],
       sideEffects: ["Extrapyramidal symptoms", "Tardive dyskinesia", "Somnolence"],
       interactions: ["Lithium", "Anticonvulsants", "Rifampin"],
@@ -1881,6 +2679,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med116",
       name: "Clozapine",
+      genericName: "Clozapine",
+      tradeName: "Clozapine (Clozapine)",
       contraindications: ["history of agranulocytosis", "myeloproliferative disorders"],
       sideEffects: ["Agranulocytosis", "Seizures", "Myocarditis", "Somnolence"],
       interactions: ["Bone marrow suppressants", "Warfarin", "Digoxin"],
@@ -1892,6 +2692,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med117",
       name: "Ziprasidone",
+      genericName: "Ziprasidone",
+      tradeName: "Ziprasidone (Ziprasidone)",
       contraindications: ["QT prolongation", "recent MI", "heart failure"],
       sideEffects: ["Somnolence", "Nausea", "Dizziness", "Extrapyramidal symptoms"],
       interactions: ["QT prolonging drugs", "Ketoconazole", "Carbamazepine"],
@@ -1904,6 +2706,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med118",
       name: "Lurasidone",
+      genericName: "Lurasidone",
+      tradeName: "Lurasidone (Lurasidone)",
       contraindications: ["concomitant use of strong CYP3A4 inhibitors/inducers"],
       sideEffects: ["Somnolence", "Akathisia", "Extrapyramidal symptoms", "Nausea"],
       interactions: ["Ketoconazole", "Rifampin", "Diltiazem"],
@@ -1916,6 +2720,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med119",
       name: "Paliperidone",
+      genericName: "Paliperidone",
+      tradeName: "Paliperidone (Paliperidone)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Akathisia", "Extrapyramidal symptoms", "Somnolence", "Tachycardia"],
       interactions: ["Carbamazepine", "Dopamine agonists"],
@@ -1928,6 +2734,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med120",
       name: "Chlorpromazine",
+      genericName: "Chlorpromazine",
+      tradeName: "Chlorpromazine (Chlorpromazine)",
       contraindications: ["coma", "presence of large amounts of CNS depressants"],
       sideEffects: ["Drowsiness", "Dry mouth", "Blurred vision", "Constipation"],
       interactions: ["Alcohol", "Anticholinergics", "Guanethidine"],
@@ -1942,6 +2750,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med121",
       name: "Phenytoin",
+      genericName: "Phenytoin",
+      tradeName: "Epanutin (Phenytoin)",
       contraindications: ["hypersensitivity to hydantoins", "sinus bradycardia"],
       sideEffects: ["Nystagmus", "Ataxia", "Slurred speech", "Decreased coordination"],
       interactions: ["Warfarin", "Oral contraceptives", "Valproic acid"],
@@ -1952,6 +2762,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med122",
       name: "Carbamazepine",
+      genericName: "Carbamazepine",
+      tradeName: "Tegretol (Carbamazepine)",
       contraindications: ["bone marrow depression", "MAO inhibitor use"],
       sideEffects: ["Dizziness", "Drowsiness", "Nausea", "Vomiting"],
       interactions: ["Phenytoin", "Valproic acid", "Warfarin"],
@@ -1962,6 +2774,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med123",
       name: "Valproic Acid",
+      genericName: "Valproic Acid",
+      tradeName: "Valproic Acid (Valproic Acid)",
       contraindications: ["hepatic disease", "urea cycle disorders"],
       sideEffects: ["Nausea", "Vomiting", "Somnolence", "Dizziness"],
       interactions: ["Aspirin", "Phenobarbital", "Phenytoin"],
@@ -1973,6 +2787,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med124",
       name: "Levetiracetam",
+      genericName: "Levetiracetam",
+      tradeName: "Keppra (Levetiracetam)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Somnolence", "Asthenia", "Infection", "Dizziness"],
       interactions: ["None significant"],
@@ -1985,6 +2801,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med125",
       name: "Lamotrigine",
+      genericName: "Lamotrigine",
+      tradeName: "Lamictal (Lamotrigine)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Dizziness", "Headache", "Diplopia", "Ataxia"],
       interactions: ["Valproic acid", "Carbamazepine", "Phenytoin"],
@@ -1997,6 +2815,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med126",
       name: "Topiramate",
+      genericName: "Topiramate",
+      tradeName: "Topamax (Topiramate)",
       contraindications: ["metabolic acidosis with metformin use"],
       sideEffects: ["Paresthesia", "Anorexia", "Weight loss", "Fatigue"],
       interactions: ["Phenytoin", "Carbamazepine", "Valproic acid"],
@@ -2008,6 +2828,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med127",
       name: "Zonisamide",
+      genericName: "Zonisamide",
+      tradeName: "Zonisamide (Zonisamide)",
       contraindications: ["sulfa allergy"],
       sideEffects: ["Somnolence", "Anorexia", "Dizziness", "Ataxia"],
       interactions: ["Phenytoin", "Carbamazepine"],
@@ -2019,6 +2841,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med128",
       name: "Lacosamide",
+      genericName: "Lacosamide",
+      tradeName: "Lacosamide (Lacosamide)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Dizziness", "Headache", "Nausea", "Diplopia"],
       interactions: ["None significant"],
@@ -2031,6 +2855,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med129",
       name: "Ethosuximide",
+      genericName: "Ethosuximide",
+      tradeName: "Ethosuximide (Ethosuximide)",
       contraindications: ["hypersensitivity to succinimides"],
       sideEffects: ["Nausea", "Vomiting", "Abdominal pain", "Anorexia"],
       interactions: ["Phenytoin", "Valproic acid"],
@@ -2041,6 +2867,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med130",
       name: "Oxcarbazepine",
+      genericName: "Oxcarbazepine",
+      tradeName: "Oxcarbazepine (Oxcarbazepine)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Dizziness", "Somnolence", "Diplopia", "Fatigue"],
       interactions: ["Phenytoin", "Phenobarbital", "Oral contraceptives"],
@@ -2055,6 +2883,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med131",
       name: "Levothyroxine",
+      genericName: "Levothyroxine",
+      tradeName: "Eltroxin (Levothyroxine)",
       contraindications: ["untreated subclinical or overt thyrotoxicosis"],
       sideEffects: ["Palpitations", "Chest pain", "Tremor", "Nervousness"],
       interactions: ["Calcium carbonate", "Iron supplements", "Warfarin"],
@@ -2067,6 +2897,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med132",
       name: "Prednisone",
+      genericName: "Prednisone",
+      tradeName: "Hostacortin (Prednisone)",
       contraindications: ["systemic fungal infections"],
       sideEffects: ["Increased appetite", "Insomnia", "Fluid retention", "Mood changes"],
       interactions: ["NSAIDs", "Diuretics", "Diabetes medications"],
@@ -2079,6 +2911,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med133",
       name: "Ethinyl Estradiol/Norgestimate",
+      genericName: "Ethinyl Estradiol/Norgestimate",
+      tradeName: "Ethinyl Estradiol/Norgestimate (Ethinyl Estradiol/Norgestimate)",
       contraindications: ["history of DVT/PE", "breast cancer", "smoking over 35"],
       sideEffects: ["Nausea", "Vomiting", "Headache", "Breast tenderness"],
       interactions: ["Antibiotics", "Anticonvulsants", "St. John's Wort"],
@@ -2089,6 +2923,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med134",
       name: "Testosterone",
+      genericName: "Testosterone",
+      tradeName: "Testosterone (Testosterone)",
       contraindications: ["prostate cancer", "breast cancer in men"],
       sideEffects: ["Acne", "Injection site pain", "Increased PSA", "Mood changes"],
       interactions: ["Warfarin", "Insulin", "Corticosteroids"],
@@ -2100,6 +2936,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med135",
       name: "Hydrocortisone",
+      genericName: "Hydrocortisone",
+      tradeName: "Hydrocortisone (Hydrocortisone)",
       contraindications: ["systemic fungal infections"],
       sideEffects: ["Fluid retention", "Muscle weakness", "Osteoporosis", "Peptic ulcer"],
       interactions: ["NSAIDs", "Diuretics"],
@@ -2112,6 +2950,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med136",
       name: "Dexamethasone",
+      genericName: "Dexamethasone",
+      tradeName: "Dexazone (Dexamethasone)",
       contraindications: ["systemic fungal infections"],
       sideEffects: ["Increased appetite", "Insomnia", "Mood changes", "Hyperglycemia"],
       interactions: ["NSAIDs", "Diuretics", "Phenytoin"],
@@ -2123,6 +2963,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med137",
       name: "Progesterone",
+      genericName: "Progesterone",
+      tradeName: "Progesterone (Progesterone)",
       contraindications: ["history of DVT/PE", "breast cancer", "liver disease"],
       sideEffects: ["Somnolence", "Dizziness", "Abdominal pain", "Breast tenderness"],
       interactions: ["Ketoconazole", "Rifampin"],
@@ -2134,6 +2976,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med138",
       name: "Estradiol",
+      genericName: "Estradiol",
+      tradeName: "Estradiol (Estradiol)",
       contraindications: ["history of DVT/PE", "breast cancer", "liver disease"],
       sideEffects: ["Headache", "Breast tenderness", "Nausea", "Weight changes"],
       interactions: ["CYP3A4 inducers/inhibitors"],
@@ -2145,6 +2989,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med139",
       name: "Spironolactone (Hormonal use)",
+      genericName: "Spironolactone (Hormonal use)",
+      tradeName: "Spironolactone (Hormonal use) (Spironolactone (Hormonal use))",
       contraindications: ["hyperkalemia", "renal failure"],
       sideEffects: ["Hyperkalemia", "Gynecomastia", "Irregular menses", "Dizziness"],
       interactions: ["ACE inhibitors", "Potassium supplements", "NSAIDs"],
@@ -2156,6 +3002,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med140",
       name: "Finasteride",
+      genericName: "Finasteride",
+      tradeName: "Finasteride (Finasteride)",
       contraindications: ["pregnancy", "hypersensitivity"],
       sideEffects: ["Impotence", "Decreased libido", "Ejaculation disorder"],
       interactions: ["None significant"],
@@ -2169,6 +3017,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med141",
       name: "Tretinoin",
+      genericName: "Tretinoin",
+      tradeName: "Tretinoin (Tretinoin)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Erythema", "Peeling", "Dryness", "Burning"],
       interactions: ["Topical sulfur", "Resorcinol", "Salicylic acid"],
@@ -2180,6 +3030,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med142",
       name: "Adapalene",
+      genericName: "Adapalene",
+      tradeName: "Adapalene (Adapalene)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Erythema", "Scaling", "Dryness", "Pruritus"],
       interactions: ["Topical sulfur", "Resorcinol", "Salicylic acid"],
@@ -2190,6 +3042,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med143",
       name: "Benzoyl Peroxide",
+      genericName: "Benzoyl Peroxide",
+      tradeName: "Benzoyl Peroxide (Benzoyl Peroxide)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Erythema", "Peeling", "Dryness", "Burning"],
       interactions: ["Tretinoin (if applied simultaneously)"],
@@ -2202,6 +3056,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med144",
       name: "Clindamycin (Topical)",
+      genericName: "Clindamycin (Topical)",
+      tradeName: "Clindamycin (Topical) (Clindamycin (Topical))",
       contraindications: ["history of regional enteritis or ulcerative colitis"],
       sideEffects: ["Dryness", "Erythema", "Burning", "Oiliness"],
       interactions: ["Erythromycin"],
@@ -2213,6 +3069,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med145",
       name: "Mupirocin",
+      genericName: "Mupirocin",
+      tradeName: "Mupirocin (Mupirocin)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Burning", "Stinging", "Pain", "Pruritus"],
       interactions: ["None significant"],
@@ -2223,6 +3081,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med146",
       name: "Hydrocortisone (Topical)",
+      genericName: "Hydrocortisone (Topical)",
+      tradeName: "Hydrocortisone (Topical) (Hydrocortisone (Topical))",
       contraindications: ["untreated bacterial, viral, or fungal infections"],
       sideEffects: ["Burning", "Itching", "Irritation", "Dryness"],
       interactions: ["None significant"],
@@ -2234,6 +3094,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med147",
       name: "Betamethasone",
+      genericName: "Betamethasone",
+      tradeName: "Betamethasone (Betamethasone)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Burning", "Itching", "Irritation", "Dryness"],
       interactions: ["None significant"],
@@ -2245,6 +3107,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med148",
       name: "Ketoconazole (Topical)",
+      genericName: "Ketoconazole (Topical)",
+      tradeName: "Ketoconazole (Topical) (Ketoconazole (Topical))",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Severe irritation", "Pruritus", "Stinging"],
       interactions: ["None significant"],
@@ -2256,6 +3120,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med149",
       name: "Permethrin",
+      genericName: "Permethrin",
+      tradeName: "Permethrin (Permethrin)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Pruritus", "Erythema", "Numbness", "Stinging"],
       interactions: ["None significant"],
@@ -2266,6 +3132,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med150",
       name: "Calcipotriene",
+      genericName: "Calcipotriene",
+      tradeName: "Calcipotriene (Calcipotriene)",
       contraindications: ["hypercalcemia", "vitamin D toxicity"],
       sideEffects: ["Burning", "Itching", "Skin irritation", "Erythema"],
       interactions: ["None significant"],
@@ -2279,6 +3147,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med151",
       name: "Heparin",
+      genericName: "Heparin",
+      tradeName: "Heparin (Heparin)",
       contraindications: ["severe thrombocytopenia", "uncontrolled active bleeding"],
       sideEffects: ["Bleeding", "Heparin-induced thrombocytopenia", "Osteoporosis"],
       interactions: ["Aspirin", "NSAIDs", "Warfarin"],
@@ -2289,6 +3159,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med152",
       name: "Enoxaparin",
+      genericName: "Enoxaparin",
+      tradeName: "Enoxaparin (Enoxaparin)",
       contraindications: ["active major bleeding", "history of HIT"],
       sideEffects: ["Bleeding", "Anemia", "Injection site hemorrhage"],
       interactions: ["NSAIDs", "Antiplatelets"],
@@ -2299,6 +3171,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med153",
       name: "Clopidogrel",
+      genericName: "Clopidogrel",
+      tradeName: "Plavix (Clopidogrel)",
       contraindications: ["active pathological bleeding"],
       sideEffects: ["Bleeding", "Pruritus", "Diarrhea"],
       interactions: ["Omeprazole", "NSAIDs", "Warfarin"],
@@ -2309,6 +3183,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med154",
       name: "Aspirin (Low Dose)",
+      genericName: "Aspirin (Low Dose)",
+      tradeName: "Aspirin (Low Dose) (Aspirin (Low Dose))",
       contraindications: ["bleeding disorders", "active peptic ulcer"],
       sideEffects: ["Gastrointestinal bleeding", "Dyspepsia", "Nausea"],
       interactions: ["Warfarin", "Heparin", "NSAIDs"],
@@ -2319,6 +3195,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med155",
       name: "Rivaroxaban",
+      genericName: "Rivaroxaban",
+      tradeName: "Xarelto (Rivaroxaban)",
       contraindications: ["active pathological bleeding"],
       sideEffects: ["Bleeding", "Back pain", "Pruritus"],
       interactions: ["CYP3A4 inhibitors", "P-gp inhibitors"],
@@ -2330,6 +3208,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med156",
       name: "Apixaban",
+      genericName: "Apixaban",
+      tradeName: "Eliquis (Apixaban)",
       contraindications: ["active pathological bleeding"],
       sideEffects: ["Bleeding", "Nausea", "Anemia"],
       interactions: ["Strong dual inhibitors of CYP3A4 and P-gp"],
@@ -2341,6 +3221,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med157",
       name: "Alteplase",
+      genericName: "Alteplase",
+      tradeName: "Alteplase (Alteplase)",
       contraindications: ["active internal bleeding", "history of CVA"],
       sideEffects: ["Bleeding", "Intracranial hemorrhage", "Fever"],
       interactions: ["Anticoagulants", "Antiplatelets"],
@@ -2351,6 +3233,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med158",
       name: "Tranexamic Acid",
+      genericName: "Tranexamic Acid",
+      tradeName: "Tranexamic Acid (Tranexamic Acid)",
       contraindications: ["active intravascular clotting", "subarachnoid hemorrhage"],
       sideEffects: ["Nausea", "Diarrhea", "Visual disturbances"],
       interactions: ["Hormonal contraceptives", "Factor IX complex"],
@@ -2362,6 +3246,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med159",
       name: "Epoetin Alfa",
+      genericName: "Epoetin Alfa",
+      tradeName: "Epoetin Alfa (Epoetin Alfa)",
       contraindications: ["uncontrolled hypertension", "pure red cell aplasia"],
       sideEffects: ["Hypertension", "Headache", "Arthralgia"],
       interactions: ["None significant"],
@@ -2372,6 +3258,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med160",
       name: "Ferrous Gluconate",
+      genericName: "Ferrous Gluconate",
+      tradeName: "Ferrous Gluconate (Ferrous Gluconate)",
       contraindications: ["hemochromatosis", "hemosiderosis"],
       sideEffects: ["Constipation", "Dark stools", "Nausea"],
       interactions: ["Antacids", "Tetracyclines"],
@@ -2384,6 +3272,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med161",
       name: "Methotrexate",
+      genericName: "Methotrexate",
+      tradeName: "Methotrexate (Methotrexate)",
       contraindications: ["pregnancy", "nursing mothers", "alcoholism"],
       sideEffects: ["Nausea", "Stomatitis", "Fatigue", "Hepatotoxicity"],
       interactions: ["NSAIDs", "Penicillins", "Probenecid"],
@@ -2394,6 +3284,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med162",
       name: "Allopurinol",
+      genericName: "Allopurinol",
+      tradeName: "Zyloric (Allopurinol)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Rash", "Nausea", "Gout flares", "Hepatotoxicity"],
       interactions: ["Azathioprine", "Mercaptopurine", "Amoxicillin"],
@@ -2405,6 +3297,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med163",
       name: "Colchicine",
+      genericName: "Colchicine",
+      tradeName: "Colchicine (Colchicine)",
       contraindications: ["renal or hepatic impairment"],
       sideEffects: ["Diarrhea", "Nausea", "Vomiting", "Abdominal pain"],
       interactions: ["Clarithromycin", "Cyclosporine", "Statins"],
@@ -2415,6 +3309,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med164",
       name: "Cyclobenzaprine",
+      genericName: "Cyclobenzaprine",
+      tradeName: "Multi-Relax (Cyclobenzaprine)",
       contraindications: ["hyperthyroidism", "heart failure", "arrhythmias"],
       sideEffects: ["Drowsiness", "Dry mouth", "Dizziness", "Fatigue"],
       interactions: ["MAO inhibitors", "Alcohol", "CNS depressants"],
@@ -2426,6 +3322,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med165",
       name: "Baclofen",
+      genericName: "Baclofen",
+      tradeName: "Myofen (Baclofen)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Drowsiness", "Dizziness", "Weakness", "Fatigue"],
       interactions: ["Alcohol", "CNS depressants"],
@@ -2437,6 +3335,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med166",
       name: "Tizanidine",
+      genericName: "Tizanidine",
+      tradeName: "Sirdalud (Tizanidine)",
       contraindications: ["concomitant use with ciprofloxacin or fluvoxamine"],
       sideEffects: ["Dry mouth", "Somnolence", "Asthenia", "Dizziness"],
       interactions: ["Ciprofloxacin", "Fluvoxamine", "Oral contraceptives"],
@@ -2448,6 +3348,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med167",
       name: "Hydroxychloroquine",
+      genericName: "Hydroxychloroquine",
+      tradeName: "Hydroxychloroquine (Hydroxychloroquine)",
       contraindications: ["retinal or visual field changes"],
       sideEffects: ["Nausea", "Vomiting", "Diarrhea", "Visual changes"],
       interactions: ["Digoxin", "Antacids", "Cimetidine"],
@@ -2458,6 +3360,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med168",
       name: "Sulfasalazine",
+      genericName: "Sulfasalazine",
+      tradeName: "Sulfasalazine (Sulfasalazine)",
       contraindications: ["sulfa allergy", "porphyria", "intestinal obstruction"],
       sideEffects: ["Nausea", "Dyspepsia", "Rash", "Headache"],
       interactions: ["Digoxin", "Folic acid"],
@@ -2468,6 +3372,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med169",
       name: "Febuxostat",
+      genericName: "Febuxostat",
+      tradeName: "Febuxostat (Febuxostat)",
       contraindications: ["concomitant use with azathioprine or mercaptopurine"],
       sideEffects: ["Liver function abnormalities", "Nausea", "Arthralgia", "Rash"],
       interactions: ["Azathioprine", "Mercaptopurine", "Theophylline"],
@@ -2479,6 +3385,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med170",
       name: "Carisoprodol",
+      genericName: "Carisoprodol",
+      tradeName: "Soma (Carisoprodol)",
       contraindications: ["acute intermittent porphyria"],
       sideEffects: ["Drowsiness", "Dizziness", "Headache"],
       interactions: ["Alcohol", "CNS depressants", "CYP2C19 inhibitors"],
@@ -2492,6 +3400,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med171",
       name: "Latanoprost",
+      genericName: "Latanoprost",
+      tradeName: "Latanoprost (Latanoprost)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Eye irritation", "Eyelash changes", "Iris pigmentation"],
       interactions: ["Thimerosal"],
@@ -2502,6 +3412,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med172",
       name: "Timolol (Ophthalmic)",
+      genericName: "Timolol (Ophthalmic)",
+      tradeName: "Timolol (Ophthalmic) (Timolol (Ophthalmic))",
       contraindications: ["bronchial asthma", "severe COPD", "sinus bradycardia"],
       sideEffects: ["Eye irritation", "Blurred vision", "Bradycardia"],
       interactions: ["Oral beta-blockers", "Calcium channel blockers"],
@@ -2512,6 +3424,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med173",
       name: "Dorzolamide",
+      genericName: "Dorzolamide",
+      tradeName: "Dorzolamide (Dorzolamide)",
       contraindications: ["severe renal impairment"],
       sideEffects: ["Bitter taste", "Eye burning", "Blurred vision"],
       interactions: ["Oral carbonic anhydrase inhibitors"],
@@ -2522,6 +3436,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med174",
       name: "Brimonidine",
+      genericName: "Brimonidine",
+      tradeName: "Brimonidine (Brimonidine)",
       contraindications: ["MAO inhibitor therapy", "neonates"],
       sideEffects: ["Allergic conjunctivitis", "Eye pruritus", "Oral dryness"],
       interactions: ["CNS depressants", "Antihypertensives"],
@@ -2532,6 +3448,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med175",
       name: "Bimatoprost",
+      genericName: "Bimatoprost",
+      tradeName: "Bimatoprost (Bimatoprost)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Conjunctival hyperemia", "Eyelash growth", "Eye pruritus"],
       interactions: ["None significant"],
@@ -2542,6 +3460,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med176",
       name: "Tropicamide",
+      genericName: "Tropicamide",
+      tradeName: "Tropicamide (Tropicamide)",
       contraindications: ["narrow-angle glaucoma"],
       sideEffects: ["Blurred vision", "Photophobia", "Tachycardia"],
       interactions: ["Anticholinergics"],
@@ -2552,6 +3472,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med177",
       name: "Cyclopentolate",
+      genericName: "Cyclopentolate",
+      tradeName: "Cyclopentolate (Cyclopentolate)",
       contraindications: ["narrow-angle glaucoma"],
       sideEffects: ["Blurred vision", "Photophobia", "Eye irritation"],
       interactions: ["Anticholinergics"],
@@ -2562,6 +3484,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med178",
       name: "Hypromellose (Artificial Tears)",
+      genericName: "Hypromellose (Artificial Tears)",
+      tradeName: "Hypromellose (Artificial Tears) (Hypromellose (Artificial Tears))",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Mild eye stinging", "Blurred vision"],
       interactions: ["None significant"],
@@ -2572,6 +3496,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med179",
       name: "Tobramycin (Ophthalmic)",
+      genericName: "Tobramycin (Ophthalmic)",
+      tradeName: "Tobramycin (Ophthalmic) (Tobramycin (Ophthalmic))",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Eye tearing", "Redness", "Eyelid itching"],
       interactions: ["None significant"],
@@ -2582,6 +3508,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med180",
       name: "Ciprofloxacin (Ophthalmic)",
+      genericName: "Ciprofloxacin (Ophthalmic)",
+      tradeName: "Ciprofloxacin (Ophthalmic) (Ciprofloxacin (Ophthalmic))",
       contraindications: ["hypersensitivity"],
       sideEffects: ["White crystalline precipitates", "Eye discomfort", "Redness"],
       interactions: ["None significant"],
@@ -2594,6 +3522,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med181",
       name: "Oxymetazoline",
+      genericName: "Oxymetazoline",
+      tradeName: "Oxymetazoline (Oxymetazoline)",
       contraindications: ["MAO inhibitor use"],
       sideEffects: ["Nasal dryness", "Rebound congestion", "Sneezing"],
       interactions: ["MAO inhibitors"],
@@ -2604,6 +3534,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med182",
       name: "Xylometazoline",
+      genericName: "Xylometazoline",
+      tradeName: "Xylometazoline (Xylometazoline)",
       contraindications: ["glaucoma", "trans-sphenoidal hypophysectomy"],
       sideEffects: ["Nasal irritation", "Dryness", "Rebound congestion"],
       interactions: ["MAO inhibitors", "Tricyclic antidepressants"],
@@ -2614,6 +3546,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med183",
       name: "Pseudoephedrine",
+      genericName: "Pseudoephedrine",
+      tradeName: "Pseudoephedrine (Pseudoephedrine)",
       contraindications: ["severe hypertension", "severe CAD", "MAO inhibitor use"],
       sideEffects: ["Nervousness", "Insomnia", "Tachycardia", "Palpitations"],
       interactions: ["MAO inhibitors", "Beta-blockers"],
@@ -2625,6 +3559,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med184",
       name: "Mometasone (Nasal)",
+      genericName: "Mometasone (Nasal)",
+      tradeName: "Mometasone (Nasal) (Mometasone (Nasal))",
       contraindications: ["recent nasal ulcers", "nasal surgery"],
       sideEffects: ["Headache", "Viral infection", "Pharyngitis", "Epistaxis"],
       interactions: ["CYP3A4 inhibitors"],
@@ -2635,6 +3571,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med185",
       name: "Ciprofloxacin/Dexamethasone (Otic)",
+      genericName: "Ciprofloxacin/Dexamethasone (Otic)",
+      tradeName: "Ciprofloxacin/Dexamethasone (Otic) (Ciprofloxacin/Dexamethasone (Otic))",
       contraindications: ["viral infections of the external canal"],
       sideEffects: ["Ear discomfort", "Ear pain", "Ear precipitate"],
       interactions: ["None significant"],
@@ -2645,6 +3583,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med186",
       name: "Neomycin/Polymyxin B/Hydrocortisone (Otic)",
+      genericName: "Neomycin/Polymyxin B/Hydrocortisone (Otic)",
+      tradeName: "Neomycin/Polymyxin B/Hydrocortisone (Otic) (Neomycin/Polymyxin B/Hydrocortisone (Otic))",
       contraindications: ["herpes simplex", "vaccinia", "varicella"],
       sideEffects: ["Sensitization", "Ototoxicity (if tympanic membrane ruptured)"],
       interactions: ["None significant"],
@@ -2655,6 +3595,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med187",
       name: "Carbamide Peroxide",
+      genericName: "Carbamide Peroxide",
+      tradeName: "Carbamide Peroxide (Carbamide Peroxide)",
       contraindications: ["perforated tympanic membrane", "ear discharge"],
       sideEffects: ["Foaming in ear", "Mild irritation"],
       interactions: ["None significant"],
@@ -2665,6 +3607,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med188",
       name: "Benzocaine (Otic)",
+      genericName: "Benzocaine (Otic)",
+      tradeName: "Benzocaine (Otic) (Benzocaine (Otic))",
       contraindications: ["perforated tympanic membrane"],
       sideEffects: ["Local irritation", "Hypersensitivity"],
       interactions: ["None significant"],
@@ -2675,6 +3619,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med189",
       name: "Phenylephrine (Nasal)",
+      genericName: "Phenylephrine (Nasal)",
+      tradeName: "Phenylephrine (Nasal) (Phenylephrine (Nasal))",
       contraindications: ["MAO inhibitor use", "severe hypertension"],
       sideEffects: ["Nasal burning", "Stinging", "Rebound congestion"],
       interactions: ["MAO inhibitors", "Tricyclic antidepressants"],
@@ -2685,6 +3631,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med190",
       name: "Fluticasone (Nasal)",
+      genericName: "Fluticasone (Nasal)",
+      tradeName: "Fluticasone (Nasal) (Fluticasone (Nasal))",
       contraindications: ["recent nasal ulcers", "nasal surgery"],
       sideEffects: ["Epistaxis", "Nasal ulceration", "Headache"],
       interactions: ["Ritonavir", "Ketoconazole"],
@@ -2697,6 +3645,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med191",
       name: "Paclitaxel",
+      genericName: "Paclitaxel",
+      tradeName: "Paclitaxel (Paclitaxel)",
       contraindications: ["solid tumors with baseline neutrophil counts < 1500"],
       sideEffects: ["Alopecia", "Neutropenia", "Peripheral neuropathy", "Nausea"],
       interactions: ["CYP2C8 and CYP3A4 inhibitors/inducers"],
@@ -2707,6 +3657,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med192",
       name: "Doxorubicin",
+      genericName: "Doxorubicin",
+      tradeName: "Doxorubicin (Doxorubicin)",
       contraindications: ["severe myocardial insufficiency", "recent MI"],
       sideEffects: ["Cardiotoxicity", "Alopecia", "Nausea", "Myelosuppression"],
       interactions: ["Cyclophosphamide", "Paclitaxel", "Verapamil"],
@@ -2717,6 +3669,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med193",
       name: "Cyclophosphamide",
+      genericName: "Cyclophosphamide",
+      tradeName: "Cyclophosphamide (Cyclophosphamide)",
       contraindications: ["severely depressed bone marrow function"],
       sideEffects: ["Alopecia", "Nausea", "Hemorrhagic cystitis", "Myelosuppression"],
       interactions: ["Allopurinol", "Thiazide diuretics"],
@@ -2728,6 +3682,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med194",
       name: "Fluorouracil",
+      genericName: "Fluorouracil",
+      tradeName: "Fluorouracil (Fluorouracil)",
       contraindications: ["poor nutritional state", "depressed bone marrow function"],
       sideEffects: ["Stomatitis", "Diarrhea", "Alopecia", "Myelosuppression"],
       interactions: ["Leucovorin", "Warfarin"],
@@ -2738,6 +3694,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med195",
       name: "Cisplatin",
+      genericName: "Cisplatin",
+      tradeName: "Cisplatin (Cisplatin)",
       contraindications: ["pre-existing renal impairment", "myelosuppression"],
       sideEffects: ["Nephrotoxicity", "Ototoxicity", "Nausea", "Vomiting"],
       interactions: ["Aminoglycosides", "Loop diuretics"],
@@ -2748,6 +3706,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med196",
       name: "Rituximab",
+      genericName: "Rituximab",
+      tradeName: "Rituximab (Rituximab)",
       contraindications: ["severe, active infections"],
       sideEffects: ["Infusion reactions", "Fever", "Chills", "Asthenia"],
       interactions: ["Cisplatin"],
@@ -2758,6 +3718,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med197",
       name: "Trastuzumab",
+      genericName: "Trastuzumab",
+      tradeName: "Trastuzumab (Trastuzumab)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Cardiomyopathy", "Infusion reactions", "Fever", "Chills"],
       interactions: ["Anthracyclines", "Cyclophosphamide"],
@@ -2768,6 +3730,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med198",
       name: "Cyclosporine",
+      genericName: "Cyclosporine",
+      tradeName: "Cyclosporine (Cyclosporine)",
       contraindications: ["abnormal renal function", "uncontrolled hypertension"],
       sideEffects: ["Renal dysfunction", "Tremor", "Hirsutism", "Hypertension"],
       interactions: ["CYP3A4 inhibitors/inducers", "Nephrotoxic drugs"],
@@ -2779,6 +3743,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med199",
       name: "Tacrolimus",
+      genericName: "Tacrolimus",
+      tradeName: "Tacrolimus (Tacrolimus)",
       contraindications: ["hypersensitivity to HCO-60"],
       sideEffects: ["Tremor", "Headache", "Diarrhea", "Hypertension"],
       interactions: ["CYP3A4 inhibitors/inducers", "Nephrotoxic drugs"],
@@ -2791,6 +3757,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med200",
       name: "Mycophenolate Mofetil",
+      genericName: "Mycophenolate Mofetil",
+      tradeName: "Mycophenolate Mofetil (Mycophenolate Mofetil)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Diarrhea", "Leukopenia", "Infection", "Vomiting"],
       interactions: ["Antacids", "Cholestyramine", "Acyclovir"],
@@ -2804,6 +3772,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med201",
       name: "Hepatitis B Vaccine",
+      genericName: "Hepatitis B Vaccine",
+      tradeName: "Hepatitis B Vaccine (Hepatitis B Vaccine)",
       contraindications: ["severe allergic reaction to yeast"],
       sideEffects: ["Injection site soreness", "Fever", "Fatigue"],
       interactions: ["Immunosuppressants"],
@@ -2814,6 +3784,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med202",
       name: "Influenza Vaccine",
+      genericName: "Influenza Vaccine",
+      tradeName: "Influenza Vaccine (Influenza Vaccine)",
       contraindications: ["severe allergic reaction to eggs"],
       sideEffects: ["Injection site pain", "Muscle aches", "Fever"],
       interactions: ["Immunosuppressants"],
@@ -2824,6 +3796,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med203",
       name: "MMR Vaccine",
+      genericName: "MMR Vaccine",
+      tradeName: "MMR Vaccine (MMR Vaccine)",
       contraindications: ["pregnancy", "severe immunodeficiency"],
       sideEffects: ["Fever", "Mild rash", "Swollen glands"],
       interactions: ["Immune globulins", "Immunosuppressants"],
@@ -2834,6 +3808,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med204",
       name: "Varicella Vaccine",
+      genericName: "Varicella Vaccine",
+      tradeName: "Varicella Vaccine (Varicella Vaccine)",
       contraindications: ["pregnancy", "severe immunodeficiency"],
       sideEffects: ["Injection site pain", "Fever", "Mild rash"],
       interactions: ["Salicylates", "Immune globulins"],
@@ -2844,6 +3820,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med205",
       name: "Tetanus Toxoid",
+      genericName: "Tetanus Toxoid",
+      tradeName: "Tetanus Toxoid (Tetanus Toxoid)",
       contraindications: ["history of Arthus-type hypersensitivity"],
       sideEffects: ["Injection site pain", "Fever", "Headache"],
       interactions: ["Immunosuppressants"],
@@ -2854,6 +3832,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med206",
       name: "Diphtheria Toxoid",
+      genericName: "Diphtheria Toxoid",
+      tradeName: "Diphtheria Toxoid (Diphtheria Toxoid)",
       contraindications: ["history of Arthus-type hypersensitivity"],
       sideEffects: ["Injection site pain", "Fever", "Headache"],
       interactions: ["Immunosuppressants"],
@@ -2864,6 +3844,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med207",
       name: "Rabies Immune Globulin",
+      genericName: "Rabies Immune Globulin",
+      tradeName: "Rabies Immune Globulin (Rabies Immune Globulin)",
       contraindications: ["none for post-exposure prophylaxis"],
       sideEffects: ["Injection site pain", "Fever", "Headache"],
       interactions: ["Live vaccines"],
@@ -2874,6 +3856,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med208",
       name: "Hepatitis A Vaccine",
+      genericName: "Hepatitis A Vaccine",
+      tradeName: "Hepatitis A Vaccine (Hepatitis A Vaccine)",
       contraindications: ["severe allergic reaction to neomycin"],
       sideEffects: ["Injection site soreness", "Headache", "Fatigue"],
       interactions: ["Immunosuppressants"],
@@ -2884,6 +3868,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med209",
       name: "Pneumococcal Vaccine",
+      genericName: "Pneumococcal Vaccine",
+      tradeName: "Pneumococcal Vaccine (Pneumococcal Vaccine)",
       contraindications: ["severe allergic reaction to diphtheria toxoid"],
       sideEffects: ["Injection site pain", "Fever", "Muscle aches"],
       interactions: ["Immunosuppressants"],
@@ -2894,6 +3880,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med210",
       name: "HPV Vaccine",
+      genericName: "HPV Vaccine",
+      tradeName: "HPV Vaccine (HPV Vaccine)",
       contraindications: ["severe allergic reaction to yeast"],
       sideEffects: ["Injection site pain", "Fever", "Headache", "Syncope"],
       interactions: ["Immunosuppressants"],
@@ -2906,6 +3894,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med211",
       name: "Epinephrine (Adrenaline)",
+      genericName: "Epinephrine (Adrenaline)",
+      tradeName: "Epinephrine (Adrenaline) (Epinephrine (Adrenaline))",
       contraindications: ["none in life-threatening emergencies"],
       sideEffects: ["Palpitations", "Tachycardia", "Sweating", "Nausea"],
       interactions: ["Beta-blockers", "MAO inhibitors", "Tricyclic antidepressants"],
@@ -2917,6 +3907,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med212",
       name: "Atropine",
+      genericName: "Atropine",
+      tradeName: "Atropine (Atropine)",
       contraindications: ["glaucoma", "pyloric stenosis", "thyrotoxicosis"],
       sideEffects: ["Dry mouth", "Blurred vision", "Photophobia", "Tachycardia"],
       interactions: ["Anticholinergics", "Antihistamines"],
@@ -2927,6 +3919,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med213",
       name: "Naloxone",
+      genericName: "Naloxone",
+      tradeName: "Naloxone (Naloxone)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Opioid withdrawal symptoms", "Nausea", "Vomiting", "Sweating"],
       interactions: ["Opioid analgesics"],
@@ -2938,6 +3932,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med214",
       name: "Activated Charcoal",
+      genericName: "Activated Charcoal",
+      tradeName: "Activated Charcoal (Activated Charcoal)",
       contraindications: ["unprotected airway", "GI tract not intact"],
       sideEffects: ["Vomiting", "Constipation", "Black stools"],
       interactions: ["Oral medications (decreased absorption)"],
@@ -2948,6 +3944,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med215",
       name: "Normal Saline (0.9% NaCl)",
+      genericName: "Normal Saline (0.9% NaCl)",
+      tradeName: "Normal Saline (0.9% NaCl) (Normal Saline (0.9% NaCl))",
       contraindications: ["hypernatremia", "fluid retention"],
       sideEffects: ["Fluid overload", "Edema", "Electrolyte imbalance"],
       interactions: ["Corticosteroids"],
@@ -2958,6 +3956,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med216",
       name: "Lactated Ringer's",
+      genericName: "Lactated Ringer's",
+      tradeName: "Lactated Ringer's (Lactated Ringer's)",
       contraindications: ["severe renal impairment", "hyperkalemia"],
       sideEffects: ["Fluid overload", "Electrolyte imbalance"],
       interactions: ["Ceftriaxone", "Potassium-sparing diuretics"],
@@ -2968,6 +3968,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med217",
       name: "Adenosine",
+      genericName: "Adenosine",
+      tradeName: "Adenosine (Adenosine)",
       contraindications: ["second- or third-degree AV block", "sick sinus syndrome"],
       sideEffects: ["Facial flushing", "Dyspnea", "Chest pressure"],
       interactions: ["Dipyridamole", "Theophylline", "Caffeine"],
@@ -2978,6 +3980,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med218",
       name: "Amiodarone",
+      genericName: "Amiodarone",
+      tradeName: "Amiodarone (Amiodarone)",
       contraindications: ["cardiogenic shock", "severe sinus-node dysfunction"],
       sideEffects: ["Hypotension", "Bradycardia", "Pulmonary toxicity"],
       interactions: ["Warfarin", "Digoxin", "Simvastatin"],
@@ -2989,6 +3993,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med219",
       name: "Dextrose 50%",
+      genericName: "Dextrose 50%",
+      tradeName: "Dextrose 50% (Dextrose 50%)",
       contraindications: ["intracranial or intraspinal hemorrhage"],
       sideEffects: ["Hyperosmolarity", "Phlebitis", "Hyperglycemia"],
       interactions: ["None significant"],
@@ -2999,6 +4005,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med220",
       name: "Calcium Gluconate",
+      genericName: "Calcium Gluconate",
+      tradeName: "Calcium Gluconate (Calcium Gluconate)",
       contraindications: ["ventricular fibrillation", "hypercalcemia"],
       sideEffects: ["Vasodilation", "Cardiac arrhythmias", "Bradycardia"],
       interactions: ["Digoxin", "Thiazide diuretics", "Tetracyclines"],
@@ -3011,6 +4019,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med221",
       name: "Furosemide",
+      genericName: "Furosemide",
+      tradeName: "Lasix (Furosemide)",
       contraindications: ["anuria", "hepatic coma"],
       sideEffects: ["Hypokalemia", "Dehydration", "Dizziness", "Hypotension"],
       interactions: ["Aminoglycosides", "Lithium", "NSAIDs"],
@@ -3022,6 +4032,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med222",
       name: "Hydrochlorothiazide",
+      genericName: "Hydrochlorothiazide",
+      tradeName: "Esidrex (Hydrochlorothiazide)",
       contraindications: ["anuria", "sulfa allergy"],
       sideEffects: ["Hypokalemia", "Hyponatremia", "Hyperuricemia", "Dizziness"],
       interactions: ["Lithium", "NSAIDs", "Antidiabetic agents"],
@@ -3033,6 +4045,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med223",
       name: "Tamsulosin",
+      genericName: "Tamsulosin",
+      tradeName: "Omnic (Tamsulosin)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Dizziness", "Headache", "Abnormal ejaculation", "Rhinitis"],
       interactions: ["Cimetidine", "PDE5 inhibitors", "Alpha blockers"],
@@ -3043,6 +4057,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med224",
       name: "Doxazosin",
+      genericName: "Doxazosin",
+      tradeName: "Doxazosin (Doxazosin)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Dizziness", "Fatigue", "Hypotension", "Edema"],
       interactions: ["PDE5 inhibitors", "Other alpha blockers"],
@@ -3055,6 +4071,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med225",
       name: "Dutasteride",
+      genericName: "Dutasteride",
+      tradeName: "Dutasteride (Dutasteride)",
       contraindications: ["pregnancy", "women of childbearing potential", "children"],
       sideEffects: ["Impotence", "Decreased libido", "Ejaculation disorders", "Breast disorders"],
       interactions: ["CYP3A4 inhibitors"],
@@ -3065,6 +4083,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med226",
       name: "Sildenafil",
+      genericName: "Sildenafil",
+      tradeName: "Virecta (Sildenafil)",
       contraindications: ["nitrate therapy", "riociguat use"],
       sideEffects: ["Headache", "Flushing", "Dyspepsia", "Visual disturbances"],
       interactions: ["Nitrates", "Alpha blockers", "CYP3A4 inhibitors"],
@@ -3077,6 +4097,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med227",
       name: "Tadalafil",
+      genericName: "Tadalafil",
+      tradeName: "StarCop (Tadalafil)",
       contraindications: ["nitrate therapy", "riociguat use"],
       sideEffects: ["Headache", "Dyspepsia", "Back pain", "Myalgia"],
       interactions: ["Nitrates", "Alpha blockers", "CYP3A4 inhibitors"],
@@ -3089,6 +4111,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med228",
       name: "Oxybutynin",
+      genericName: "Oxybutynin",
+      tradeName: "Uripan (Oxybutynin)",
       contraindications: ["urinary retention", "gastric retention", "uncontrolled narrow-angle glaucoma"],
       sideEffects: ["Dry mouth", "Constipation", "Somnolence", "Dizziness"],
       interactions: ["Anticholinergics", "CYP3A4 inhibitors"],
@@ -3100,6 +4124,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med229",
       name: "Tolterodine",
+      genericName: "Tolterodine",
+      tradeName: "Tolterodine (Tolterodine)",
       contraindications: ["urinary retention", "gastric retention", "uncontrolled narrow-angle glaucoma"],
       sideEffects: ["Dry mouth", "Headache", "Constipation", "Abdominal pain"],
       interactions: ["CYP3A4 inhibitors", "Fluoxetine"],
@@ -3111,6 +4137,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med230",
       name: "Solifenacin",
+      genericName: "Solifenacin",
+      tradeName: "Solifenacin (Solifenacin)",
       contraindications: ["urinary retention", "gastric retention", "uncontrolled narrow-angle glaucoma"],
       sideEffects: ["Dry mouth", "Constipation", "Blurred vision", "Urinary retention"],
       interactions: ["CYP3A4 inhibitors"],
@@ -3124,6 +4152,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med231",
       name: "Lisinopril",
+      genericName: "Lisinopril",
+      tradeName: "Zestril (Lisinopril)",
       contraindications: ["history of angioedema", "pregnancy"],
       sideEffects: ["Dry cough", "Dizziness", "Hyperkalemia"],
       interactions: ["Potassium supplements", "NSAIDs"],
@@ -3132,6 +4162,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med232",
       name: "Losartan",
+      genericName: "Losartan",
+      tradeName: "Amzaar (Losartan)",
       contraindications: ["pregnancy", "severe hepatic impairment"],
       sideEffects: ["Dizziness", "Fatigue", "Hypoglycemia"],
       interactions: ["Potassium-sparing diuretics", "NSAIDs"],
@@ -3140,6 +4172,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med233",
       name: "Amlodipine",
+      genericName: "Amlodipine",
+      tradeName: "Alkacap (Amlodipine)",
       contraindications: ["severe hypotension", "cardiogenic shock"],
       sideEffects: ["Peripheral edema", "Fatigue", "Palpitations"],
       interactions: ["Simvastatin", "CYP3A4 inhibitors"],
@@ -3148,6 +4182,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med234",
       name: "Metoprolol",
+      genericName: "Metoprolol",
+      tradeName: "Betaloc (Metoprolol)",
       contraindications: ["severe bradycardia", "heart block greater than first degree"],
       sideEffects: ["Fatigue", "Dizziness", "Depression"],
       interactions: ["Digoxin", "Clonidine"],
@@ -3156,6 +4192,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med235",
       name: "Clonidine",
+      genericName: "Clonidine",
+      tradeName: "Clonidine (Clonidine)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Dry mouth", "Drowsiness", "Dizziness"],
       interactions: ["Beta-blockers", "Tricyclic antidepressants"],
@@ -3164,6 +4202,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med236",
       name: "Diltiazem",
+      genericName: "Diltiazem",
+      tradeName: "Diltiazem (Diltiazem)",
       contraindications: ["sick sinus syndrome", "second- or third-degree AV block"],
       sideEffects: ["Edema", "Headache", "Dizziness"],
       interactions: ["Beta-blockers", "Statins"],
@@ -3172,6 +4212,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med237",
       name: "Valsartan",
+      genericName: "Valsartan",
+      tradeName: "Tareg (Valsartan)",
       contraindications: ["pregnancy", "concomitant use with aliskiren in diabetes"],
       sideEffects: ["Dizziness", "BUN increased", "Hyperkalemia"],
       interactions: ["Potassium supplements", "NSAIDs"],
@@ -3180,6 +4222,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med238",
       name: "Enalapril",
+      genericName: "Enalapril",
+      tradeName: "Ezapril (Enalapril)",
       contraindications: ["history of angioedema", "pregnancy"],
       sideEffects: ["Dry cough", "Dizziness", "Hypotension"],
       interactions: ["Potassium supplements", "NSAIDs"],
@@ -3188,6 +4232,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med239",
       name: "Ramipril",
+      genericName: "Ramipril",
+      tradeName: "Ramipril (Ramipril)",
       contraindications: ["history of angioedema", "pregnancy"],
       sideEffects: ["Dry cough", "Headache", "Dizziness"],
       interactions: ["Potassium supplements", "NSAIDs"],
@@ -3196,6 +4242,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med240",
       name: "Nifedipine",
+      genericName: "Nifedipine",
+      tradeName: "Nifedipine (Nifedipine)",
       contraindications: ["cardiogenic shock", "concurrent rifampin use"],
       sideEffects: ["Peripheral edema", "Headache", "Flushing"],
       interactions: ["CYP3A4 inducers/inhibitors", "Beta-blockers"],
@@ -3206,6 +4254,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med241",
       name: "Nitroglycerin",
+      genericName: "Nitroglycerin",
+      tradeName: "Nitroglycerin (Nitroglycerin)",
       contraindications: ["concurrent use with PDE-5 inhibitors", "severe anemia"],
       sideEffects: ["Headache", "Dizziness", "Lightheadedness"],
       interactions: ["Sildenafil", "Tadalafil", "Alcohol"],
@@ -3214,6 +4264,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med242",
       name: "Isosorbide Mononitrate",
+      genericName: "Isosorbide Mononitrate",
+      tradeName: "Isosorbide Mononitrate (Isosorbide Mononitrate)",
       contraindications: ["concurrent use with PDE-5 inhibitors"],
       sideEffects: ["Headache", "Dizziness", "Hypotension"],
       interactions: ["Sildenafil", "Tadalafil"],
@@ -3222,6 +4274,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med243",
       name: "Isosorbide Dinitrate",
+      genericName: "Isosorbide Dinitrate",
+      tradeName: "Isosorbide Dinitrate (Isosorbide Dinitrate)",
       contraindications: ["concurrent use with PDE-5 inhibitors"],
       sideEffects: ["Headache", "Dizziness", "Hypotension"],
       interactions: ["Sildenafil", "Tadalafil"],
@@ -3230,6 +4284,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med244",
       name: "Ranolazine",
+      genericName: "Ranolazine",
+      tradeName: "Ranolazine (Ranolazine)",
       contraindications: ["hepatic cirrhosis", "concurrent use with strong CYP3A inhibitors"],
       sideEffects: ["Dizziness", "Headache", "Constipation", "Nausea"],
       interactions: ["Ketoconazole", "Clarithromycin", "Diltiazem"],
@@ -3238,6 +4294,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med245",
       name: "Atenolol",
+      genericName: "Atenolol",
+      tradeName: "Atenolol (Atenolol)",
       contraindications: ["sinus bradycardia", "heart block greater than first degree"],
       sideEffects: ["Dizziness", "Fatigue", "Cold extremities"],
       interactions: ["Calcium channel blockers", "Clonidine"],
@@ -3246,6 +4304,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med246",
       name: "Propranolol",
+      genericName: "Propranolol",
+      tradeName: "Propranolol (Propranolol)",
       contraindications: ["bronchial asthma", "sinus bradycardia"],
       sideEffects: ["Fatigue", "Dizziness", "Constipation"],
       interactions: ["Calcium channel blockers", "Epinephrine"],
@@ -3254,6 +4314,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med247",
       name: "Nadolol",
+      genericName: "Nadolol",
+      tradeName: "Nadolol (Nadolol)",
       contraindications: ["bronchial asthma", "sinus bradycardia"],
       sideEffects: ["Dizziness", "Fatigue", "Bradycardia"],
       interactions: ["Calcium channel blockers", "Clonidine"],
@@ -3262,6 +4324,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med248",
       name: "Verapamil",
+      genericName: "Verapamil",
+      tradeName: "Verapamil (Verapamil)",
       contraindications: ["severe left ventricular dysfunction", "hypotension"],
       sideEffects: ["Constipation", "Dizziness", "Headache"],
       interactions: ["Beta-blockers", "Digoxin", "Statins"],
@@ -3270,6 +4334,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med249",
       name: "Nicardipine",
+      genericName: "Nicardipine",
+      tradeName: "Nicardipine (Nicardipine)",
       contraindications: ["advanced aortic stenosis"],
       sideEffects: ["Headache", "Pedal edema", "Flushing"],
       interactions: ["Beta-blockers", "Cimetidine"],
@@ -3278,6 +4344,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med250",
       name: "Ivabradine",
+      genericName: "Ivabradine",
+      tradeName: "Ivabradine (Ivabradine)",
       contraindications: ["acute decompensated heart failure", "blood pressure < 90/50 mmHg"],
       sideEffects: ["Bradycardia", "Hypertension", "Atrial fibrillation", "Luminous phenomena"],
       interactions: ["CYP3A4 inhibitors", "Macrolide antibiotics"],
@@ -3288,6 +4356,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med251",
       name: "Flecainide",
+      genericName: "Flecainide",
+      tradeName: "Flecainide (Flecainide)",
       contraindications: ["pre-existing second- or third-degree AV block", "cardiogenic shock"],
       sideEffects: ["Dizziness", "Visual disturbances", "Dyspnea"],
       interactions: ["Digoxin", "Beta-blockers", "Amiodarone"],
@@ -3296,6 +4366,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med252",
       name: "Propafenone",
+      genericName: "Propafenone",
+      tradeName: "Propafenone (Propafenone)",
       contraindications: ["heart failure", "cardiogenic shock", "bradycardia"],
       sideEffects: ["Unusual taste", "Nausea", "Vomiting", "Dizziness"],
       interactions: ["Digoxin", "Warfarin", "Beta-blockers"],
@@ -3304,6 +4376,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med253",
       name: "Sotalol",
+      genericName: "Sotalol",
+      tradeName: "Sotalol (Sotalol)",
       contraindications: ["bronchial asthma", "sinus bradycardia", "long QT syndromes"],
       sideEffects: ["Fatigue", "Bradycardia", "Dyspnea", "Dizziness"],
       interactions: ["Antacids", "Drugs that prolong QT interval"],
@@ -3312,6 +4386,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med254",
       name: "Dofetilide",
+      genericName: "Dofetilide",
+      tradeName: "Dofetilide (Dofetilide)",
       contraindications: ["congenital or acquired long QT syndromes", "severe renal impairment"],
       sideEffects: ["Headache", "Chest pain", "Dizziness", "Ventricular arrhythmias"],
       interactions: ["Cimetidine", "Verapamil", "Ketoconazole"],
@@ -3320,6 +4396,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med255",
       name: "Ibutilide",
+      genericName: "Ibutilide",
+      tradeName: "Ibutilide (Ibutilide)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Ventricular arrhythmias", "Headache", "Hypotension"],
       interactions: ["Drugs that prolong QT interval"],
@@ -3328,6 +4406,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med256",
       name: "Lidocaine",
+      genericName: "Lidocaine",
+      tradeName: "Lidocaine (Lidocaine)",
       contraindications: ["Stokes-Adams syndrome", "Wolff-Parkinson-White syndrome"],
       sideEffects: ["Dizziness", "Confusion", "Tremor", "Seizures"],
       interactions: ["Beta-blockers", "Cimetidine"],
@@ -3336,6 +4416,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med257",
       name: "Mexiletine",
+      genericName: "Mexiletine",
+      tradeName: "Mexiletine (Mexiletine)",
       contraindications: ["cardiogenic shock", "second- or third-degree AV block"],
       sideEffects: ["Nausea", "Vomiting", "Heartburn", "Dizziness"],
       interactions: ["Cimetidine", "Rifampin", "Phenytoin"],
@@ -3344,6 +4426,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med258",
       name: "Procainamide",
+      genericName: "Procainamide",
+      tradeName: "Procainamide (Procainamide)",
       contraindications: ["complete heart block", "lupus erythematosus"],
       sideEffects: ["Hypotension", "Lupus-like syndrome", "GI upset"],
       interactions: ["Amiodarone", "Cimetidine"],
@@ -3352,6 +4436,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med259",
       name: "Quinidine",
+      genericName: "Quinidine",
+      tradeName: "Quinidine (Quinidine)",
       contraindications: ["myasthenia gravis", "heart block"],
       sideEffects: ["Diarrhea", "Cinchonism", "Arrhythmias"],
       interactions: ["Digoxin", "Warfarin", "Amiodarone"],
@@ -3360,6 +4446,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med260",
       name: "Disopyramide",
+      genericName: "Disopyramide",
+      tradeName: "Disopyramide (Disopyramide)",
       contraindications: ["cardiogenic shock", "pre-existing second- or third-degree AV block"],
       sideEffects: ["Dry mouth", "Urinary retention", "Constipation", "Blurred vision"],
       interactions: ["Other antiarrhythmics", "Macrolide antibiotics"],
@@ -3370,6 +4458,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med261",
       name: "Sacubitril/Valsartan",
+      genericName: "Sacubitril/Valsartan",
+      tradeName: "Sacubitril/Valsartan (Sacubitril/Valsartan)",
       contraindications: ["history of angioedema", "concomitant use with ACE inhibitors"],
       sideEffects: ["Hypotension", "Hyperkalemia", "Cough", "Dizziness"],
       interactions: ["ACE inhibitors", "Potassium-sparing diuretics", "NSAIDs"],
@@ -3378,6 +4468,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med262",
       name: "Spironolactone",
+      genericName: "Spironolactone",
+      tradeName: "Aldactone (Spironolactone)",
       contraindications: ["hyperkalemia", "Addison's disease", "anuria"],
       sideEffects: ["Gynecomastia", "Hyperkalemia", "Dizziness"],
       interactions: ["ACE inhibitors", "ARBs", "Potassium supplements"],
@@ -3386,6 +4478,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med263",
       name: "Eplerenone",
+      genericName: "Eplerenone",
+      tradeName: "Eplerenone (Eplerenone)",
       contraindications: ["hyperkalemia", "severe renal impairment", "strong CYP3A4 inhibitors"],
       sideEffects: ["Hyperkalemia", "Dizziness", "Fatigue"],
       interactions: ["Ketoconazole", "Clarithromycin", "Potassium supplements"],
@@ -3394,6 +4488,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med264",
       name: "Carvedilol",
+      genericName: "Carvedilol",
+      tradeName: "Dilatrol (Carvedilol)",
       contraindications: ["bronchial asthma", "second- or third-degree AV block", "severe bradycardia"],
       sideEffects: ["Dizziness", "Fatigue", "Hypotension", "Weight gain"],
       interactions: ["Digoxin", "Clonidine", "Amiodarone"],
@@ -3402,6 +4498,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med265",
       name: "Bisoprolol",
+      genericName: "Bisoprolol",
+      tradeName: "Bisoprolol (Bisoprolol)",
       contraindications: ["cardiogenic shock", "overt heart failure", "second- or third-degree AV block"],
       sideEffects: ["Fatigue", "Dizziness", "Bradycardia"],
       interactions: ["Calcium channel blockers", "Clonidine"],
@@ -3410,6 +4508,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med266",
       name: "Digoxin",
+      genericName: "Digoxin",
+      tradeName: "Digoxin (Digoxin)",
       contraindications: ["ventricular fibrillation"],
       sideEffects: ["Nausea", "Vomiting", "Visual disturbances", "Arrhythmias"],
       interactions: ["Amiodarone", "Verapamil", "Diuretics (hypokalemia)"],
@@ -3418,6 +4518,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med267",
       name: "Dapagliflozin",
+      genericName: "Dapagliflozin",
+      tradeName: "Dapagliflozin (Dapagliflozin)",
       contraindications: ["severe renal impairment", "dialysis"],
       sideEffects: ["Genital mycotic infections", "UTI", "Increased urination"],
       interactions: ["Diuretics", "Insulin"],
@@ -3426,6 +4528,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med268",
       name: "Empagliflozin",
+      genericName: "Empagliflozin",
+      tradeName: "Jardiance (Empagliflozin)",
       contraindications: ["severe renal impairment", "dialysis"],
       sideEffects: ["Genital mycotic infections", "UTI", "Increased urination"],
       interactions: ["Diuretics", "Insulin"],
@@ -3434,6 +4538,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med269",
       name: "Hydralazine",
+      genericName: "Hydralazine",
+      tradeName: "Hydralazine (Hydralazine)",
       contraindications: ["coronary artery disease", "mitral valvular rheumatic heart disease"],
       sideEffects: ["Headache", "Anorexia", "Nausea", "Vomiting", "Tachycardia"],
       interactions: ["MAO inhibitors", "NSAIDs"],
@@ -3442,6 +4548,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med270",
       name: "Isosorbide Dinitrate/Hydralazine",
+      genericName: "Isosorbide Dinitrate/Hydralazine",
+      tradeName: "Isosorbide Dinitrate/Hydralazine (Isosorbide Dinitrate/Hydralazine)",
       contraindications: ["concurrent use with PDE-5 inhibitors"],
       sideEffects: ["Headache", "Dizziness", "Hypotension", "Tachycardia"],
       interactions: ["Sildenafil", "Tadalafil"],
@@ -3452,6 +4560,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med271",
       name: "Warfarin",
+      genericName: "Warfarin",
+      tradeName: "Marevan (Warfarin)",
       contraindications: ["pregnancy", "recent CNS surgery", "active bleeding"],
       sideEffects: ["Bleeding", "Skin necrosis", "Purple toe syndrome"],
       interactions: ["Amiodarone", "Fluconazole", "NSAIDs"],
@@ -3460,6 +4570,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med272",
       name: "Heparin",
+      genericName: "Heparin",
+      tradeName: "Heparin (Heparin)",
       contraindications: ["severe thrombocytopenia", "uncontrolled active bleeding"],
       sideEffects: ["Bleeding", "Heparin-induced thrombocytopenia", "Osteoporosis"],
       interactions: ["Aspirin", "NSAIDs", "Warfarin"],
@@ -3468,6 +4580,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med273",
       name: "Enoxaparin",
+      genericName: "Enoxaparin",
+      tradeName: "Enoxaparin (Enoxaparin)",
       contraindications: ["active major bleeding", "history of HIT"],
       sideEffects: ["Bleeding", "Anemia", "Injection site hemorrhage"],
       interactions: ["NSAIDs", "Antiplatelets"],
@@ -3476,6 +4590,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med274",
       name: "Dalteparin",
+      genericName: "Dalteparin",
+      tradeName: "Dalteparin (Dalteparin)",
       contraindications: ["active major bleeding", "history of HIT"],
       sideEffects: ["Bleeding", "Hematoma", "Thrombocytopenia"],
       interactions: ["NSAIDs", "Antiplatelets"],
@@ -3484,6 +4600,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med275",
       name: "Fondaparinux",
+      genericName: "Fondaparinux",
+      tradeName: "Fondaparinux (Fondaparinux)",
       contraindications: ["severe renal impairment", "body weight < 50 kg (for prophylaxis)"],
       sideEffects: ["Bleeding", "Anemia", "Insomnia"],
       interactions: ["NSAIDs", "Antiplatelets"],
@@ -3492,6 +4610,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med276",
       name: "Rivaroxaban",
+      genericName: "Rivaroxaban",
+      tradeName: "Xarelto (Rivaroxaban)",
       contraindications: ["active pathological bleeding"],
       sideEffects: ["Bleeding", "Back pain", "Pruritus"],
       interactions: ["CYP3A4 inhibitors", "P-gp inhibitors"],
@@ -3500,6 +4620,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med277",
       name: "Apixaban",
+      genericName: "Apixaban",
+      tradeName: "Eliquis (Apixaban)",
       contraindications: ["active pathological bleeding"],
       sideEffects: ["Bleeding", "Nausea", "Anemia"],
       interactions: ["Strong dual inhibitors of CYP3A4 and P-gp"],
@@ -3508,6 +4630,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med278",
       name: "Dabigatran",
+      genericName: "Dabigatran",
+      tradeName: "Dabigatran (Dabigatran)",
       contraindications: ["active pathological bleeding", "mechanical prosthetic heart valve"],
       sideEffects: ["Bleeding", "Dyspepsia", "Gastritis"],
       interactions: ["P-gp inhibitors", "P-gp inducers"],
@@ -3516,6 +4640,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med279",
       name: "Edoxaban",
+      genericName: "Edoxaban",
+      tradeName: "Edoxaban (Edoxaban)",
       contraindications: ["active pathological bleeding"],
       sideEffects: ["Bleeding", "Anemia", "Rash"],
       interactions: ["Rifampin", "Other anticoagulants"],
@@ -3524,6 +4650,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med280",
       name: "Argatroban",
+      genericName: "Argatroban",
+      tradeName: "Argatroban (Argatroban)",
       contraindications: ["overt major bleeding"],
       sideEffects: ["Bleeding", "Hypotension", "Fever", "Diarrhea"],
       interactions: ["Other anticoagulants", "Antiplatelets"],
@@ -3534,6 +4662,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med281",
       name: "Aspirin",
+      genericName: "Aspirin",
+      tradeName: "Aspirin (Aspirin)",
       contraindications: ["bleeding disorders", "active peptic ulcer", "children with viral infections"],
       sideEffects: ["Gastrointestinal bleeding", "Dyspepsia", "Tinnitus"],
       interactions: ["Warfarin", "Heparin", "NSAIDs"],
@@ -3542,6 +4672,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med282",
       name: "Clopidogrel",
+      genericName: "Clopidogrel",
+      tradeName: "Plavix (Clopidogrel)",
       contraindications: ["active pathological bleeding"],
       sideEffects: ["Bleeding", "Pruritus", "Diarrhea"],
       interactions: ["Omeprazole", "NSAIDs", "Warfarin"],
@@ -3550,6 +4682,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med283",
       name: "Prasugrel",
+      genericName: "Prasugrel",
+      tradeName: "Prasugrel (Prasugrel)",
       contraindications: ["active pathological bleeding", "history of TIA or stroke"],
       sideEffects: ["Bleeding", "Hypertension", "Hyperlipidemia"],
       interactions: ["NSAIDs", "Warfarin"],
@@ -3558,6 +4692,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med284",
       name: "Ticagrelor",
+      genericName: "Ticagrelor",
+      tradeName: "Ticagrelor (Ticagrelor)",
       contraindications: ["history of intracranial hemorrhage", "active pathological bleeding"],
       sideEffects: ["Bleeding", "Dyspnea", "Bradycardia"],
       interactions: ["Strong CYP3A4 inhibitors", "Strong CYP3A4 inducers"],
@@ -3566,6 +4702,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med285",
       name: "Cilostazol",
+      genericName: "Cilostazol",
+      tradeName: "Cilostazol (Cilostazol)",
       contraindications: ["heart failure of any severity"],
       sideEffects: ["Headache", "Diarrhea", "Palpitations", "Tachycardia"],
       interactions: ["Omeprazole", "Diltiazem", "Macrolides"],
@@ -3574,6 +4712,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med286",
       name: "Dipyridamole",
+      genericName: "Dipyridamole",
+      tradeName: "Dipyridamole (Dipyridamole)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Dizziness", "Headache", "Rash", "GI upset"],
       interactions: ["Adenosine", "Cholinesterase inhibitors"],
@@ -3582,6 +4722,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med287",
       name: "Abciximab",
+      genericName: "Abciximab",
+      tradeName: "Abciximab (Abciximab)",
       contraindications: ["active internal bleeding", "recent GI/GU bleeding", "history of CVA"],
       sideEffects: ["Bleeding", "Thrombocytopenia", "Hypotension"],
       interactions: ["Other antiplatelets", "Anticoagulants", "Thrombolytics"],
@@ -3590,6 +4732,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med288",
       name: "Eptifibatide",
+      genericName: "Eptifibatide",
+      tradeName: "Eptifibatide (Eptifibatide)",
       contraindications: ["history of bleeding diathesis", "severe hypertension"],
       sideEffects: ["Bleeding", "Hypotension", "Injection site reaction"],
       interactions: ["Other antiplatelets", "Anticoagulants", "Thrombolytics"],
@@ -3598,6 +4742,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med289",
       name: "Tirofiban",
+      genericName: "Tirofiban",
+      tradeName: "Tirofiban (Tirofiban)",
       contraindications: ["active internal bleeding", "history of intracranial hemorrhage"],
       sideEffects: ["Bleeding", "Bradycardia", "Pelvic pain"],
       interactions: ["Other antiplatelets", "Anticoagulants", "Thrombolytics"],
@@ -3606,6 +4752,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med290",
       name: "Vorapaxar",
+      genericName: "Vorapaxar",
+      tradeName: "Vorapaxar (Vorapaxar)",
       contraindications: ["history of stroke, TIA, or intracranial hemorrhage", "active pathological bleeding"],
       sideEffects: ["Bleeding", "Anemia", "Depression"],
       interactions: ["Strong CYP3A4 inhibitors", "Strong CYP3A4 inducers"],
@@ -3616,6 +4764,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med291",
       name: "Alteplase",
+      genericName: "Alteplase",
+      tradeName: "Alteplase (Alteplase)",
       contraindications: ["active internal bleeding", "history of CVA", "recent intracranial surgery"],
       sideEffects: ["Bleeding", "Intracranial hemorrhage", "Fever"],
       interactions: ["Anticoagulants", "Antiplatelets"],
@@ -3624,6 +4774,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med292",
       name: "Tenecteplase",
+      genericName: "Tenecteplase",
+      tradeName: "Tenecteplase (Tenecteplase)",
       contraindications: ["active internal bleeding", "history of CVA", "severe uncontrolled hypertension"],
       sideEffects: ["Bleeding", "Hematoma", "Epistaxis"],
       interactions: ["Anticoagulants", "Antiplatelets"],
@@ -3632,6 +4784,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med293",
       name: "Reteplase",
+      genericName: "Reteplase",
+      tradeName: "Reteplase (Reteplase)",
       contraindications: ["active internal bleeding", "history of CVA", "severe uncontrolled hypertension"],
       sideEffects: ["Bleeding", "Anemia", "Injection site hemorrhage"],
       interactions: ["Anticoagulants", "Antiplatelets"],
@@ -3640,6 +4794,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med294",
       name: "Streptokinase",
+      genericName: "Streptokinase",
+      tradeName: "Streptokinase (Streptokinase)",
       contraindications: ["active internal bleeding", "recent CVA", "severe uncontrolled hypertension"],
       sideEffects: ["Bleeding", "Allergic reactions", "Hypotension", "Fever"],
       interactions: ["Anticoagulants", "Antiplatelets"],
@@ -3648,6 +4804,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med295",
       name: "Urokinase",
+      genericName: "Urokinase",
+      tradeName: "Urokinase (Urokinase)",
       contraindications: ["active internal bleeding", "recent CVA", "recent trauma"],
       sideEffects: ["Bleeding", "Allergic reactions", "Fever", "Chills"],
       interactions: ["Anticoagulants", "Antiplatelets"],
@@ -3656,6 +4814,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med296",
       name: "Anistreplase",
+      genericName: "Anistreplase",
+      tradeName: "Anistreplase (Anistreplase)",
       contraindications: ["active internal bleeding", "history of CVA", "severe uncontrolled hypertension"],
       sideEffects: ["Bleeding", "Allergic reactions", "Hypotension", "Arrhythmias"],
       interactions: ["Anticoagulants", "Antiplatelets"],
@@ -3664,6 +4824,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med297",
       name: "Defibrotide",
+      genericName: "Defibrotide",
+      tradeName: "Defibrotide (Defibrotide)",
       contraindications: ["concomitant use with systemic anticoagulant or fibrinolytic therapy"],
       sideEffects: ["Hypotension", "Diarrhea", "Vomiting", "Nausea", "Epistaxis"],
       interactions: ["Anticoagulants", "Thrombolytics"],
@@ -3672,6 +4834,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med298",
       name: "Prourokinase",
+      genericName: "Prourokinase",
+      tradeName: "Prourokinase (Prourokinase)",
       contraindications: ["active internal bleeding", "recent CVA"],
       sideEffects: ["Bleeding", "Allergic reactions"],
       interactions: ["Anticoagulants", "Antiplatelets"],
@@ -3680,6 +4844,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med299",
       name: "Monteplase",
+      genericName: "Monteplase",
+      tradeName: "Monteplase (Monteplase)",
       contraindications: ["active internal bleeding", "history of CVA"],
       sideEffects: ["Bleeding", "Intracranial hemorrhage"],
       interactions: ["Anticoagulants", "Antiplatelets"],
@@ -3688,6 +4854,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med300",
       name: "Pamiteplase",
+      genericName: "Pamiteplase",
+      tradeName: "Pamiteplase (Pamiteplase)",
       contraindications: ["active internal bleeding", "history of CVA"],
       sideEffects: ["Bleeding", "Intracranial hemorrhage"],
       interactions: ["Anticoagulants", "Antiplatelets"],
@@ -3698,6 +4866,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med301",
       name: "Atorvastatin",
+      genericName: "Atorvastatin",
+      tradeName: "Ator (Atorvastatin)",
       contraindications: ["active liver disease", "pregnancy", "breastfeeding"],
       sideEffects: ["Myalgia", "Diarrhea", "Arthralgia", "Nasopharyngitis"],
       interactions: ["Clarithromycin", "Itraconazole", "Cyclosporine"],
@@ -3706,6 +4876,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med302",
       name: "Rosuvastatin",
+      genericName: "Rosuvastatin",
+      tradeName: "Crestor (Rosuvastatin)",
       contraindications: ["active liver disease", "pregnancy", "breastfeeding"],
       sideEffects: ["Myalgia", "Headache", "Abdominal pain", "Asthenia"],
       interactions: ["Cyclosporine", "Gemfibrozil", "Antacids"],
@@ -3714,6 +4886,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med303",
       name: "Simvastatin",
+      genericName: "Simvastatin",
+      tradeName: "Simvastatin (Simvastatin)",
       contraindications: ["active liver disease", "pregnancy", "concomitant use with strong CYP3A4 inhibitors"],
       sideEffects: ["Myalgia", "Upper respiratory infection", "Headache", "Abdominal pain"],
       interactions: ["Itraconazole", "Ketoconazole", "Erythromycin", "Clarithromycin"],
@@ -3722,6 +4896,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med304",
       name: "Pravastatin",
+      genericName: "Pravastatin",
+      tradeName: "Pravastatin (Pravastatin)",
       contraindications: ["active liver disease", "pregnancy", "breastfeeding"],
       sideEffects: ["Musculoskeletal pain", "Nausea", "Vomiting", "Diarrhea"],
       interactions: ["Cyclosporine", "Gemfibrozil", "Macrolides"],
@@ -3730,6 +4906,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med305",
       name: "Lovastatin",
+      genericName: "Lovastatin",
+      tradeName: "Lovastatin (Lovastatin)",
       contraindications: ["active liver disease", "pregnancy", "concomitant use with strong CYP3A4 inhibitors"],
       sideEffects: ["Myalgia", "Constipation", "Abdominal pain", "Diarrhea"],
       interactions: ["Itraconazole", "Ketoconazole", "Erythromycin", "Clarithromycin"],
@@ -3738,6 +4916,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med306",
       name: "Ezetimibe",
+      genericName: "Ezetimibe",
+      tradeName: "Ezetimibe (Ezetimibe)",
       contraindications: ["hypersensitivity", "active liver disease (when used with a statin)"],
       sideEffects: ["Diarrhea", "Arthralgia", "Fatigue", "Upper respiratory infection"],
       interactions: ["Cyclosporine", "Fibrates", "Cholestyramine"],
@@ -3746,6 +4926,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med307",
       name: "Fenofibrate",
+      genericName: "Fenofibrate",
+      tradeName: "Fenofibrate (Fenofibrate)",
       contraindications: ["severe renal dysfunction", "active liver disease", "gallbladder disease"],
       sideEffects: ["Abdominal pain", "Back pain", "Headache", "Nausea"],
       interactions: ["Statins", "Warfarin", "Bile acid sequestrants"],
@@ -3754,6 +4936,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med308",
       name: "Gemfibrozil",
+      genericName: "Gemfibrozil",
+      tradeName: "Gemfibrozil (Gemfibrozil)",
       contraindications: ["hepatic or severe renal dysfunction", "gallbladder disease"],
       sideEffects: ["Dyspepsia", "Abdominal pain", "Diarrhea", "Fatigue"],
       interactions: ["Statins", "Warfarin", "Repaglinide"],
@@ -3762,6 +4946,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med309",
       name: "Niacin (Extended-Release)",
+      genericName: "Niacin (Extended-Release)",
+      tradeName: "Niacin (Extended-Release) (Niacin (Extended-Release))",
       contraindications: ["active liver disease", "active peptic ulcer", "arterial bleeding"],
       sideEffects: ["Flushing", "Diarrhea", "Nausea", "Vomiting", "Pruritus"],
       interactions: ["Statins", "Bile acid sequestrants", "Antihypertensives"],
@@ -3770,6 +4956,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med310",
       name: "Cholestyramine",
+      genericName: "Cholestyramine",
+      tradeName: "Cholestyramine (Cholestyramine)",
       contraindications: ["complete biliary obstruction"],
       sideEffects: ["Constipation", "Abdominal pain", "Nausea", "Bloating"],
       interactions: ["Thiazide diuretics", "Warfarin", "Thyroid hormones", "Digoxin"],
@@ -3780,6 +4968,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med311",
       name: "Alprazolam",
+      genericName: "Alprazolam",
+      tradeName: "Xanax (Alprazolam)",
       contraindications: ["acute narrow-angle glaucoma", "concurrent use with ketoconazole"],
       sideEffects: ["Drowsiness", "Dizziness", "Memory impairment"],
       interactions: ["CNS depressants", "CYP3A4 inhibitors"],
@@ -3788,6 +4978,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med312",
       name: "Lorazepam",
+      genericName: "Lorazepam",
+      tradeName: "Ativan (Lorazepam)",
       contraindications: ["acute narrow-angle glaucoma", "severe respiratory insufficiency"],
       sideEffects: ["Sedation", "Dizziness", "Weakness"],
       interactions: ["CNS depressants", "Alcohol"],
@@ -3796,6 +4988,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med313",
       name: "Diazepam",
+      genericName: "Diazepam",
+      tradeName: "Diazepam (Diazepam)",
       contraindications: ["myasthenia gravis", "severe respiratory insufficiency", "sleep apnea"],
       sideEffects: ["Drowsiness", "Fatigue", "Muscle weakness"],
       interactions: ["CNS depressants", "Alcohol", "CYP2C19 inhibitors"],
@@ -3804,6 +4998,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med314",
       name: "Clonazepam",
+      genericName: "Clonazepam",
+      tradeName: "Amotril (Clonazepam)",
       contraindications: ["significant liver disease", "acute narrow-angle glaucoma"],
       sideEffects: ["Somnolence", "Depression", "Dizziness", "Ataxia"],
       interactions: ["CNS depressants", "Alcohol"],
@@ -3812,6 +5008,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med315",
       name: "Buspirone",
+      genericName: "Buspirone",
+      tradeName: "Buspirone (Buspirone)",
       contraindications: ["concurrent use with MAO inhibitors"],
       sideEffects: ["Dizziness", "Nausea", "Headache", "Nervousness"],
       interactions: ["MAO inhibitors", "CYP3A4 inhibitors/inducers"],
@@ -3820,6 +5018,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med316",
       name: "Chlordiazepoxide",
+      genericName: "Chlordiazepoxide",
+      tradeName: "Chlordiazepoxide (Chlordiazepoxide)",
       contraindications: ["acute narrow-angle glaucoma"],
       sideEffects: ["Drowsiness", "Ataxia", "Confusion"],
       interactions: ["CNS depressants", "Alcohol"],
@@ -3828,6 +5028,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med317",
       name: "Oxazepam",
+      genericName: "Oxazepam",
+      tradeName: "Oxazepam (Oxazepam)",
       contraindications: ["psychoses", "acute narrow-angle glaucoma"],
       sideEffects: ["Drowsiness", "Dizziness", "Headache"],
       interactions: ["CNS depressants", "Alcohol"],
@@ -3836,6 +5038,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med318",
       name: "Clorazepate",
+      genericName: "Clorazepate",
+      tradeName: "Clorazepate (Clorazepate)",
       contraindications: ["acute narrow-angle glaucoma"],
       sideEffects: ["Drowsiness", "Dizziness", "Nervousness"],
       interactions: ["CNS depressants", "Alcohol"],
@@ -3844,6 +5048,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med319",
       name: "Hydroxyzine",
+      genericName: "Hydroxyzine",
+      tradeName: "Hydroxyzine (Hydroxyzine)",
       contraindications: ["early pregnancy", "prolonged QT interval"],
       sideEffects: ["Dry mouth", "Drowsiness", "Fatigue"],
       interactions: ["CNS depressants", "Anticholinergics"],
@@ -3852,6 +5058,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med320",
       name: "Meprobamate",
+      genericName: "Meprobamate",
+      tradeName: "Meprobamate (Meprobamate)",
       contraindications: ["acute intermittent porphyria"],
       sideEffects: ["Drowsiness", "Ataxia", "Dizziness"],
       interactions: ["CNS depressants", "Alcohol"],
@@ -3862,6 +5070,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med321",
       name: "Zolpidem",
+      genericName: "Zolpidem",
+      tradeName: "Stilnox (Zolpidem)",
       contraindications: ["complex sleep behaviors"],
       sideEffects: ["Drowsiness", "Dizziness", "Diarrhea", "Drugged feeling"],
       interactions: ["CNS depressants", "Alcohol", "CYP3A4 inhibitors"],
@@ -3870,6 +5080,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med322",
       name: "Eszopiclone",
+      genericName: "Eszopiclone",
+      tradeName: "Eszopiclone (Eszopiclone)",
       contraindications: ["complex sleep behaviors"],
       sideEffects: ["Unpleasant taste", "Headache", "Somnolence"],
       interactions: ["CNS depressants", "CYP3A4 inhibitors"],
@@ -3878,6 +5090,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med323",
       name: "Zaleplon",
+      genericName: "Zaleplon",
+      tradeName: "Zaleplon (Zaleplon)",
       contraindications: ["complex sleep behaviors"],
       sideEffects: ["Headache", "Drowsiness", "Dizziness"],
       interactions: ["CNS depressants", "Cimetidine"],
@@ -3886,6 +5100,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med324",
       name: "Temazepam",
+      genericName: "Temazepam",
+      tradeName: "Temazepam (Temazepam)",
       contraindications: ["pregnancy"],
       sideEffects: ["Drowsiness", "Headache", "Fatigue", "Nervousness"],
       interactions: ["CNS depressants", "Alcohol"],
@@ -3894,6 +5110,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med325",
       name: "Triazolam",
+      genericName: "Triazolam",
+      tradeName: "Triazolam (Triazolam)",
       contraindications: ["pregnancy", "concurrent use with strong CYP3A4 inhibitors"],
       sideEffects: ["Drowsiness", "Dizziness", "Lightheadedness"],
       interactions: ["Ketoconazole", "Itraconazole", "Nefazodone"],
@@ -3902,6 +5120,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med326",
       name: "Ramelteon",
+      genericName: "Ramelteon",
+      tradeName: "Ramelteon (Ramelteon)",
       contraindications: ["concurrent use with fluvoxamine"],
       sideEffects: ["Somnolence", "Dizziness", "Fatigue"],
       interactions: ["Fluvoxamine", "CYP1A2 inhibitors"],
@@ -3910,6 +5130,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med327",
       name: "Suvorexant",
+      genericName: "Suvorexant",
+      tradeName: "Suvorexant (Suvorexant)",
       contraindications: ["narcolepsy"],
       sideEffects: ["Somnolence", "Headache", "Dizziness", "Abnormal dreams"],
       interactions: ["Strong CYP3A inhibitors", "CNS depressants"],
@@ -3918,6 +5140,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med328",
       name: "Phenobarbital",
+      genericName: "Phenobarbital",
+      tradeName: "Phenobarbital (Phenobarbital)",
       contraindications: ["porphyria", "severe respiratory disease"],
       sideEffects: ["Somnolence", "Agitation", "Confusion"],
       interactions: ["CNS depressants", "CYP450 inducers"],
@@ -3926,6 +5150,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med329",
       name: "Secobarbital",
+      genericName: "Secobarbital",
+      tradeName: "Secobarbital (Secobarbital)",
       contraindications: ["porphyria", "severe respiratory disease"],
       sideEffects: ["Somnolence", "Confusion", "Respiratory depression"],
       interactions: ["CNS depressants", "Alcohol"],
@@ -3934,6 +5160,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med330",
       name: "Doxepin (Insomnia)",
+      genericName: "Doxepin (Insomnia)",
+      tradeName: "Doxepin (Insomnia) (Doxepin (Insomnia))",
       contraindications: ["glaucoma", "severe urinary retention", "MAO inhibitors"],
       sideEffects: ["Somnolence", "Nausea", "Upper respiratory infection"],
       interactions: ["MAO inhibitors", "Cimetidine"],
@@ -3944,6 +5172,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med331",
       name: "Carbidopa/Levodopa",
+      genericName: "Carbidopa/Levodopa",
+      tradeName: "Sinemet (Carbidopa/Levodopa)",
       contraindications: ["narrow-angle glaucoma", "MAO inhibitors"],
       sideEffects: ["Nausea", "Dizziness", "Dyskinesia", "Hallucinations"],
       interactions: ["MAO inhibitors", "Iron salts", "Antipsychotics"],
@@ -3952,6 +5182,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med332",
       name: "Pramipexole",
+      genericName: "Pramipexole",
+      tradeName: "Mirapex (Pramipexole)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Nausea", "Dizziness", "Somnolence", "Insomnia"],
       interactions: ["Cimetidine", "Dopamine antagonists"],
@@ -3960,6 +5192,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med333",
       name: "Ropinirole",
+      genericName: "Ropinirole",
+      tradeName: "Requip (Ropinirole)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Nausea", "Dizziness", "Somnolence", "Syncope"],
       interactions: ["CYP1A2 inhibitors", "Estrogens"],
@@ -3968,6 +5202,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med334",
       name: "Rotigotine",
+      genericName: "Rotigotine",
+      tradeName: "Rotigotine (Rotigotine)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Application site reactions", "Nausea", "Somnolence", "Dizziness"],
       interactions: ["Dopamine antagonists", "CNS depressants"],
@@ -3976,6 +5212,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med335",
       name: "Entacapone",
+      genericName: "Entacapone",
+      tradeName: "Entacapone (Entacapone)",
       contraindications: ["concurrent use with non-selective MAO inhibitors"],
       sideEffects: ["Dyskinesia", "Urine discoloration", "Diarrhea", "Nausea"],
       interactions: ["Non-selective MAO inhibitors", "Drugs metabolized by COMT"],
@@ -3984,6 +5222,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med336",
       name: "Tolcapone",
+      genericName: "Tolcapone",
+      tradeName: "Tolcapone (Tolcapone)",
       contraindications: ["liver disease", "history of tolcapone-induced hepatocellular injury"],
       sideEffects: ["Dyskinesia", "Nausea", "Diarrhea", "Hepatotoxicity"],
       interactions: ["Non-selective MAO inhibitors"],
@@ -3992,6 +5232,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med337",
       name: "Selegiline",
+      genericName: "Selegiline",
+      tradeName: "Selegiline (Selegiline)",
       contraindications: ["concurrent use with meperidine or other opioids"],
       sideEffects: ["Nausea", "Dizziness", "Insomnia", "Hallucinations"],
       interactions: ["Meperidine", "Tramadol", "Methadone", "MAO inhibitors"],
@@ -4000,6 +5242,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med338",
       name: "Rasagiline",
+      genericName: "Rasagiline",
+      tradeName: "Rasagiline (Rasagiline)",
       contraindications: ["concurrent use with meperidine, tramadol, methadone, or MAO inhibitors"],
       sideEffects: ["Headache", "Arthralgia", "Dyspepsia", "Depression"],
       interactions: ["Meperidine", "Tramadol", "Methadone", "Dextromethorphan"],
@@ -4008,6 +5252,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med339",
       name: "Amantadine",
+      genericName: "Amantadine",
+      tradeName: "Amantadine (Amantadine)",
       contraindications: ["end-stage renal disease"],
       sideEffects: ["Nausea", "Dizziness", "Insomnia", "Livedo reticularis"],
       interactions: ["Anticholinergics", "Live attenuated influenza vaccine"],
@@ -4016,6 +5262,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med340",
       name: "Benztropine",
+      genericName: "Benztropine",
+      tradeName: "Benztropine (Benztropine)",
       contraindications: ["children under 3 years", "narrow-angle glaucoma"],
       sideEffects: ["Dry mouth", "Blurred vision", "Constipation", "Urinary retention"],
       interactions: ["Other anticholinergics", "Phenothiazines"],
@@ -4026,6 +5274,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med341",
       name: "Donepezil",
+      genericName: "Donepezil",
+      tradeName: "Aricept (Donepezil)",
       contraindications: ["hypersensitivity to piperidine derivatives"],
       sideEffects: ["Nausea", "Diarrhea", "Insomnia", "Vomiting"],
       interactions: ["Anticholinergics", "Cholinomimetics"],
@@ -4034,6 +5284,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med342",
       name: "Rivastigmine",
+      genericName: "Rivastigmine",
+      tradeName: "Rivastigmine (Rivastigmine)",
       contraindications: ["history of application site reactions with patch"],
       sideEffects: ["Nausea", "Vomiting", "Anorexia", "Weight loss"],
       interactions: ["Anticholinergics", "Cholinomimetics"],
@@ -4042,6 +5294,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med343",
       name: "Galantamine",
+      genericName: "Galantamine",
+      tradeName: "Galantamine (Galantamine)",
       contraindications: ["severe renal or hepatic impairment"],
       sideEffects: ["Nausea", "Vomiting", "Diarrhea", "Anorexia"],
       interactions: ["Anticholinergics", "Cholinomimetics"],
@@ -4050,6 +5304,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med344",
       name: "Memantine",
+      genericName: "Memantine",
+      tradeName: "Ebixa (Memantine)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Dizziness", "Headache", "Confusion", "Constipation"],
       interactions: ["Carbonic anhydrase inhibitors", "Sodium bicarbonate"],
@@ -4058,6 +5314,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med345",
       name: "Memantine/Donepezil",
+      genericName: "Memantine/Donepezil",
+      tradeName: "Memantine/Donepezil (Memantine/Donepezil)",
       contraindications: ["hypersensitivity to piperidine derivatives"],
       sideEffects: ["Headache", "Diarrhea", "Dizziness", "Anorexia"],
       interactions: ["Anticholinergics", "Cholinomimetics"],
@@ -4066,6 +5324,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med346",
       name: "Aducanumab",
+      genericName: "Aducanumab",
+      tradeName: "Aducanumab (Aducanumab)",
       contraindications: ["none"],
       sideEffects: ["ARIA-E (edema)", "ARIA-H (microhemorrhage)", "Headache"],
       interactions: ["None significant"],
@@ -4074,6 +5334,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med347",
       name: "Lecanemab",
+      genericName: "Lecanemab",
+      tradeName: "Lecanemab (Lecanemab)",
       contraindications: ["none"],
       sideEffects: ["Infusion-related reactions", "ARIA-H", "ARIA-E", "Headache"],
       interactions: ["None significant"],
@@ -4082,6 +5344,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med348",
       name: "Donanemab",
+      genericName: "Donanemab",
+      tradeName: "Donanemab (Donanemab)",
       contraindications: ["none"],
       sideEffects: ["ARIA-E", "ARIA-H", "Infusion-related reactions", "Headache"],
       interactions: ["None significant"],
@@ -4090,6 +5354,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med349",
       name: "Tacrine",
+      genericName: "Tacrine",
+      tradeName: "Tacrine (Tacrine)",
       contraindications: ["previous tacrine-induced hepatotoxicity"],
       sideEffects: ["Elevated transaminases", "Nausea", "Vomiting", "Diarrhea"],
       interactions: ["Theophylline", "Cimetidine", "Fluvoxamine"],
@@ -4098,6 +5364,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med350",
       name: "Suvorexant (for Alzheimer's Insomnia)",
+      genericName: "Suvorexant (for Alzheimer's Insomnia)",
+      tradeName: "Suvorexant (for Alzheimer's Insomnia) (Suvorexant (for Alzheimer's Insomnia))",
       contraindications: ["narcolepsy"],
       sideEffects: ["Somnolence", "Headache", "Dizziness", "Abnormal dreams"],
       interactions: ["Strong CYP3A inhibitors", "CNS depressants"],
@@ -4108,6 +5376,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med351",
       name: "Isoniazid",
+      genericName: "Isoniazid",
+      tradeName: "Isoniazid (Isoniazid)",
       contraindications: ["acute liver disease", "previous isoniazid-associated hepatic injury"],
       sideEffects: ["Hepatotoxicity", "Peripheral neuropathy", "Rash"],
       interactions: ["Phenytoin", "Carbamazepine", "Alcohol"],
@@ -4116,6 +5386,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med352",
       name: "Rifampin",
+      genericName: "Rifampin",
+      tradeName: "Rifampin (Rifampin)",
       contraindications: ["concurrent use with protease inhibitors"],
       sideEffects: ["Red-orange discoloration of body fluids", "Hepatotoxicity", "GI upset"],
       interactions: ["Oral contraceptives", "Warfarin", "Protease inhibitors"],
@@ -4124,6 +5396,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med353",
       name: "Pyrazinamide",
+      genericName: "Pyrazinamide",
+      tradeName: "Pyrazinamide (Pyrazinamide)",
       contraindications: ["severe hepatic damage", "acute gout"],
       sideEffects: ["Hepatotoxicity", "Hyperuricemia", "Arthralgia"],
       interactions: ["Allopurinol", "Cyclosporine"],
@@ -4132,6 +5406,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med354",
       name: "Ethambutol",
+      genericName: "Ethambutol",
+      tradeName: "Ethambutol (Ethambutol)",
       contraindications: ["optic neuritis"],
       sideEffects: ["Optic neuritis", "Decreased visual acuity", "Red-green color blindness"],
       interactions: ["Aluminum hydroxide antacids"],
@@ -4140,6 +5416,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med355",
       name: "Streptomycin",
+      genericName: "Streptomycin",
+      tradeName: "Streptomycin (Streptomycin)",
       contraindications: ["hypersensitivity to aminoglycosides"],
       sideEffects: ["Ototoxicity", "Nephrotoxicity", "Neuromuscular blockade"],
       interactions: ["Loop diuretics", "Neuromuscular blockers"],
@@ -4148,6 +5426,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med356",
       name: "Rifabutin",
+      genericName: "Rifabutin",
+      tradeName: "Rifabutin (Rifabutin)",
       contraindications: ["hypersensitivity to rifamycins"],
       sideEffects: ["Uveitis", "Neutropenia", "Rash", "GI upset"],
       interactions: ["Protease inhibitors", "Macrolides", "Azole antifungals"],
@@ -4156,6 +5436,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med357",
       name: "Rifapentine",
+      genericName: "Rifapentine",
+      tradeName: "Rifapentine (Rifapentine)",
       contraindications: ["hypersensitivity to rifamycins"],
       sideEffects: ["Hepatotoxicity", "Hyperuricemia", "Red-orange body fluids"],
       interactions: ["Oral contraceptives", "Warfarin", "Protease inhibitors"],
@@ -4164,6 +5446,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med358",
       name: "Bedaquiline",
+      genericName: "Bedaquiline",
+      tradeName: "Bedaquiline (Bedaquiline)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["QT prolongation", "Hepatotoxicity", "Nausea", "Arthralgia"],
       interactions: ["Strong CYP3A4 inducers/inhibitors", "Other QT prolonging drugs"],
@@ -4172,6 +5456,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med359",
       name: "Pretomanid",
+      genericName: "Pretomanid",
+      tradeName: "Pretomanid (Pretomanid)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Peripheral neuropathy", "Hepatotoxicity", "Acne", "Anemia"],
       interactions: ["Efavirenz", "Rifamycins"],
@@ -4180,6 +5466,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med360",
       name: "Ethionamide",
+      genericName: "Ethionamide",
+      tradeName: "Ethionamide (Ethionamide)",
       contraindications: ["severe hepatic impairment"],
       sideEffects: ["GI upset", "Hepatotoxicity", "Metallic taste", "Peripheral neuropathy"],
       interactions: ["Isoniazid", "Cycloserine"],
@@ -4190,6 +5478,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med361",
       name: "Ivermectin",
+      genericName: "Ivermectin",
+      tradeName: "Ivermectin (Ivermectin)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Mazzotti reaction", "Dizziness", "Nausea", "Pruritus"],
       interactions: ["Warfarin"],
@@ -4198,6 +5488,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med362",
       name: "Albendazole",
+      genericName: "Albendazole",
+      tradeName: "Albendazole (Albendazole)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Elevated liver enzymes", "Abdominal pain", "Nausea", "Headache"],
       interactions: ["Dexamethasone", "Praziquantel", "Cimetidine"],
@@ -4206,6 +5498,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med363",
       name: "Mebendazole",
+      genericName: "Mebendazole",
+      tradeName: "Mebendazole (Mebendazole)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Abdominal pain", "Diarrhea", "Rash"],
       interactions: ["Metronidazole", "Cimetidine"],
@@ -4214,6 +5508,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med364",
       name: "Praziquantel",
+      genericName: "Praziquantel",
+      tradeName: "Praziquantel (Praziquantel)",
       contraindications: ["ocular cysticercosis", "concurrent use with strong CYP450 inducers"],
       sideEffects: ["Headache", "Dizziness", "Abdominal pain", "Nausea"],
       interactions: ["Rifampin", "Dexamethasone", "Cimetidine"],
@@ -4222,6 +5518,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med365",
       name: "Pyrantel Pamoate",
+      genericName: "Pyrantel Pamoate",
+      tradeName: "Pyrantel Pamoate (Pyrantel Pamoate)",
       contraindications: ["liver disease"],
       sideEffects: ["Nausea", "Vomiting", "Diarrhea", "Abdominal cramps"],
       interactions: ["Piperazine"],
@@ -4230,6 +5528,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med366",
       name: "Nitazoxanide",
+      genericName: "Nitazoxanide",
+      tradeName: "Nitazoxanide (Nitazoxanide)",
       contraindications: ["prior hypersensitivity"],
       sideEffects: ["Abdominal pain", "Diarrhea", "Headache", "Nausea"],
       interactions: ["Highly protein-bound drugs"],
@@ -4238,6 +5538,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med367",
       name: "Permethrin",
+      genericName: "Permethrin",
+      tradeName: "Permethrin (Permethrin)",
       contraindications: ["hypersensitivity to pyrethroids or chrysanthemums"],
       sideEffects: ["Mild burning", "Stinging", "Pruritus", "Erythema"],
       interactions: ["None significant (topical)"],
@@ -4246,6 +5548,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med368",
       name: "Lindane",
+      genericName: "Lindane",
+      tradeName: "Lindane (Lindane)",
       contraindications: ["premature infants", "known seizure disorders", "Norwegian scabies"],
       sideEffects: ["Seizures", "Dizziness", "Pruritus", "Contact dermatitis"],
       interactions: ["Drugs that lower seizure threshold"],
@@ -4254,6 +5558,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med369",
       name: "Crotamiton",
+      genericName: "Crotamiton",
+      tradeName: "Crotamiton (Crotamiton)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Pruritus", "Contact dermatitis", "Warm sensation"],
       interactions: ["None significant"],
@@ -4262,6 +5568,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med370",
       name: "Triclabendazole",
+      genericName: "Triclabendazole",
+      tradeName: "Triclabendazole (Triclabendazole)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Abdominal pain", "Hyperhidrosis", "Nausea", "Decreased appetite"],
       interactions: ["CYP2C19 inhibitors"],
@@ -4272,6 +5580,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med371",
       name: "Chloroquine",
+      genericName: "Chloroquine",
+      tradeName: "Chloroquine (Chloroquine)",
       contraindications: ["retinal or visual field changes"],
       sideEffects: ["Visual disturbances", "GI upset", "Pruritus", "Headache"],
       interactions: ["Antacids", "Cimetidine", "Ampicillin"],
@@ -4280,6 +5590,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med372",
       name: "Artemether/Lumefantrine",
+      genericName: "Artemether/Lumefantrine",
+      tradeName: "Artemether/Lumefantrine (Artemether/Lumefantrine)",
       contraindications: ["concurrent use with strong CYP3A4 inducers", "QT prolongation"],
       sideEffects: ["Headache", "Anorexia", "Dizziness", "Arthralgia"],
       interactions: ["CYP3A4 inhibitors/inducers", "QT prolonging drugs"],
@@ -4288,6 +5600,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med373",
       name: "Mefloquine",
+      genericName: "Mefloquine",
+      tradeName: "Mefloquine (Mefloquine)",
       contraindications: ["history of psychiatric disorders", "seizure disorders"],
       sideEffects: ["Vomiting", "Dizziness", "Myalgia", "Neuropsychiatric effects"],
       interactions: ["Halofantrine", "Ketoconazole", "Anticonvulsants"],
@@ -4296,6 +5610,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med374",
       name: "Atovaquone/Proguanil",
+      genericName: "Atovaquone/Proguanil",
+      tradeName: "Atovaquone/Proguanil (Atovaquone/Proguanil)",
       contraindications: ["severe renal impairment"],
       sideEffects: ["Abdominal pain", "Nausea", "Vomiting", "Headache"],
       interactions: ["Rifampin", "Tetracycline", "Metoclopramide"],
@@ -4304,6 +5620,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med375",
       name: "Primaquine",
+      genericName: "Primaquine",
+      tradeName: "Primaquine (Primaquine)",
       contraindications: ["G6PD deficiency", "pregnancy"],
       sideEffects: ["Hemolytic anemia (in G6PD deficiency)", "GI upset", "Methemoglobinemia"],
       interactions: ["Quinacrine", "Other hemolytic agents"],
@@ -4312,6 +5630,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med376",
       name: "Quinine",
+      genericName: "Quinine",
+      tradeName: "Quinine (Quinine)",
       contraindications: ["G6PD deficiency", "optic neuritis", "tinnitus"],
       sideEffects: ["Cinchonism", "Hypoglycemia", "QT prolongation"],
       interactions: ["Antacids", "Digoxin", "Warfarin"],
@@ -4320,6 +5640,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med377",
       name: "Artesunate",
+      genericName: "Artesunate",
+      tradeName: "Artesunate (Artesunate)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Hemolytic anemia", "Elevated transaminases", "Rash"],
       interactions: ["CYP2A6 inhibitors"],
@@ -4328,6 +5650,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med378",
       name: "Pyrimethamine",
+      genericName: "Pyrimethamine",
+      tradeName: "Pyrimethamine (Pyrimethamine)",
       contraindications: ["megaloblastic anemia due to folate deficiency"],
       sideEffects: ["Anemia", "Leukopenia", "Thrombocytopenia", "Anorexia"],
       interactions: ["Sulfonamides", "Folic acid antagonists", "Lorazepam"],
@@ -4336,6 +5660,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med379",
       name: "Tafenoquine",
+      genericName: "Tafenoquine",
+      tradeName: "Tafenoquine (Tafenoquine)",
       contraindications: ["G6PD deficiency", "pregnancy", "psychiatric disorders"],
       sideEffects: ["Hemolytic anemia", "Dizziness", "Nausea", "Vomiting"],
       interactions: ["Drugs that prolong QT interval"],
@@ -4344,6 +5670,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med380",
       name: "Amodiaquine",
+      genericName: "Amodiaquine",
+      tradeName: "Amodiaquine (Amodiaquine)",
       contraindications: ["hepatic impairment", "retinopathy"],
       sideEffects: ["Agranulocytosis", "Hepatotoxicity", "Nausea", "Vomiting"],
       interactions: ["Efavirenz", "Zidovudine"],
@@ -4354,6 +5682,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med381",
       name: "Insulin Glargine",
+      genericName: "Insulin Glargine",
+      tradeName: "Lantus (Insulin Glargine)",
       contraindications: ["hypoglycemia"],
       sideEffects: ["Hypoglycemia", "Injection site reactions", "Lipodystrophy"],
       interactions: ["Beta-blockers", "Alcohol"],
@@ -4362,6 +5692,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med382",
       name: "Insulin Lispro",
+      genericName: "Insulin Lispro",
+      tradeName: "Insulin Lispro (Insulin Lispro)",
       contraindications: ["hypoglycemia"],
       sideEffects: ["Hypoglycemia", "Injection site reactions", "Pruritus"],
       interactions: ["Beta-blockers", "Alcohol"],
@@ -4370,6 +5702,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med383",
       name: "Insulin Aspart",
+      genericName: "Insulin Aspart",
+      tradeName: "Insulin Aspart (Insulin Aspart)",
       contraindications: ["hypoglycemia"],
       sideEffects: ["Hypoglycemia", "Injection site reactions", "Weight gain"],
       interactions: ["Beta-blockers", "Alcohol"],
@@ -4378,6 +5712,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med384",
       name: "Insulin Detemir",
+      genericName: "Insulin Detemir",
+      tradeName: "Insulin Detemir (Insulin Detemir)",
       contraindications: ["hypoglycemia"],
       sideEffects: ["Hypoglycemia", "Injection site reactions", "Weight gain"],
       interactions: ["Beta-blockers", "Alcohol"],
@@ -4386,6 +5722,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med385",
       name: "Insulin Degludec",
+      genericName: "Insulin Degludec",
+      tradeName: "Insulin Degludec (Insulin Degludec)",
       contraindications: ["hypoglycemia"],
       sideEffects: ["Hypoglycemia", "Injection site reactions", "Lipodystrophy"],
       interactions: ["Beta-blockers", "Alcohol"],
@@ -4394,6 +5732,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med386",
       name: "Insulin Regular",
+      genericName: "Insulin Regular",
+      tradeName: "Insulin Regular (Insulin Regular)",
       contraindications: ["hypoglycemia"],
       sideEffects: ["Hypoglycemia", "Injection site reactions", "Lipodystrophy"],
       interactions: ["Beta-blockers", "Alcohol"],
@@ -4402,6 +5742,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med387",
       name: "Insulin NPH",
+      genericName: "Insulin NPH",
+      tradeName: "Insulin NPH (Insulin NPH)",
       contraindications: ["hypoglycemia"],
       sideEffects: ["Hypoglycemia", "Injection site reactions", "Lipodystrophy"],
       interactions: ["Beta-blockers", "Alcohol"],
@@ -4410,6 +5752,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med388",
       name: "Insulin Glulisine",
+      genericName: "Insulin Glulisine",
+      tradeName: "Insulin Glulisine (Insulin Glulisine)",
       contraindications: ["hypoglycemia"],
       sideEffects: ["Hypoglycemia", "Injection site reactions", "Lipodystrophy"],
       interactions: ["Beta-blockers", "Alcohol"],
@@ -4418,6 +5762,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med389",
       name: "Insulin Isophane/Regular (70/30)",
+      genericName: "Insulin Isophane/Regular (70/30)",
+      tradeName: "Insulin Isophane/Regular (70/30) (Insulin Isophane/Regular (70/30))",
       contraindications: ["hypoglycemia"],
       sideEffects: ["Hypoglycemia", "Injection site reactions", "Lipodystrophy"],
       interactions: ["Beta-blockers", "Alcohol"],
@@ -4426,6 +5772,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med390",
       name: "Insulin Lispro Protamine/Lispro (75/25)",
+      genericName: "Insulin Lispro Protamine/Lispro (75/25)",
+      tradeName: "Insulin Lispro Protamine/Lispro (75/25) (Insulin Lispro Protamine/Lispro (75/25))",
       contraindications: ["hypoglycemia"],
       sideEffects: ["Hypoglycemia", "Injection site reactions", "Lipodystrophy"],
       interactions: ["Beta-blockers", "Alcohol"],
@@ -4436,6 +5784,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med391",
       name: "Levothyroxine",
+      genericName: "Levothyroxine",
+      tradeName: "Eltroxin (Levothyroxine)",
       contraindications: ["uncorrected adrenal insufficiency", "acute MI"],
       sideEffects: ["Palpitations", "Insomnia", "Weight loss", "Sweating"],
       interactions: ["Calcium supplements", "Iron supplements", "Antacids"],
@@ -4444,6 +5794,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med392",
       name: "Liothyronine",
+      genericName: "Liothyronine",
+      tradeName: "Liothyronine (Liothyronine)",
       contraindications: ["uncorrected adrenal insufficiency", "acute MI"],
       sideEffects: ["Arrhythmia", "Tachycardia", "Nervousness", "Headache"],
       interactions: ["Oral anticoagulants", "Sympathomimetics"],
@@ -4452,6 +5804,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med393",
       name: "Liotrix",
+      genericName: "Liotrix",
+      tradeName: "Liotrix (Liotrix)",
       contraindications: ["uncorrected adrenal insufficiency", "acute MI"],
       sideEffects: ["Palpitations", "Nervousness", "Weight loss"],
       interactions: ["Oral anticoagulants", "Sympathomimetics"],
@@ -4460,6 +5814,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med394",
       name: "Methimazole",
+      genericName: "Methimazole",
+      tradeName: "Methimazole (Methimazole)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Agranulocytosis", "Hepatotoxicity", "Rash", "Arthralgia"],
       interactions: ["Oral anticoagulants", "Beta-blockers"],
@@ -4468,6 +5824,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med395",
       name: "Propylthiouracil",
+      genericName: "Propylthiouracil",
+      tradeName: "Propylthiouracil (Propylthiouracil)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Severe hepatotoxicity", "Agranulocytosis", "Rash"],
       interactions: ["Oral anticoagulants", "Beta-blockers"],
@@ -4476,6 +5834,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med396",
       name: "Potassium Iodide",
+      genericName: "Potassium Iodide",
+      tradeName: "Potassium Iodide (Potassium Iodide)",
       contraindications: ["nodular thyroid disease with heart disease", "hyperkalemia"],
       sideEffects: ["GI upset", "Rash", "Salivary gland swelling"],
       interactions: ["Potassium-sparing diuretics", "ACE inhibitors"],
@@ -4484,6 +5844,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med397",
       name: "Thyroid Desiccated",
+      genericName: "Thyroid Desiccated",
+      tradeName: "Thyroid Desiccated (Thyroid Desiccated)",
       contraindications: ["uncorrected adrenal insufficiency", "acute MI"],
       sideEffects: ["Palpitations", "Tachycardia", "Weight loss"],
       interactions: ["Oral anticoagulants", "Sympathomimetics"],
@@ -4492,6 +5854,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med398",
       name: "Sodium Iodide I-131",
+      genericName: "Sodium Iodide I-131",
+      tradeName: "Sodium Iodide I-131 (Sodium Iodide I-131)",
       contraindications: ["pregnancy", "lactation"],
       sideEffects: ["Radiation sickness", "Hypothyroidism", "Neck tenderness"],
       interactions: ["Antithyroid agents"],
@@ -4500,6 +5864,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med399",
       name: "Propranolol (for hyperthyroidism)",
+      genericName: "Propranolol (for hyperthyroidism)",
+      tradeName: "Propranolol (for hyperthyroidism) (Propranolol (for hyperthyroidism))",
       contraindications: ["asthma", "bradycardia", "heart block"],
       sideEffects: ["Fatigue", "Bradycardia", "Hypotension"],
       interactions: ["Calcium channel blockers", "Digoxin"],
@@ -4508,6 +5874,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med400",
       name: "Atenolol (for hyperthyroidism)",
+      genericName: "Atenolol (for hyperthyroidism)",
+      tradeName: "Atenolol (for hyperthyroidism) (Atenolol (for hyperthyroidism))",
       contraindications: ["sinus bradycardia", "heart block"],
       sideEffects: ["Fatigue", "Bradycardia", "Hypotension"],
       interactions: ["Calcium channel blockers", "Digoxin"],
@@ -4518,6 +5886,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med401",
       name: "Prednisone",
+      genericName: "Prednisone",
+      tradeName: "Hostacortin (Prednisone)",
       contraindications: ["systemic fungal infections"],
       sideEffects: ["Weight gain", "Insomnia", "Mood changes", "Hyperglycemia"],
       interactions: ["NSAIDs", "Antidiabetics", "Vaccines"],
@@ -4526,6 +5896,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med402",
       name: "Methylprednisolone",
+      genericName: "Methylprednisolone",
+      tradeName: "Solu-Medrol (Methylprednisolone)",
       contraindications: ["systemic fungal infections"],
       sideEffects: ["Fluid retention", "Hypertension", "Hyperglycemia"],
       interactions: ["NSAIDs", "Antidiabetics", "Vaccines"],
@@ -4534,6 +5906,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med403",
       name: "Dexamethasone",
+      genericName: "Dexamethasone",
+      tradeName: "Dexazone (Dexamethasone)",
       contraindications: ["systemic fungal infections"],
       sideEffects: ["Insomnia", "Increased appetite", "Hyperglycemia"],
       interactions: ["NSAIDs", "Antidiabetics", "Vaccines"],
@@ -4542,6 +5916,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med404",
       name: "Hydrocortisone",
+      genericName: "Hydrocortisone",
+      tradeName: "Hydrocortisone (Hydrocortisone)",
       contraindications: ["systemic fungal infections"],
       sideEffects: ["Fluid retention", "Hypertension", "Hyperglycemia"],
       interactions: ["NSAIDs", "Antidiabetics", "Vaccines"],
@@ -4550,6 +5926,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med405",
       name: "Cortisone",
+      genericName: "Cortisone",
+      tradeName: "Cortisone (Cortisone)",
       contraindications: ["systemic fungal infections"],
       sideEffects: ["Fluid retention", "Hypertension", "Hyperglycemia"],
       interactions: ["NSAIDs", "Antidiabetics", "Vaccines"],
@@ -4558,6 +5936,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med406",
       name: "Fludrocortisone",
+      genericName: "Fludrocortisone",
+      tradeName: "Fludrocortisone (Fludrocortisone)",
       contraindications: ["systemic fungal infections"],
       sideEffects: ["Hypertension", "Edema", "Hypokalemia"],
       interactions: ["Diuretics", "Digoxin"],
@@ -4566,6 +5946,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med407",
       name: "Budesonide (oral)",
+      genericName: "Budesonide (oral)",
+      tradeName: "Budesonide (oral) (Budesonide (oral))",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Headache", "Nausea", "Respiratory infection"],
       interactions: ["CYP3A4 inhibitors", "Grapefruit juice"],
@@ -4574,6 +5956,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med408",
       name: "Deflazacort",
+      genericName: "Deflazacort",
+      tradeName: "Deflazacort (Deflazacort)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Cushingoid appearance", "Weight gain", "Increased appetite"],
       interactions: ["CYP3A4 inducers/inhibitors", "Vaccines"],
@@ -4582,6 +5966,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med409",
       name: "Triamcinolone (injection)",
+      genericName: "Triamcinolone (injection)",
+      tradeName: "Triamcinolone (injection) (Triamcinolone (injection))",
       contraindications: ["systemic fungal infections"],
       sideEffects: ["Joint pain", "Injection site reactions", "Hyperglycemia"],
       interactions: ["NSAIDs", "Antidiabetics", "Vaccines"],
@@ -4590,6 +5976,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med410",
       name: "Betamethasone",
+      genericName: "Betamethasone",
+      tradeName: "Betamethasone (Betamethasone)",
       contraindications: ["systemic fungal infections"],
       sideEffects: ["Fluid retention", "Hypertension", "Hyperglycemia"],
       interactions: ["NSAIDs", "Antidiabetics", "Vaccines"],
@@ -4600,6 +5988,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med411",
       name: "Estradiol",
+      genericName: "Estradiol",
+      tradeName: "Estradiol (Estradiol)",
       contraindications: ["undiagnosed abnormal genital bleeding", "breast cancer", "DVT/PE"],
       sideEffects: ["Breast tenderness", "Headache", "Nausea", "Edema"],
       interactions: ["CYP3A4 inducers/inhibitors", "Thyroid hormones"],
@@ -4608,6 +5998,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med412",
       name: "Conjugated Estrogens",
+      genericName: "Conjugated Estrogens",
+      tradeName: "Conjugated Estrogens (Conjugated Estrogens)",
       contraindications: ["undiagnosed abnormal genital bleeding", "breast cancer", "DVT/PE"],
       sideEffects: ["Breast tenderness", "Headache", "Nausea", "Edema"],
       interactions: ["CYP3A4 inducers/inhibitors", "Thyroid hormones"],
@@ -4616,6 +6008,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med413",
       name: "Testosterone",
+      genericName: "Testosterone",
+      tradeName: "Testosterone (Testosterone)",
       contraindications: ["prostate cancer", "breast cancer in males"],
       sideEffects: ["Acne", "Application site reactions", "Prostate enlargement"],
       interactions: ["Insulin", "Oral anticoagulants", "Corticosteroids"],
@@ -4624,6 +6018,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med414",
       name: "Progesterone",
+      genericName: "Progesterone",
+      tradeName: "Progesterone (Progesterone)",
       contraindications: ["undiagnosed abnormal genital bleeding", "breast cancer", "DVT/PE"],
       sideEffects: ["Dizziness", "Breast tenderness", "Headache", "Abdominal pain"],
       interactions: ["CYP3A4 inducers/inhibitors"],
@@ -4632,6 +6028,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med415",
       name: "Medroxyprogesterone",
+      genericName: "Medroxyprogesterone",
+      tradeName: "Medroxyprogesterone (Medroxyprogesterone)",
       contraindications: ["undiagnosed abnormal genital bleeding", "breast cancer", "DVT/PE"],
       sideEffects: ["Weight gain", "Headache", "Irregular bleeding"],
       interactions: ["Aminoglutethimide"],
@@ -4640,6 +6038,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med416",
       name: "Norethindrone",
+      genericName: "Norethindrone",
+      tradeName: "Norethindrone (Norethindrone)",
       contraindications: ["undiagnosed abnormal genital bleeding", "breast cancer", "DVT/PE"],
       sideEffects: ["Irregular bleeding", "Headache", "Breast tenderness"],
       interactions: ["CYP3A4 inducers/inhibitors"],
@@ -4648,6 +6048,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med417",
       name: "Methyltestosterone",
+      genericName: "Methyltestosterone",
+      tradeName: "Methyltestosterone (Methyltestosterone)",
       contraindications: ["prostate cancer", "breast cancer in males", "pregnancy"],
       sideEffects: ["Hepatotoxicity", "Acne", "Gynecomastia"],
       interactions: ["Oral anticoagulants", "Insulin"],
@@ -4656,6 +6058,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med418",
       name: "Levonorgestrel",
+      genericName: "Levonorgestrel",
+      tradeName: "Levonorgestrel (Levonorgestrel)",
       contraindications: ["undiagnosed abnormal genital bleeding", "breast cancer", "liver disease"],
       sideEffects: ["Nausea", "Abdominal pain", "Fatigue", "Headache"],
       interactions: ["CYP3A4 inducers", "St. John's wort"],
@@ -4664,6 +6068,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med419",
       name: "Estropipate",
+      genericName: "Estropipate",
+      tradeName: "Estropipate (Estropipate)",
       contraindications: ["undiagnosed abnormal genital bleeding", "breast cancer", "DVT/PE"],
       sideEffects: ["Breast tenderness", "Headache", "Nausea", "Edema"],
       interactions: ["CYP3A4 inducers/inhibitors", "Thyroid hormones"],
@@ -4672,6 +6078,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med420",
       name: "Oxandrolone",
+      genericName: "Oxandrolone",
+      tradeName: "Oxandrolone (Oxandrolone)",
       contraindications: ["prostate cancer", "breast cancer in males", "pregnancy"],
       sideEffects: ["Hepatotoxicity", "Acne", "Edema", "Virilization in females"],
       interactions: ["Oral anticoagulants", "Insulin", "Corticosteroids"],
@@ -4682,6 +6090,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med421",
       name: "Alendronate",
+      genericName: "Alendronate",
+      tradeName: "Alendronate (Alendronate)",
       contraindications: ["esophageal abnormalities", "inability to stand/sit upright for 30 mins", "hypocalcemia"],
       sideEffects: ["Esophagitis", "Abdominal pain", "Musculoskeletal pain"],
       interactions: ["Calcium supplements", "Antacids", "NSAIDs"],
@@ -4690,6 +6100,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med422",
       name: "Risedronate",
+      genericName: "Risedronate",
+      tradeName: "Risedronate (Risedronate)",
       contraindications: ["esophageal abnormalities", "inability to stand/sit upright for 30 mins", "hypocalcemia"],
       sideEffects: ["Arthralgia", "Back pain", "Dyspepsia"],
       interactions: ["Calcium supplements", "Antacids", "NSAIDs"],
@@ -4698,6 +6110,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med423",
       name: "Ibandronate",
+      genericName: "Ibandronate",
+      tradeName: "Ibandronate (Ibandronate)",
       contraindications: ["esophageal abnormalities", "inability to stand/sit upright for 60 mins", "hypocalcemia"],
       sideEffects: ["Dyspepsia", "Back pain", "Extremity pain"],
       interactions: ["Calcium supplements", "Antacids", "NSAIDs"],
@@ -4706,6 +6120,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med424",
       name: "Zoledronic Acid",
+      genericName: "Zoledronic Acid",
+      tradeName: "Zoledronic Acid (Zoledronic Acid)",
       contraindications: ["hypocalcemia", "severe renal impairment"],
       sideEffects: ["Acute phase reaction", "Bone pain", "Fever", "Flu-like symptoms"],
       interactions: ["Aminoglycosides", "Loop diuretics", "Nephrotoxic drugs"],
@@ -4714,6 +6130,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med425",
       name: "Denosumab",
+      genericName: "Denosumab",
+      tradeName: "Denosumab (Denosumab)",
       contraindications: ["hypocalcemia", "pregnancy"],
       sideEffects: ["Back pain", "Extremity pain", "Musculoskeletal pain", "Hypercholesterolemia"],
       interactions: ["Immunosuppressants"],
@@ -4722,6 +6140,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med426",
       name: "Raloxifene",
+      genericName: "Raloxifene",
+      tradeName: "Raloxifene (Raloxifene)",
       contraindications: ["active or past history of VTE", "pregnancy"],
       sideEffects: ["Hot flashes", "Leg cramps", "Peripheral edema"],
       interactions: ["Cholestyramine", "Warfarin"],
@@ -4730,6 +6150,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med427",
       name: "Teriparatide",
+      genericName: "Teriparatide",
+      tradeName: "Teriparatide (Teriparatide)",
       contraindications: ["Paget's disease", "prior radiation therapy to skeleton", "bone metastases"],
       sideEffects: ["Arthralgia", "Pain", "Nausea", "Dizziness"],
       interactions: ["Digoxin"],
@@ -4738,6 +6160,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med428",
       name: "Abaloparatide",
+      genericName: "Abaloparatide",
+      tradeName: "Abaloparatide (Abaloparatide)",
       contraindications: ["Paget's disease", "prior radiation therapy to skeleton", "bone metastases"],
       sideEffects: ["Hypercalciuria", "Dizziness", "Nausea", "Headache"],
       interactions: ["Digoxin"],
@@ -4746,6 +6170,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med429",
       name: "Romosozumab",
+      genericName: "Romosozumab",
+      tradeName: "Romosozumab (Romosozumab)",
       contraindications: ["hypocalcemia", "history of MI or stroke within preceding year"],
       sideEffects: ["Arthralgia", "Headache", "Injection site reactions"],
       interactions: ["None significant"],
@@ -4754,6 +6180,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med430",
       name: "Calcitonin Salmon",
+      genericName: "Calcitonin Salmon",
+      tradeName: "Calcitonin Salmon (Calcitonin Salmon)",
       contraindications: ["hypersensitivity to calcitonin salmon"],
       sideEffects: ["Rhinitis", "Epistaxis", "Back pain", "Arthralgia"],
       interactions: ["Lithium"],
@@ -4764,6 +6192,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med431",
       name: "Omeprazole",
+      genericName: "Omeprazole",
+      tradeName: "Losec (Omeprazole)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Headache", "Abdominal pain", "Nausea", "Diarrhea"],
       interactions: ["Clopidogrel", "Digoxin", "Methotrexate"],
@@ -4772,6 +6202,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med432",
       name: "Pantoprazole",
+      genericName: "Pantoprazole",
+      tradeName: "Controloc (Pantoprazole)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Headache", "Diarrhea", "Nausea", "Flatulence"],
       interactions: ["Atazanavir", "Nelfinavir", "Warfarin"],
@@ -4780,6 +6212,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med433",
       name: "Lansoprazole",
+      genericName: "Lansoprazole",
+      tradeName: "Lansoprazole (Lansoprazole)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Diarrhea", "Abdominal pain", "Nausea", "Constipation"],
       interactions: ["Sucralfate", "Digoxin", "Theophylline"],
@@ -4788,6 +6222,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med434",
       name: "Esomeprazole",
+      genericName: "Esomeprazole",
+      tradeName: "Esomeprazole (Esomeprazole)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Headache", "Diarrhea", "Nausea", "Flatulence"],
       interactions: ["Clopidogrel", "Digoxin", "Methotrexate"],
@@ -4796,6 +6232,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med435",
       name: "Rabeprazole",
+      genericName: "Rabeprazole",
+      tradeName: "Rabeprazole (Rabeprazole)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Headache", "Diarrhea", "Nausea", "Vomiting"],
       interactions: ["Digoxin", "Ketoconazole", "Warfarin"],
@@ -4804,6 +6242,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med436",
       name: "Dexlansoprazole",
+      genericName: "Dexlansoprazole",
+      tradeName: "Dexlansoprazole (Dexlansoprazole)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Diarrhea", "Abdominal pain", "Nausea", "Upper respiratory infection"],
       interactions: ["Methotrexate", "Digoxin", "Ketoconazole"],
@@ -4812,6 +6252,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med437",
       name: "Ilaprazole",
+      genericName: "Ilaprazole",
+      tradeName: "Ilaprazole (Ilaprazole)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Headache", "Nausea", "Diarrhea"],
       interactions: ["Ketoconazole", "Digoxin"],
@@ -4820,6 +6262,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med438",
       name: "Tenatoprazole",
+      genericName: "Tenatoprazole",
+      tradeName: "Tenatoprazole (Tenatoprazole)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Headache", "Diarrhea", "Nausea"],
       interactions: ["Ketoconazole", "Digoxin"],
@@ -4828,6 +6272,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med439",
       name: "Omeprazole/Sodium Bicarbonate",
+      genericName: "Omeprazole/Sodium Bicarbonate",
+      tradeName: "Omeprazole/Sodium Bicarbonate (Omeprazole/Sodium Bicarbonate)",
       contraindications: ["hypersensitivity", "metabolic alkalosis"],
       sideEffects: ["Headache", "Abdominal pain", "Nausea"],
       interactions: ["Clopidogrel", "Digoxin", "Methotrexate"],
@@ -4836,6 +6282,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med440",
       name: "Vonoprazan",
+      genericName: "Vonoprazan",
+      tradeName: "Vonoprazan (Vonoprazan)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Diarrhea", "Constipation", "Nausea"],
       interactions: ["CYP3A4 inhibitors", "Digoxin"],
@@ -4846,6 +6294,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med441",
       name: "Famotidine",
+      genericName: "Famotidine",
+      tradeName: "Antodine (Famotidine)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Headache", "Dizziness", "Constipation", "Diarrhea"],
       interactions: ["Atazanavir", "Itraconazole", "Ketoconazole"],
@@ -4854,6 +6304,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med442",
       name: "Ranitidine",
+      genericName: "Ranitidine",
+      tradeName: "Ranitidine (Ranitidine)",
       contraindications: ["hypersensitivity", "history of acute porphyria"],
       sideEffects: ["Headache", "Constipation", "Diarrhea", "Nausea"],
       interactions: ["Warfarin", "Glipizide", "Ketoconazole"],
@@ -4862,6 +6314,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med443",
       name: "Cimetidine",
+      genericName: "Cimetidine",
+      tradeName: "Cimetidine (Cimetidine)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Diarrhea", "Dizziness", "Drowsiness", "Headache"],
       interactions: ["Warfarin", "Theophylline", "Phenytoin"],
@@ -4870,6 +6324,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med444",
       name: "Nizatidine",
+      genericName: "Nizatidine",
+      tradeName: "Nizatidine (Nizatidine)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Headache", "Dizziness", "Constipation", "Diarrhea"],
       interactions: ["Aspirin", "Ketoconazole"],
@@ -4878,6 +6334,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med445",
       name: "Roxatidine",
+      genericName: "Roxatidine",
+      tradeName: "Roxatidine (Roxatidine)",
       contraindications: ["hypersensitivity", "anuria"],
       sideEffects: ["Headache", "Dizziness", "Constipation", "Diarrhea"],
       interactions: ["Ketoconazole", "Itraconazole"],
@@ -4886,6 +6344,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med446",
       name: "Lafutidine",
+      genericName: "Lafutidine",
+      tradeName: "Lafutidine (Lafutidine)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Headache", "Dizziness", "Constipation", "Diarrhea"],
       interactions: ["Ketoconazole", "Itraconazole"],
@@ -4894,6 +6354,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med447",
       name: "Niperotidine",
+      genericName: "Niperotidine",
+      tradeName: "Niperotidine (Niperotidine)",
       contraindications: ["hypersensitivity", "hepatic impairment"],
       sideEffects: ["Headache", "Dizziness", "Nausea"],
       interactions: ["Ketoconazole", "Itraconazole"],
@@ -4902,6 +6364,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med448",
       name: "Ebrotidine",
+      genericName: "Ebrotidine",
+      tradeName: "Ebrotidine (Ebrotidine)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Headache", "Dizziness", "Constipation"],
       interactions: ["Ketoconazole", "Itraconazole"],
@@ -4910,6 +6374,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med449",
       name: "Burimamide",
+      genericName: "Burimamide",
+      tradeName: "Burimamide (Burimamide)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Headache", "Dizziness", "Nausea"],
       interactions: ["Ketoconazole", "Itraconazole"],
@@ -4918,6 +6384,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med450",
       name: "Metiamide",
+      genericName: "Metiamide",
+      tradeName: "Metiamide (Metiamide)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Agranulocytosis", "Headache", "Dizziness"],
       interactions: ["Ketoconazole", "Itraconazole"],
@@ -4928,6 +6396,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med451",
       name: "Calcium Carbonate",
+      genericName: "Calcium Carbonate",
+      tradeName: "Calcium Carbonate (Calcium Carbonate)",
       contraindications: ["hypercalcemia", "renal calculi", "hypophosphatemia"],
       sideEffects: ["Constipation", "Flatulence", "Nausea", "Milk-alkali syndrome"],
       interactions: ["Tetracyclines", "Fluoroquinolones", "Iron supplements"],
@@ -4936,6 +6406,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med452",
       name: "Magnesium Hydroxide",
+      genericName: "Magnesium Hydroxide",
+      tradeName: "Magnesium Hydroxide (Magnesium Hydroxide)",
       contraindications: ["severe renal impairment"],
       sideEffects: ["Diarrhea", "Hypermagnesemia", "Abdominal cramping"],
       interactions: ["Tetracyclines", "Fluoroquinolones", "Digoxin"],
@@ -4944,6 +6416,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med453",
       name: "Aluminum Hydroxide",
+      genericName: "Aluminum Hydroxide",
+      tradeName: "Aluminum Hydroxide (Aluminum Hydroxide)",
       contraindications: ["severe renal impairment", "hypophosphatemia"],
       sideEffects: ["Constipation", "Hypophosphatemia", "Aluminum toxicity"],
       interactions: ["Tetracyclines", "Fluoroquinolones", "Digoxin"],
@@ -4952,6 +6426,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med454",
       name: "Sodium Bicarbonate",
+      genericName: "Sodium Bicarbonate",
+      tradeName: "Sodium Bicarbonate (Sodium Bicarbonate)",
       contraindications: ["metabolic alkalosis", "hypocalcemia", "severe pulmonary edema"],
       sideEffects: ["Flatulence", "Gastric distension", "Metabolic alkalosis", "Edema"],
       interactions: ["Lithium", "Salicylates", "Tetracyclines"],
@@ -4960,6 +6436,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med455",
       name: "Magaldrate",
+      genericName: "Magaldrate",
+      tradeName: "Magaldrate (Magaldrate)",
       contraindications: ["severe renal impairment"],
       sideEffects: ["Constipation", "Diarrhea", "Hypophosphatemia"],
       interactions: ["Tetracyclines", "Fluoroquinolones", "Digoxin"],
@@ -4968,6 +6446,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med456",
       name: "Almagate",
+      genericName: "Almagate",
+      tradeName: "Almagate (Almagate)",
       contraindications: ["severe renal impairment"],
       sideEffects: ["Constipation", "Diarrhea", "Hypophosphatemia"],
       interactions: ["Tetracyclines", "Fluoroquinolones", "Digoxin"],
@@ -4976,6 +6456,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med457",
       name: "Hydrotalcite",
+      genericName: "Hydrotalcite",
+      tradeName: "Hydrotalcite (Hydrotalcite)",
       contraindications: ["severe renal impairment"],
       sideEffects: ["Constipation", "Diarrhea", "Hypophosphatemia"],
       interactions: ["Tetracyclines", "Fluoroquinolones", "Digoxin"],
@@ -4984,6 +6466,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med458",
       name: "Bismuth Subsalicylate",
+      genericName: "Bismuth Subsalicylate",
+      tradeName: "Pepto-Bismol (Bismuth Subsalicylate)",
       contraindications: ["salicylate allergy", "history of severe GI bleeding", "coagulopathy"],
       sideEffects: ["Black tongue", "Black stools", "Constipation", "Tinnitus"],
       interactions: ["Tetracyclines", "Warfarin", "Aspirin"],
@@ -4992,6 +6476,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med459",
       name: "Simethicone",
+      genericName: "Simethicone",
+      tradeName: "Simethicone (Simethicone)",
       contraindications: ["known or suspected intestinal perforation"],
       sideEffects: ["Mild diarrhea", "Nausea", "Vomiting"],
       interactions: ["Levothyroxine"],
@@ -5000,6 +6486,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med460",
       name: "Alginic Acid",
+      genericName: "Alginic Acid",
+      tradeName: "Alginic Acid (Alginic Acid)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Nausea", "Vomiting", "Constipation", "Diarrhea"],
       interactions: ["Tetracyclines", "Fluoroquinolones", "Digoxin"],
@@ -5010,6 +6498,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med461",
       name: "Ondansetron",
+      genericName: "Ondansetron",
+      tradeName: "Danset (Ondansetron)",
       contraindications: ["concomitant apomorphine use", "congenital long QT syndrome"],
       sideEffects: ["Headache", "Constipation", "Fatigue", "QT prolongation"],
       interactions: ["Apomorphine", "Amiodarone", "Macrolides"],
@@ -5018,6 +6508,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med462",
       name: "Granisetron",
+      genericName: "Granisetron",
+      tradeName: "Granisetron (Granisetron)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Headache", "Constipation", "Asthenia", "Diarrhea"],
       interactions: ["Drugs that prolong QT interval"],
@@ -5026,6 +6518,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med463",
       name: "Palonosetron",
+      genericName: "Palonosetron",
+      tradeName: "Palonosetron (Palonosetron)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Headache", "Constipation", "Fatigue", "Dizziness"],
       interactions: ["Drugs that prolong QT interval"],
@@ -5034,6 +6528,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med464",
       name: "Dolasetron",
+      genericName: "Dolasetron",
+      tradeName: "Dolasetron (Dolasetron)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Headache", "Diarrhea", "Fatigue", "QT prolongation"],
       interactions: ["Drugs that prolong QT interval"],
@@ -5042,6 +6538,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med465",
       name: "Metoclopramide",
+      genericName: "Metoclopramide",
+      tradeName: "Metoclopramide (Metoclopramide)",
       contraindications: ["GI hemorrhage", "mechanical obstruction", "perforation", "pheochromocytoma"],
       sideEffects: ["Restlessness", "Drowsiness", "Fatigue", "Tardive dyskinesia"],
       interactions: ["Anticholinergics", "Opioid analgesics", "Antipsychotics"],
@@ -5050,6 +6548,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med466",
       name: "Prochlorperazine",
+      genericName: "Prochlorperazine",
+      tradeName: "Prochlorperazine (Prochlorperazine)",
       contraindications: ["coma", "severe CNS depression", "pediatric surgery"],
       sideEffects: ["Drowsiness", "Dizziness", "Amenorrhea", "Blurred vision"],
       interactions: ["CNS depressants", "Anticholinergics"],
@@ -5058,6 +6558,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med467",
       name: "Promethazine",
+      genericName: "Promethazine",
+      tradeName: "Phenergan (Promethazine)",
       contraindications: ["children under 2 years", "coma", "lower respiratory tract symptoms"],
       sideEffects: ["Drowsiness", "Dizziness", "Dry mouth", "Blurred vision"],
       interactions: ["CNS depressants", "Anticholinergics", "MAO inhibitors"],
@@ -5066,6 +6568,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med468",
       name: "Aprepitant",
+      genericName: "Aprepitant",
+      tradeName: "Aprepitant (Aprepitant)",
       contraindications: ["concurrent use with pimozide, terfenadine, astemizole, or cisapride"],
       sideEffects: ["Fatigue", "Nausea", "Constipation", "Weakness"],
       interactions: ["Pimozide", "Warfarin", "Oral contraceptives", "Dexamethasone"],
@@ -5074,6 +6578,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med469",
       name: "Dronabinol",
+      genericName: "Dronabinol",
+      tradeName: "Dronabinol (Dronabinol)",
       contraindications: ["hypersensitivity to cannabinoids or sesame oil"],
       sideEffects: ["Euphoria", "Dizziness", "Somnolence", "Paranoia"],
       interactions: ["CNS depressants", "Alcohol"],
@@ -5082,6 +6588,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med470",
       name: "Droperidol",
+      genericName: "Droperidol",
+      tradeName: "Droperidol (Droperidol)",
       contraindications: ["known or suspected QT prolongation"],
       sideEffects: ["QT prolongation", "Hypotension", "Tachycardia", "Drowsiness"],
       interactions: ["Drugs that prolong QT interval", "CNS depressants"],
@@ -5092,6 +6600,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med471",
       name: "Polyethylene Glycol 3350",
+      genericName: "Polyethylene Glycol 3350",
+      tradeName: "Polyethylene Glycol 3350 (Polyethylene Glycol 3350)",
       contraindications: ["bowel obstruction", "toxic megacolon", "gastric retention"],
       sideEffects: ["Nausea", "Abdominal bloating", "Cramping", "Flatulence"],
       interactions: ["None significant"],
@@ -5100,6 +6610,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med472",
       name: "Lactulose",
+      genericName: "Lactulose",
+      tradeName: "Lactulose (Lactulose)",
       contraindications: ["galactosemia", "bowel obstruction"],
       sideEffects: ["Flatulence", "Diarrhea", "Abdominal cramps", "Nausea"],
       interactions: ["Antacids", "Neomycin"],
@@ -5108,6 +6620,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med473",
       name: "Bisacodyl",
+      genericName: "Bisacodyl",
+      tradeName: "Bisacodyl (Bisacodyl)",
       contraindications: ["bowel obstruction", "severe dehydration", "appendicitis"],
       sideEffects: ["Abdominal cramps", "Nausea", "Diarrhea", "Hypokalemia"],
       interactions: ["Antacids", "H2 blockers", "PPIs"],
@@ -5116,6 +6630,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med474",
       name: "Senna",
+      genericName: "Senna",
+      tradeName: "Purgen (Senna)",
       contraindications: ["bowel obstruction", "appendicitis", "inflammatory bowel disease"],
       sideEffects: ["Abdominal cramps", "Diarrhea", "Nausea", "Melanosis coli"],
       interactions: ["None significant"],
@@ -5124,6 +6640,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med475",
       name: "Docusate Sodium",
+      genericName: "Docusate Sodium",
+      tradeName: "Docusate Sodium (Docusate Sodium)",
       contraindications: ["bowel obstruction", "appendicitis", "concurrent use with mineral oil"],
       sideEffects: ["Abdominal cramping", "Diarrhea", "Nausea", "Throat irritation"],
       interactions: ["Mineral oil"],
@@ -5132,6 +6650,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med476",
       name: "Psyllium",
+      genericName: "Psyllium",
+      tradeName: "Psyllium (Psyllium)",
       contraindications: ["fecal impaction", "GI obstruction", "difficulty swallowing"],
       sideEffects: ["Flatulence", "Abdominal bloating", "Cramping"],
       interactions: ["Carbamazepine", "Digoxin", "Lithium"],
@@ -5140,6 +6660,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med477",
       name: "Magnesium Citrate",
+      genericName: "Magnesium Citrate",
+      tradeName: "Magnesium Citrate (Magnesium Citrate)",
       contraindications: ["renal impairment", "bowel obstruction", "appendicitis"],
       sideEffects: ["Diarrhea", "Abdominal cramps", "Nausea", "Hypermagnesemia"],
       interactions: ["Tetracyclines", "Fluoroquinolones", "Digoxin"],
@@ -5148,6 +6670,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med478",
       name: "Lubiprostone",
+      genericName: "Lubiprostone",
+      tradeName: "Lubiprostone (Lubiprostone)",
       contraindications: ["known or suspected mechanical GI obstruction"],
       sideEffects: ["Nausea", "Diarrhea", "Headache", "Abdominal pain"],
       interactions: ["Methadone"],
@@ -5156,6 +6680,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med479",
       name: "Linaclotide",
+      genericName: "Linaclotide",
+      tradeName: "Linaclotide (Linaclotide)",
       contraindications: ["pediatric patients up to 6 years of age", "known or suspected mechanical GI obstruction"],
       sideEffects: ["Diarrhea", "Abdominal pain", "Flatulence", "Abdominal distension"],
       interactions: ["None significant"],
@@ -5164,6 +6690,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med480",
       name: "Methylcellulose",
+      genericName: "Methylcellulose",
+      tradeName: "Methylcellulose (Methylcellulose)",
       contraindications: ["fecal impaction", "GI obstruction", "difficulty swallowing"],
       sideEffects: ["Flatulence", "Abdominal bloating", "Cramping"],
       interactions: ["None significant"],
@@ -5174,6 +6702,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med481",
       name: "Loperamide",
+      genericName: "Loperamide",
+      tradeName: "Diax (Loperamide)",
       contraindications: ["abdominal pain without diarrhea", "acute dysentery", "bacterial enterocolitis"],
       sideEffects: ["Constipation", "Dizziness", "Nausea", "Abdominal cramps"],
       interactions: ["Quinidine", "Ritonavir", "Itraconazole"],
@@ -5182,6 +6712,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med482",
       name: "Diphenoxylate/Atropine",
+      genericName: "Diphenoxylate/Atropine",
+      tradeName: "Diphenoxylate/Atropine (Diphenoxylate/Atropine)",
       contraindications: ["obstructive jaundice", "diarrhea associated with pseudomembranous enterocolitis"],
       sideEffects: ["Drowsiness", "Dizziness", "Constipation", "Dry mouth"],
       interactions: ["MAO inhibitors", "CNS depressants", "Anticholinergics"],
@@ -5190,6 +6722,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med483",
       name: "Bismuth Subsalicylate (Antidiarrheal)",
+      genericName: "Bismuth Subsalicylate (Antidiarrheal)",
+      tradeName: "Bismuth Subsalicylate (Antidiarrheal) (Bismuth Subsalicylate (Antidiarrheal))",
       contraindications: ["salicylate allergy", "history of severe GI bleeding", "coagulopathy"],
       sideEffects: ["Black tongue", "Black stools", "Constipation", "Tinnitus"],
       interactions: ["Tetracyclines", "Warfarin", "Aspirin"],
@@ -5198,6 +6732,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med484",
       name: "Octreotide",
+      genericName: "Octreotide",
+      tradeName: "Octreotide (Octreotide)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Nausea", "Diarrhea", "Abdominal pain", "Gallstones"],
       interactions: ["Cyclosporine", "Insulin", "Oral antidiabetics"],
@@ -5206,6 +6742,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med485",
       name: "Racecadotril",
+      genericName: "Racecadotril",
+      tradeName: "Racecadotril (Racecadotril)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Headache", "Rash", "Erythema"],
       interactions: ["ACE inhibitors"],
@@ -5214,6 +6752,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med486",
       name: "Crofelemer",
+      genericName: "Crofelemer",
+      tradeName: "Crofelemer (Crofelemer)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Upper respiratory tract infection", "Bronchitis", "Cough", "Flatulence"],
       interactions: ["None significant"],
@@ -5222,6 +6762,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med487",
       name: "Eluxadoline",
+      genericName: "Eluxadoline",
+      tradeName: "Eluxadoline (Eluxadoline)",
       contraindications: ["patients without a gallbladder", "history of pancreatitis", "severe hepatic impairment"],
       sideEffects: ["Constipation", "Nausea", "Abdominal pain", "Pancreatitis"],
       interactions: ["OATP1B1 inhibitors", "CYP inhibitors"],
@@ -5230,6 +6772,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med488",
       name: "Cholestyramine (for bile acid diarrhea)",
+      genericName: "Cholestyramine (for bile acid diarrhea)",
+      tradeName: "Cholestyramine (for bile acid diarrhea) (Cholestyramine (for bile acid diarrhea))",
       contraindications: ["complete biliary obstruction"],
       sideEffects: ["Constipation", "Abdominal pain", "Nausea", "Bloating"],
       interactions: ["Thiazide diuretics", "Warfarin", "Thyroid hormones", "Digoxin"],
@@ -5238,6 +6782,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med489",
       name: "Colestipol",
+      genericName: "Colestipol",
+      tradeName: "Colestipol (Colestipol)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Constipation", "Abdominal pain", "Nausea", "Bloating"],
       interactions: ["Thiazide diuretics", "Warfarin", "Thyroid hormones", "Digoxin"],
@@ -5246,6 +6792,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med490",
       name: "Colesevelam",
+      genericName: "Colesevelam",
+      tradeName: "Colesevelam (Colesevelam)",
       contraindications: ["history of bowel obstruction", "serum TG > 500 mg/dL", "history of hypertriglyceridemia-induced pancreatitis"],
       sideEffects: ["Constipation", "Dyspepsia", "Nausea", "Myalgia"],
       interactions: ["Glyburide", "Levothyroxine", "Oral contraceptives"],
@@ -5256,6 +6804,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med491",
       name: "Mesalamine",
+      genericName: "Mesalamine",
+      tradeName: "Mesalamine (Mesalamine)",
       contraindications: ["hypersensitivity to salicylates"],
       sideEffects: ["Headache", "Abdominal pain", "Eructation", "Nausea"],
       interactions: ["Azathioprine", "Mercaptopurine", "NSAIDs"],
@@ -5264,6 +6814,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med492",
       name: "Sulfasalazine",
+      genericName: "Sulfasalazine",
+      tradeName: "Sulfasalazine (Sulfasalazine)",
       contraindications: ["sulfa allergy", "salicylate allergy", "porphyria", "intestinal/urinary obstruction"],
       sideEffects: ["Nausea", "Vomiting", "Anorexia", "Headache"],
       interactions: ["Folic acid", "Digoxin", "Azathioprine"],
@@ -5272,6 +6824,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med493",
       name: "Balsalazide",
+      genericName: "Balsalazide",
+      tradeName: "Balsalazide (Balsalazide)",
       contraindications: ["hypersensitivity to salicylates"],
       sideEffects: ["Headache", "Abdominal pain", "Diarrhea", "Nausea"],
       interactions: ["Azathioprine", "Mercaptopurine"],
@@ -5280,6 +6834,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med494",
       name: "Olsalazine",
+      genericName: "Olsalazine",
+      tradeName: "Olsalazine (Olsalazine)",
       contraindications: ["hypersensitivity to salicylates"],
       sideEffects: ["Diarrhea", "Abdominal pain", "Nausea", "Dyspepsia"],
       interactions: ["Azathioprine", "Mercaptopurine", "Warfarin"],
@@ -5288,6 +6844,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med495",
       name: "Infliximab",
+      genericName: "Infliximab",
+      tradeName: "Infliximab (Infliximab)",
       contraindications: ["moderate to severe heart failure", "active infection"],
       sideEffects: ["Infusion reactions", "Headache", "Abdominal pain", "Increased risk of infection"],
       interactions: ["Anakinra", "Abatacept", "Live vaccines"],
@@ -5296,6 +6854,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med496",
       name: "Adalimumab",
+      genericName: "Adalimumab",
+      tradeName: "Adalimumab (Adalimumab)",
       contraindications: ["active infection"],
       sideEffects: ["Injection site reactions", "Headache", "Rash", "Increased risk of infection"],
       interactions: ["Anakinra", "Abatacept", "Live vaccines"],
@@ -5304,6 +6864,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med497",
       name: "Vedolizumab",
+      genericName: "Vedolizumab",
+      tradeName: "Vedolizumab (Vedolizumab)",
       contraindications: ["active, severe infection"],
       sideEffects: ["Nasopharyngitis", "Headache", "Arthralgia", "Nausea"],
       interactions: ["Natalizumab", "TNF blockers", "Live vaccines"],
@@ -5312,6 +6874,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med498",
       name: "Ustekinumab",
+      genericName: "Ustekinumab",
+      tradeName: "Ustekinumab (Ustekinumab)",
       contraindications: ["clinically significant active infection"],
       sideEffects: ["Nasopharyngitis", "Upper respiratory tract infection", "Headache", "Fatigue"],
       interactions: ["Live vaccines", "CYP450 substrates"],
@@ -5320,6 +6884,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med499",
       name: "Azathioprine",
+      genericName: "Azathioprine",
+      tradeName: "Azathioprine (Azathioprine)",
       contraindications: ["pregnancy", "rheumatoid arthritis patients previously treated with alkylating agents"],
       sideEffects: ["Leukopenia", "Nausea", "Vomiting", "Hepatotoxicity"],
       interactions: ["Allopurinol", "Febuxostat", "Aminosalicylates"],
@@ -5328,6 +6894,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med500",
       name: "Mercaptopurine",
+      genericName: "Mercaptopurine",
+      tradeName: "Mercaptopurine (Mercaptopurine)",
       contraindications: ["prior resistance to mercaptopurine"],
       sideEffects: ["Myelosuppression", "Hepatotoxicity", "Nausea", "Vomiting"],
       interactions: ["Allopurinol", "Febuxostat", "Aminosalicylates"],
@@ -5338,6 +6906,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med541",
       name: "Ferrous Sulfate",
+      genericName: "Ferrous Sulfate",
+      tradeName: "Ferrous Sulfate (Ferrous Sulfate)",
       contraindications: ["hemochromatosis", "hemosiderosis", "hemolytic anemia"],
       sideEffects: ["Constipation", "Dark stools", "Nausea", "Epigastric pain"],
       interactions: ["Antacids", "Tetracyclines", "Levothyroxine"],
@@ -5346,6 +6916,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med542",
       name: "Ferrous Fumarate",
+      genericName: "Ferrous Fumarate",
+      tradeName: "Ferrous Fumarate (Ferrous Fumarate)",
       contraindications: ["hemochromatosis", "hemosiderosis", "hemolytic anemia"],
       sideEffects: ["Constipation", "Dark stools", "Nausea", "Epigastric pain"],
       interactions: ["Antacids", "Tetracyclines", "Levothyroxine"],
@@ -5354,6 +6926,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med543",
       name: "Ferrous Gluconate",
+      genericName: "Ferrous Gluconate",
+      tradeName: "Ferrous Gluconate (Ferrous Gluconate)",
       contraindications: ["hemochromatosis", "hemosiderosis", "hemolytic anemia"],
       sideEffects: ["Constipation", "Dark stools", "Nausea", "Epigastric pain"],
       interactions: ["Antacids", "Tetracyclines", "Levothyroxine"],
@@ -5362,6 +6936,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med544",
       name: "Iron Dextran",
+      genericName: "Iron Dextran",
+      tradeName: "Iron Dextran (Iron Dextran)",
       contraindications: ["hypersensitivity", "anemias not associated with iron deficiency"],
       sideEffects: ["Anaphylaxis", "Flushing", "Hypotension", "Injection site pain"],
       interactions: ["ACE inhibitors"],
@@ -5370,6 +6946,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med545",
       name: "Iron Sucrose",
+      genericName: "Iron Sucrose",
+      tradeName: "Iron Sucrose (Iron Sucrose)",
       contraindications: ["hypersensitivity", "iron overload"],
       sideEffects: ["Hypotension", "Muscle cramps", "Nausea", "Headache"],
       interactions: ["Oral iron supplements"],
@@ -5378,6 +6956,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med546",
       name: "Ferric Carboxymaltose",
+      genericName: "Ferric Carboxymaltose",
+      tradeName: "Ferric Carboxymaltose (Ferric Carboxymaltose)",
       contraindications: ["hypersensitivity", "iron overload"],
       sideEffects: ["Nausea", "Hypertension", "Flushing", "Hypophosphatemia"],
       interactions: ["Oral iron supplements"],
@@ -5386,6 +6966,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med547",
       name: "Cyanocobalamin (Vitamin B12)",
+      genericName: "Cyanocobalamin (Vitamin B12)",
+      tradeName: "Cyanocobalamin (Vitamin B12) (Cyanocobalamin (Vitamin B12))",
       contraindications: ["hypersensitivity to cobalt", "Leber's disease"],
       sideEffects: ["Headache", "Asthenia", "Nausea", "Diarrhea"],
       interactions: ["Chloramphenicol", "Colchicine"],
@@ -5394,6 +6976,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med548",
       name: "Hydroxocobalamin",
+      genericName: "Hydroxocobalamin",
+      tradeName: "Hydroxocobalamin (Hydroxocobalamin)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Injection site pain", "Itching", "Diarrhea"],
       interactions: ["Chloramphenicol"],
@@ -5402,6 +6986,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med549",
       name: "Folic Acid (Vitamin B9)",
+      genericName: "Folic Acid (Vitamin B9)",
+      tradeName: "Folic Acid (Vitamin B9) (Folic Acid (Vitamin B9))",
       contraindications: ["pernicious anemia (as sole therapy)"],
       sideEffects: ["Allergic reactions", "Nausea", "Abdominal distension"],
       interactions: ["Phenytoin", "Methotrexate", "Sulfasalazine"],
@@ -5410,6 +6996,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med550",
       name: "Epoetin Alfa",
+      genericName: "Epoetin Alfa",
+      tradeName: "Epoetin Alfa (Epoetin Alfa)",
       contraindications: ["uncontrolled hypertension", "pure red cell aplasia"],
       sideEffects: ["Hypertension", "Headache", "Arthralgia", "Nausea"],
       interactions: ["None significant"],
@@ -5420,6 +7008,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med551",
       name: "Tranexamic Acid",
+      genericName: "Tranexamic Acid",
+      tradeName: "Tranexamic Acid (Tranexamic Acid)",
       contraindications: ["acquired defective color vision", "subarachnoid hemorrhage", "active intravascular clotting"],
       sideEffects: ["Nausea", "Diarrhea", "Visual disturbances", "Thromboembolism"],
       interactions: ["Hormonal contraceptives", "Factor IX complex concentrates"],
@@ -5428,6 +7018,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med552",
       name: "Aminocaproic Acid",
+      genericName: "Aminocaproic Acid",
+      tradeName: "Aminocaproic Acid (Aminocaproic Acid)",
       contraindications: ["active intravascular clotting without heparin"],
       sideEffects: ["Nausea", "Diarrhea", "Dizziness", "Tinnitus"],
       interactions: ["Factor IX complex concentrates"],
@@ -5436,6 +7028,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med553",
       name: "Desmopressin (DDAVP)",
+      genericName: "Desmopressin (DDAVP)",
+      tradeName: "Desmopressin (DDAVP) (Desmopressin (DDAVP))",
       contraindications: ["hyponatremia", "moderate to severe renal impairment"],
       sideEffects: ["Headache", "Nausea", "Flushing", "Hyponatremia"],
       interactions: ["Loop diuretics", "Glucocorticoids", "NSAIDs"],
@@ -5444,6 +7038,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med554",
       name: "Vitamin K (Phytomenadione)",
+      genericName: "Vitamin K (Phytomenadione)",
+      tradeName: "Vitamin K (Phytomenadione) (Vitamin K (Phytomenadione))",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Flushing", "Injection site pain", "Taste alterations"],
       interactions: ["Warfarin"],
@@ -5452,6 +7048,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med555",
       name: "Aprotinin",
+      genericName: "Aprotinin",
+      tradeName: "Aprotinin (Aprotinin)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Anaphylaxis", "Renal dysfunction", "Myocardial infarction"],
       interactions: ["Heparin", "Fibrinolytic agents"],
@@ -5460,6 +7058,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med556",
       name: "Factor VIII",
+      genericName: "Factor VIII",
+      tradeName: "Factor VIII (Factor VIII)",
       contraindications: ["hypersensitivity to mouse or hamster proteins"],
       sideEffects: ["Allergic reactions", "Headache", "Fever", "Nausea"],
       interactions: ["None significant"],
@@ -5468,6 +7068,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med557",
       name: "Factor IX",
+      genericName: "Factor IX",
+      tradeName: "Factor IX (Factor IX)",
       contraindications: ["hypersensitivity to hamster proteins"],
       sideEffects: ["Allergic reactions", "Headache", "Fever", "Nausea"],
       interactions: ["Aminocaproic acid", "Tranexamic acid"],
@@ -5476,6 +7078,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med558",
       name: "Recombinant Factor VIIa",
+      genericName: "Recombinant Factor VIIa",
+      tradeName: "Recombinant Factor VIIa (Recombinant Factor VIIa)",
       contraindications: ["hypersensitivity to mouse, hamster, or bovine proteins"],
       sideEffects: ["Fever", "Hemorrhage", "Injection site reactions", "Thromboembolism"],
       interactions: ["Activated prothrombin complex concentrates"],
@@ -5484,6 +7088,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med559",
       name: "Fibrinogen Concentrate",
+      genericName: "Fibrinogen Concentrate",
+      tradeName: "Fibrinogen Concentrate (Fibrinogen Concentrate)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Fever", "Headache", "Thromboembolism"],
       interactions: ["None significant"],
@@ -5492,6 +7098,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med560",
       name: "Ethamsylate",
+      genericName: "Ethamsylate",
+      tradeName: "Ethamsylate (Ethamsylate)",
       contraindications: ["porphyria", "asthma (if contains sulfites)"],
       sideEffects: ["Headache", "Rash", "Nausea", "Diarrhea"],
       interactions: ["None significant"],
@@ -5502,6 +7110,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med561",
       name: "Ibuprofen",
+      genericName: "Ibuprofen",
+      tradeName: "Brufen (Ibuprofen)",
       contraindications: ["history of asthma/urticaria after NSAIDs", "CABG surgery"],
       sideEffects: ["Dyspepsia", "Nausea", "Abdominal pain", "Dizziness"],
       interactions: ["Aspirin", "Anticoagulants", "Lithium"],
@@ -5510,6 +7120,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med562",
       name: "Naproxen",
+      genericName: "Naproxen",
+      tradeName: "Proxen (Naproxen)",
       contraindications: ["history of asthma/urticaria after NSAIDs", "CABG surgery"],
       sideEffects: ["Dyspepsia", "Nausea", "Abdominal pain", "Dizziness"],
       interactions: ["Aspirin", "Anticoagulants", "Lithium"],
@@ -5518,6 +7130,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med563",
       name: "Diclofenac",
+      genericName: "Diclofenac",
+      tradeName: "Voltaren (Diclofenac)",
       contraindications: ["history of asthma/urticaria after NSAIDs", "CABG surgery"],
       sideEffects: ["Dyspepsia", "Nausea", "Abdominal pain", "Dizziness"],
       interactions: ["Aspirin", "Anticoagulants", "Lithium"],
@@ -5526,6 +7140,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med564",
       name: "Celecoxib",
+      genericName: "Celecoxib",
+      tradeName: "Celebrex (Celecoxib)",
       contraindications: ["sulfonamide allergy", "history of asthma/urticaria after NSAIDs", "CABG surgery"],
       sideEffects: ["Dyspepsia", "Diarrhea", "Abdominal pain", "Dizziness"],
       interactions: ["Fluconazole", "Lithium", "Warfarin"],
@@ -5534,6 +7150,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med565",
       name: "Meloxicam",
+      genericName: "Meloxicam",
+      tradeName: "Anti-cox (Meloxicam)",
       contraindications: ["history of asthma/urticaria after NSAIDs", "CABG surgery"],
       sideEffects: ["Dyspepsia", "Nausea", "Abdominal pain", "Dizziness"],
       interactions: ["Aspirin", "Anticoagulants", "Lithium"],
@@ -5542,6 +7160,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med566",
       name: "Indomethacin",
+      genericName: "Indomethacin",
+      tradeName: "Indomethacin (Indomethacin)",
       contraindications: ["history of asthma/urticaria after NSAIDs", "CABG surgery"],
       sideEffects: ["Headache", "Dyspepsia", "Nausea", "Dizziness"],
       interactions: ["Aspirin", "Anticoagulants", "Lithium"],
@@ -5550,6 +7170,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med567",
       name: "Ketorolac",
+      genericName: "Ketorolac",
+      tradeName: "Ketolac (Ketorolac)",
       contraindications: ["active peptic ulcer", "advanced renal impairment", "CABG surgery"],
       sideEffects: ["Dyspepsia", "Nausea", "Abdominal pain", "Dizziness"],
       interactions: ["Aspirin", "Anticoagulants", "Lithium"],
@@ -5558,6 +7180,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med568",
       name: "Piroxicam",
+      genericName: "Piroxicam",
+      tradeName: "Piroxicam (Piroxicam)",
       contraindications: ["history of asthma/urticaria after NSAIDs", "CABG surgery"],
       sideEffects: ["Dyspepsia", "Nausea", "Abdominal pain", "Dizziness"],
       interactions: ["Aspirin", "Anticoagulants", "Lithium"],
@@ -5566,6 +7190,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med569",
       name: "Nabumetone",
+      genericName: "Nabumetone",
+      tradeName: "Nabumetone (Nabumetone)",
       contraindications: ["history of asthma/urticaria after NSAIDs", "CABG surgery"],
       sideEffects: ["Dyspepsia", "Nausea", "Abdominal pain", "Dizziness"],
       interactions: ["Aspirin", "Anticoagulants", "Lithium"],
@@ -5574,6 +7200,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med570",
       name: "Sulindac",
+      genericName: "Sulindac",
+      tradeName: "Sulindac (Sulindac)",
       contraindications: ["history of asthma/urticaria after NSAIDs", "CABG surgery"],
       sideEffects: ["Dyspepsia", "Nausea", "Abdominal pain", "Dizziness"],
       interactions: ["Aspirin", "Anticoagulants", "Lithium"],
@@ -5584,6 +7212,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med571",
       name: "Cyclobenzaprine",
+      genericName: "Cyclobenzaprine",
+      tradeName: "Multi-Relax (Cyclobenzaprine)",
       contraindications: ["hyperthyroidism", "heart failure", "arrhythmias", "MAOI use within 14 days"],
       sideEffects: ["Drowsiness", "Dry mouth", "Dizziness", "Fatigue"],
       interactions: ["MAO inhibitors", "CNS depressants", "Anticholinergics"],
@@ -5592,6 +7222,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med572",
       name: "Methocarbamol",
+      genericName: "Methocarbamol",
+      tradeName: "Methocarbamol (Methocarbamol)",
       contraindications: ["renal impairment (injectable form)"],
       sideEffects: ["Drowsiness", "Dizziness", "Lightheadedness", "Nausea"],
       interactions: ["CNS depressants", "Alcohol"],
@@ -5600,6 +7232,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med573",
       name: "Baclofen",
+      genericName: "Baclofen",
+      tradeName: "Myofen (Baclofen)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Drowsiness", "Dizziness", "Weakness", "Fatigue"],
       interactions: ["CNS depressants", "Alcohol"],
@@ -5608,6 +7242,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med574",
       name: "Tizanidine",
+      genericName: "Tizanidine",
+      tradeName: "Sirdalud (Tizanidine)",
       contraindications: ["concomitant use with fluvoxamine or ciprofloxacin"],
       sideEffects: ["Dry mouth", "Somnolence", "Asthenia", "Dizziness"],
       interactions: ["Fluvoxamine", "Ciprofloxacin", "CNS depressants"],
@@ -5616,6 +7252,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med575",
       name: "Carisoprodol",
+      genericName: "Carisoprodol",
+      tradeName: "Soma (Carisoprodol)",
       contraindications: ["acute intermittent porphyria"],
       sideEffects: ["Drowsiness", "Dizziness", "Headache", "Tachycardia"],
       interactions: ["CNS depressants", "CYP2C19 inhibitors"],
@@ -5624,6 +7262,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med576",
       name: "Metaxalone",
+      genericName: "Metaxalone",
+      tradeName: "Metaxalone (Metaxalone)",
       contraindications: ["known tendency to drug-induced, hemolytic, or other anemias", "severe renal/hepatic impairment"],
       sideEffects: ["Drowsiness", "Dizziness", "Headache", "Nervousness"],
       interactions: ["CNS depressants", "Alcohol"],
@@ -5632,6 +7272,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med577",
       name: "Orphenadrine",
+      genericName: "Orphenadrine",
+      tradeName: "Orphenadrine (Orphenadrine)",
       contraindications: ["glaucoma", "pyloric or duodenal obstruction", "prostatic hypertrophy"],
       sideEffects: ["Dry mouth", "Tachycardia", "Palpitation", "Urinary hesitancy"],
       interactions: ["Anticholinergics", "CNS depressants"],
@@ -5640,6 +7282,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med578",
       name: "Chlorzoxazone",
+      genericName: "Chlorzoxazone",
+      tradeName: "Chlorzoxazone (Chlorzoxazone)",
       contraindications: ["liver disease"],
       sideEffects: ["Drowsiness", "Dizziness", "Lightheadedness", "Malaise"],
       interactions: ["CNS depressants", "Alcohol"],
@@ -5648,6 +7292,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med579",
       name: "Dantrolene",
+      genericName: "Dantrolene",
+      tradeName: "Dantrolene (Dantrolene)",
       contraindications: ["active hepatic disease"],
       sideEffects: ["Drowsiness", "Dizziness", "Weakness", "Malaise"],
       interactions: ["CNS depressants", "Estrogens"],
@@ -5656,6 +7302,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med580",
       name: "Thiocolchicoside",
+      genericName: "Thiocolchicoside",
+      tradeName: "Thiocolchicoside (Thiocolchicoside)",
       contraindications: ["flaccid paresis", "muscular hypotonia"],
       sideEffects: ["Diarrhea", "Gastralgia", "Nausea", "Vomiting"],
       interactions: ["None significant"],
@@ -5666,6 +7314,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med581",
       name: "Methotrexate",
+      genericName: "Methotrexate",
+      tradeName: "Methotrexate (Methotrexate)",
       contraindications: ["pregnancy", "nursing mothers", "alcoholism", "liver disease"],
       sideEffects: ["Nausea", "Stomatitis", "Fatigue", "Hepatotoxicity"],
       interactions: ["NSAIDs", "Probenecid", "Penicillins"],
@@ -5674,6 +7324,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med582",
       name: "Sulfasalazine",
+      genericName: "Sulfasalazine",
+      tradeName: "Sulfasalazine (Sulfasalazine)",
       contraindications: ["sulfa allergy", "salicylate allergy", "porphyria"],
       sideEffects: ["Nausea", "Vomiting", "Anorexia", "Headache"],
       interactions: ["Folic acid", "Digoxin", "Azathioprine"],
@@ -5682,6 +7334,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med583",
       name: "Hydroxychloroquine",
+      genericName: "Hydroxychloroquine",
+      tradeName: "Hydroxychloroquine (Hydroxychloroquine)",
       contraindications: ["retinal or visual field changes"],
       sideEffects: ["Nausea", "Diarrhea", "Abdominal pain", "Visual changes"],
       interactions: ["Digoxin", "Antacids", "Cimetidine"],
@@ -5690,6 +7344,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med584",
       name: "Leflunomide",
+      genericName: "Leflunomide",
+      tradeName: "Leflunomide (Leflunomide)",
       contraindications: ["pregnancy", "severe hepatic impairment"],
       sideEffects: ["Diarrhea", "Respiratory infection", "Alopecia", "Rash"],
       interactions: ["Rifampin", "Warfarin", "Methotrexate"],
@@ -5698,6 +7354,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med585",
       name: "Etanercept",
+      genericName: "Etanercept",
+      tradeName: "Etanercept (Etanercept)",
       contraindications: ["sepsis"],
       sideEffects: ["Injection site reactions", "Upper respiratory infection", "Headache"],
       interactions: ["Anakinra", "Abatacept", "Live vaccines"],
@@ -5706,6 +7364,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med586",
       name: "Infliximab",
+      genericName: "Infliximab",
+      tradeName: "Infliximab (Infliximab)",
       contraindications: ["moderate to severe heart failure"],
       sideEffects: ["Infusion reactions", "Headache", "Abdominal pain"],
       interactions: ["Anakinra", "Abatacept", "Live vaccines"],
@@ -5714,6 +7374,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med587",
       name: "Adalimumab",
+      genericName: "Adalimumab",
+      tradeName: "Adalimumab (Adalimumab)",
       contraindications: ["active infection"],
       sideEffects: ["Injection site reactions", "Headache", "Rash"],
       interactions: ["Anakinra", "Abatacept", "Live vaccines"],
@@ -5722,6 +7384,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med588",
       name: "Rituximab",
+      genericName: "Rituximab",
+      tradeName: "Rituximab (Rituximab)",
       contraindications: ["severe, active infections"],
       sideEffects: ["Infusion reactions", "Fever", "Chills", "Infection"],
       interactions: ["Live vaccines", "Cisplatin"],
@@ -5730,6 +7394,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med589",
       name: "Abatacept",
+      genericName: "Abatacept",
+      tradeName: "Abatacept (Abatacept)",
       contraindications: ["concomitant use with TNF antagonists"],
       sideEffects: ["Headache", "Upper respiratory infection", "Nausea"],
       interactions: ["TNF antagonists", "Live vaccines"],
@@ -5738,6 +7404,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med590",
       name: "Tofacitinib",
+      genericName: "Tofacitinib",
+      tradeName: "Tofacitinib (Tofacitinib)",
       contraindications: ["severe hepatic impairment"],
       sideEffects: ["Upper respiratory infection", "Headache", "Diarrhea"],
       interactions: ["CYP3A4 inhibitors", "CYP3A4 inducers", "Immunosuppressants"],
@@ -5748,6 +7416,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med591",
       name: "Allopurinol",
+      genericName: "Allopurinol",
+      tradeName: "Zyloric (Allopurinol)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Rash", "Nausea", "Diarrhea", "Gout flares"],
       interactions: ["Azathioprine", "Mercaptopurine", "Ampicillin"],
@@ -5756,6 +7426,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med592",
       name: "Colchicine",
+      genericName: "Colchicine",
+      tradeName: "Colchicine (Colchicine)",
       contraindications: ["renal/hepatic impairment with P-gp or CYP3A4 inhibitors"],
       sideEffects: ["Diarrhea", "Nausea", "Vomiting", "Abdominal pain"],
       interactions: ["CYP3A4 inhibitors", "P-gp inhibitors", "Statins"],
@@ -5764,6 +7436,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med593",
       name: "Febuxostat",
+      genericName: "Febuxostat",
+      tradeName: "Febuxostat (Febuxostat)",
       contraindications: ["concomitant use with azathioprine or mercaptopurine"],
       sideEffects: ["Liver function abnormalities", "Nausea", "Arthralgia", "Rash"],
       interactions: ["Azathioprine", "Mercaptopurine", "Theophylline"],
@@ -5772,6 +7446,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med594",
       name: "Probenecid",
+      genericName: "Probenecid",
+      tradeName: "Probenecid (Probenecid)",
       contraindications: ["uric acid kidney stones", "blood dyscrasias"],
       sideEffects: ["Headache", "Nausea", "Vomiting", "Gout flares"],
       interactions: ["Penicillins", "Cephalosporins", "Methotrexate"],
@@ -5780,6 +7456,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med595",
       name: "Pegloticase",
+      genericName: "Pegloticase",
+      tradeName: "Pegloticase (Pegloticase)",
       contraindications: ["G6PD deficiency"],
       sideEffects: ["Gout flares", "Infusion reactions", "Nausea", "Contusion"],
       interactions: ["None significant"],
@@ -5788,6 +7466,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med596",
       name: "Lesinurad",
+      genericName: "Lesinurad",
+      tradeName: "Lesinurad (Lesinurad)",
       contraindications: ["severe renal impairment", "tumor lysis syndrome"],
       sideEffects: ["Headache", "Influenza", "Blood creatinine increased", "GERD"],
       interactions: ["CYP2C9 inhibitors", "CYP2C9 inducers", "Aspirin"],
@@ -5796,6 +7476,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med597",
       name: "Sulfinpyrazone",
+      genericName: "Sulfinpyrazone",
+      tradeName: "Sulfinpyrazone (Sulfinpyrazone)",
       contraindications: ["active peptic ulcer", "blood dyscrasias"],
       sideEffects: ["Nausea", "Vomiting", "Abdominal pain", "Rash"],
       interactions: ["Warfarin", "Tolbutamide", "Aspirin"],
@@ -5804,6 +7486,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med598",
       name: "Anakinra",
+      genericName: "Anakinra",
+      tradeName: "Anakinra (Anakinra)",
       contraindications: ["hypersensitivity to E. coli-derived proteins"],
       sideEffects: ["Injection site reactions", "Headache", "Nausea", "Diarrhea"],
       interactions: ["TNF blocking agents", "Live vaccines"],
@@ -5812,6 +7496,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med599",
       name: "Canakinumab",
+      genericName: "Canakinumab",
+      tradeName: "Canakinumab (Canakinumab)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Infections", "Nasopharyngitis", "Diarrhea", "Headache"],
       interactions: ["Live vaccines", "TNF inhibitors"],
@@ -5820,6 +7506,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med600",
       name: "Rasburicase",
+      genericName: "Rasburicase",
+      tradeName: "Rasburicase (Rasburicase)",
       contraindications: ["G6PD deficiency", "history of hemolysis or methemoglobinemia with rasburicase"],
       sideEffects: ["Vomiting", "Fever", "Nausea", "Headache"],
       interactions: ["None significant"],
@@ -5830,6 +7518,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med601",
       name: "Hydrocortisone",
+      genericName: "Hydrocortisone",
+      tradeName: "Hydrocortisone (Hydrocortisone)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Burning", "Itching", "Irritation", "Dryness"],
       interactions: ["None significant"],
@@ -5838,6 +7528,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med602",
       name: "Triamcinolone Acetonide",
+      genericName: "Triamcinolone Acetonide",
+      tradeName: "Triamcinolone Acetonide (Triamcinolone Acetonide)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Burning", "Itching", "Irritation", "Dryness"],
       interactions: ["None significant"],
@@ -5846,6 +7538,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med603",
       name: "Betamethasone Dipropionate",
+      genericName: "Betamethasone Dipropionate",
+      tradeName: "Betamethasone Dipropionate (Betamethasone Dipropionate)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Burning", "Itching", "Irritation", "Dryness"],
       interactions: ["None significant"],
@@ -5854,6 +7548,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med604",
       name: "Clobetasol Propionate",
+      genericName: "Clobetasol Propionate",
+      tradeName: "Clobetasol Propionate (Clobetasol Propionate)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Burning", "Itching", "Irritation", "Dryness"],
       interactions: ["None significant"],
@@ -5862,6 +7558,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med605",
       name: "Fluocinonide",
+      genericName: "Fluocinonide",
+      tradeName: "Fluocinonide (Fluocinonide)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Burning", "Itching", "Irritation", "Dryness"],
       interactions: ["None significant"],
@@ -5870,6 +7568,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med606",
       name: "Desoximetasone",
+      genericName: "Desoximetasone",
+      tradeName: "Desoximetasone (Desoximetasone)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Burning", "Itching", "Irritation", "Dryness"],
       interactions: ["None significant"],
@@ -5878,6 +7578,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med607",
       name: "Mometasone Furoate",
+      genericName: "Mometasone Furoate",
+      tradeName: "Mometasone Furoate (Mometasone Furoate)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Burning", "Itching", "Irritation", "Dryness"],
       interactions: ["None significant"],
@@ -5886,6 +7588,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med608",
       name: "Fluticasone Propionate",
+      genericName: "Fluticasone Propionate",
+      tradeName: "Fluticasone Propionate (Fluticasone Propionate)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Burning", "Itching", "Irritation", "Dryness"],
       interactions: ["None significant"],
@@ -5894,6 +7598,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med609",
       name: "Halobetasol Propionate",
+      genericName: "Halobetasol Propionate",
+      tradeName: "Halobetasol Propionate (Halobetasol Propionate)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Burning", "Itching", "Irritation", "Dryness"],
       interactions: ["None significant"],
@@ -5902,6 +7608,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med610",
       name: "Alclometasone Dipropionate",
+      genericName: "Alclometasone Dipropionate",
+      tradeName: "Alclometasone Dipropionate (Alclometasone Dipropionate)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Burning", "Itching", "Irritation", "Dryness"],
       interactions: ["None significant"],
@@ -5912,6 +7620,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med611",
       name: "Clotrimazole",
+      genericName: "Clotrimazole",
+      tradeName: "Clotrimazole (Clotrimazole)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Erythema", "Stinging", "Blistering", "Peeling"],
       interactions: ["None significant"],
@@ -5920,6 +7630,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med612",
       name: "Miconazole",
+      genericName: "Miconazole",
+      tradeName: "Miconazole (Miconazole)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Irritation", "Burning", "Maceration", "Allergic contact dermatitis"],
       interactions: ["Warfarin (topical absorption)"],
@@ -5928,6 +7640,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med613",
       name: "Terbinafine",
+      genericName: "Terbinafine",
+      tradeName: "Terbinafine (Terbinafine)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Irritation", "Burning", "Itching", "Dryness"],
       interactions: ["None significant"],
@@ -5936,6 +7650,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med614",
       name: "Ketoconazole",
+      genericName: "Ketoconazole",
+      tradeName: "Ketoconazole (Ketoconazole)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Irritation", "Pruritus", "Stinging"],
       interactions: ["None significant"],
@@ -5944,6 +7660,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med615",
       name: "Tolnaftate",
+      genericName: "Tolnaftate",
+      tradeName: "Tolnaftate (Tolnaftate)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Irritation", "Pruritus", "Contact dermatitis"],
       interactions: ["None significant"],
@@ -5952,6 +7670,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med616",
       name: "Econazole",
+      genericName: "Econazole",
+      tradeName: "Econazole (Econazole)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Burning", "Itching", "Erythema"],
       interactions: ["None significant"],
@@ -5960,6 +7680,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med617",
       name: "Nystatin",
+      genericName: "Nystatin",
+      tradeName: "Nystatin (Nystatin)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Irritation", "Burning", "Rash"],
       interactions: ["None significant"],
@@ -5968,6 +7690,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med618",
       name: "Ciclopirox",
+      genericName: "Ciclopirox",
+      tradeName: "Ciclopirox (Ciclopirox)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Pruritus", "Burning", "Erythema"],
       interactions: ["None significant"],
@@ -5976,6 +7700,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med619",
       name: "Sertaconazole",
+      genericName: "Sertaconazole",
+      tradeName: "Sertaconazole (Sertaconazole)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Contact dermatitis", "Dry skin", "Burning"],
       interactions: ["None significant"],
@@ -5984,6 +7710,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med620",
       name: "Naftifine",
+      genericName: "Naftifine",
+      tradeName: "Naftifine (Naftifine)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Burning", "Stinging", "Dryness", "Itching"],
       interactions: ["None significant"],
@@ -5994,6 +7722,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med621",
       name: "Mupirocin",
+      genericName: "Mupirocin",
+      tradeName: "Mupirocin (Mupirocin)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Burning", "Stinging", "Pain", "Itching"],
       interactions: ["None significant"],
@@ -6002,6 +7732,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med622",
       name: "Bacitracin",
+      genericName: "Bacitracin",
+      tradeName: "Bacitracin (Bacitracin)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Allergic contact dermatitis"],
       interactions: ["None significant"],
@@ -6010,6 +7742,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med623",
       name: "Neomycin",
+      genericName: "Neomycin",
+      tradeName: "Neomycin (Neomycin)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Allergic contact dermatitis", "Erythema", "Rash"],
       interactions: ["None significant"],
@@ -6018,6 +7752,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med624",
       name: "Polymyxin B",
+      genericName: "Polymyxin B",
+      tradeName: "Polymyxin B (Polymyxin B)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Irritation", "Allergic contact dermatitis"],
       interactions: ["None significant"],
@@ -6026,6 +7762,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med625",
       name: "Retapamulin",
+      genericName: "Retapamulin",
+      tradeName: "Retapamulin (Retapamulin)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Application site irritation", "Pruritus"],
       interactions: ["None significant"],
@@ -6034,6 +7772,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med626",
       name: "Gentamicin",
+      genericName: "Gentamicin",
+      tradeName: "Gentamicin (Gentamicin)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Erythema", "Pruritus", "Photosensitization"],
       interactions: ["None significant"],
@@ -6042,6 +7782,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med627",
       name: "Silver Sulfadiazine",
+      genericName: "Silver Sulfadiazine",
+      tradeName: "Silver Sulfadiazine (Silver Sulfadiazine)",
       contraindications: ["pregnancy near term", "premature infants", "neonates < 2 months"],
       sideEffects: ["Leukopenia", "Skin necrosis", "Erythema multiforme", "Skin discoloration"],
       interactions: ["Cimetidine"],
@@ -6050,6 +7792,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med628",
       name: "Erythromycin (Topical)",
+      genericName: "Erythromycin (Topical)",
+      tradeName: "Erythromycin (Topical) (Erythromycin (Topical))",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Erythema", "Desquamation", "Burning", "Pruritus"],
       interactions: ["Clindamycin (topical)"],
@@ -6058,6 +7802,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med629",
       name: "Clindamycin (Topical)",
+      genericName: "Clindamycin (Topical)",
+      tradeName: "Clindamycin (Topical) (Clindamycin (Topical))",
       contraindications: ["history of regional enteritis or ulcerative colitis", "history of antibiotic-associated colitis"],
       sideEffects: ["Dryness", "Erythema", "Burning", "Peeling"],
       interactions: ["Erythromycin (topical)", "Neuromuscular blocking agents"],
@@ -6066,6 +7812,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med630",
       name: "Fusidic Acid",
+      genericName: "Fusidic Acid",
+      tradeName: "Fusidic Acid (Fusidic Acid)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Mild irritation", "Rash"],
       interactions: ["None significant"],
@@ -6076,6 +7824,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med631",
       name: "Benzoyl Peroxide",
+      genericName: "Benzoyl Peroxide",
+      tradeName: "Benzoyl Peroxide (Benzoyl Peroxide)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Dryness", "Erythema", "Peeling", "Burning"],
       interactions: ["Tretinoin (inactivates tretinoin if applied simultaneously)"],
@@ -6084,6 +7834,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med632",
       name: "Salicylic Acid",
+      genericName: "Salicylic Acid",
+      tradeName: "Salicylic Acid (Salicylic Acid)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Dryness", "Erythema", "Peeling", "Stinging"],
       interactions: ["Other topical acne agents"],
@@ -6092,6 +7844,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med633",
       name: "Tretinoin",
+      genericName: "Tretinoin",
+      tradeName: "Tretinoin (Tretinoin)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Erythema", "Peeling", "Dryness", "Burning", "Photosensitivity"],
       interactions: ["Benzoyl peroxide", "Astringents", "Abrasive soaps"],
@@ -6100,6 +7854,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med634",
       name: "Adapalene",
+      genericName: "Adapalene",
+      tradeName: "Adapalene (Adapalene)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Erythema", "Scaling", "Dryness", "Pruritus"],
       interactions: ["Other topical acne agents"],
@@ -6108,6 +7864,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med635",
       name: "Tazarotene",
+      genericName: "Tazarotene",
+      tradeName: "Tazarotene (Tazarotene)",
       contraindications: ["pregnancy"],
       sideEffects: ["Desquamation", "Erythema", "Burning", "Dry skin"],
       interactions: ["Other topical acne agents", "Photosensitizing drugs"],
@@ -6116,6 +7874,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med636",
       name: "Isotretinoin",
+      genericName: "Isotretinoin",
+      tradeName: "Isotretinoin (Isotretinoin)",
       contraindications: ["pregnancy", "lactation"],
       sideEffects: ["Dry lips", "Dry skin", "Epistaxis", "Myalgia", "Teratogenicity"],
       interactions: ["Tetracyclines", "Vitamin A", "Progestin-only contraceptives"],
@@ -6124,6 +7884,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med637",
       name: "Azelaic Acid",
+      genericName: "Azelaic Acid",
+      tradeName: "Azelaic Acid (Azelaic Acid)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Pruritus", "Burning", "Stinging", "Tingling"],
       interactions: ["None significant"],
@@ -6132,6 +7894,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med638",
       name: "Clascoterone",
+      genericName: "Clascoterone",
+      tradeName: "Clascoterone (Clascoterone)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Erythema", "Pruritus", "Scaling", "Dryness"],
       interactions: ["None significant"],
@@ -6140,6 +7904,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med639",
       name: "Dapsone (Topical)",
+      genericName: "Dapsone (Topical)",
+      tradeName: "Dapsone (Topical) (Dapsone (Topical))",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Oiliness", "Peeling", "Dryness", "Erythema"],
       interactions: ["Benzoyl peroxide (causes yellow/orange skin discoloration)"],
@@ -6148,6 +7914,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med640",
       name: "Minocycline (Topical)",
+      genericName: "Minocycline (Topical)",
+      tradeName: "Minocycline (Topical) (Minocycline (Topical))",
       contraindications: ["hypersensitivity to tetracyclines"],
       sideEffects: ["Headache", "Erythema", "Pruritus"],
       interactions: ["None significant"],
@@ -6158,6 +7926,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med641",
       name: "Calcipotriene",
+      genericName: "Calcipotriene",
+      tradeName: "Calcipotriene (Calcipotriene)",
       contraindications: ["hypercalcemia", "vitamin D toxicity"],
       sideEffects: ["Burning", "Itching", "Skin irritation", "Erythema"],
       interactions: ["Salicylic acid (inactivates calcipotriene)"],
@@ -6166,6 +7936,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med642",
       name: "Tazarotene (Psoriasis)",
+      genericName: "Tazarotene (Psoriasis)",
+      tradeName: "Tazarotene (Psoriasis) (Tazarotene (Psoriasis))",
       contraindications: ["pregnancy"],
       sideEffects: ["Pruritus", "Erythema", "Burning", "Worsening of psoriasis"],
       interactions: ["Photosensitizing drugs"],
@@ -6174,6 +7946,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med643",
       name: "Anthralin",
+      genericName: "Anthralin",
+      tradeName: "Anthralin (Anthralin)",
       contraindications: ["acute psoriasis", "inflammation"],
       sideEffects: ["Skin irritation", "Skin staining", "Erythema"],
       interactions: ["None significant"],
@@ -6182,6 +7956,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med644",
       name: "Coal Tar",
+      genericName: "Coal Tar",
+      tradeName: "Coal Tar (Coal Tar)",
       contraindications: ["acute, inflamed psoriasis"],
       sideEffects: ["Skin irritation", "Photosensitivity", "Folliculitis"],
       interactions: ["Photosensitizing drugs"],
@@ -6190,6 +7966,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med645",
       name: "Acitretin",
+      genericName: "Acitretin",
+      tradeName: "Acitretin (Acitretin)",
       contraindications: ["pregnancy", "severe liver/kidney impairment", "hyperlipidemia"],
       sideEffects: ["Cheilitis", "Alopecia", "Skin peeling", "Hypertriglyceridemia"],
       interactions: ["Alcohol", "Tetracyclines", "Vitamin A", "Methotrexate"],
@@ -6198,6 +7976,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med646",
       name: "Apremilast",
+      genericName: "Apremilast",
+      tradeName: "Apremilast (Apremilast)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Diarrhea", "Nausea", "Upper respiratory tract infection", "Headache"],
       interactions: ["Strong CYP3A4 inducers (e.g., rifampin)"],
@@ -6206,6 +7986,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med647",
       name: "Secukinumab",
+      genericName: "Secukinumab",
+      tradeName: "Secukinumab (Secukinumab)",
       contraindications: ["severe hypersensitivity"],
       sideEffects: ["Nasopharyngitis", "Diarrhea", "Upper respiratory tract infection"],
       interactions: ["Live vaccines"],
@@ -6214,6 +7996,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med648",
       name: "Ixekizumab",
+      genericName: "Ixekizumab",
+      tradeName: "Ixekizumab (Ixekizumab)",
       contraindications: ["severe hypersensitivity"],
       sideEffects: ["Injection site reactions", "Upper respiratory tract infection", "Nausea"],
       interactions: ["Live vaccines"],
@@ -6222,6 +8006,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med649",
       name: "Ustekinumab (Psoriasis)",
+      genericName: "Ustekinumab (Psoriasis)",
+      tradeName: "Ustekinumab (Psoriasis) (Ustekinumab (Psoriasis))",
       contraindications: ["clinically significant active infection"],
       sideEffects: ["Nasopharyngitis", "Upper respiratory tract infection", "Headache"],
       interactions: ["Live vaccines", "CYP450 substrates"],
@@ -6230,6 +8016,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med650",
       name: "Guselkumab",
+      genericName: "Guselkumab",
+      tradeName: "Guselkumab (Guselkumab)",
       contraindications: ["severe hypersensitivity"],
       sideEffects: ["Upper respiratory tract infection", "Headache", "Injection site reactions"],
       interactions: ["Live vaccines"],
@@ -6240,6 +8028,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med651",
       name: "Timolol (Ophthalmic)",
+      genericName: "Timolol (Ophthalmic)",
+      tradeName: "Timolol (Ophthalmic) (Timolol (Ophthalmic))",
       contraindications: ["bronchial asthma", "severe COPD", "sinus bradycardia"],
       sideEffects: ["Eye irritation", "Visual disturbances", "Bradycardia", "Bronchospasm"],
       interactions: ["Oral beta-blockers", "Calcium channel blockers"],
@@ -6248,6 +8038,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med652",
       name: "Latanoprost",
+      genericName: "Latanoprost",
+      tradeName: "Latanoprost (Latanoprost)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Eye irritation", "Eyelash changes", "Iris pigmentation changes"],
       interactions: ["Thimerosal (precipitation)"],
@@ -6256,6 +8048,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med653",
       name: "Bimatoprost",
+      genericName: "Bimatoprost",
+      tradeName: "Bimatoprost (Bimatoprost)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Conjunctival hyperemia", "Eyelash growth", "Eye pruritus"],
       interactions: ["Other prostaglandin analogs"],
@@ -6264,6 +8058,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med654",
       name: "Travoprost",
+      genericName: "Travoprost",
+      tradeName: "Travoprost (Travoprost)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Ocular hyperemia", "Decreased visual acuity", "Eye discomfort"],
       interactions: ["None significant"],
@@ -6272,6 +8068,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med655",
       name: "Dorzolamide",
+      genericName: "Dorzolamide",
+      tradeName: "Dorzolamide (Dorzolamide)",
       contraindications: ["severe renal impairment"],
       sideEffects: ["Bitter taste", "Eye burning/stinging", "Superficial punctate keratitis"],
       interactions: ["Oral carbonic anhydrase inhibitors"],
@@ -6280,6 +8078,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med656",
       name: "Brinzolamide",
+      genericName: "Brinzolamide",
+      tradeName: "Brinzolamide (Brinzolamide)",
       contraindications: ["severe renal impairment"],
       sideEffects: ["Blurred vision", "Bitter taste", "Eye irritation"],
       interactions: ["Oral carbonic anhydrase inhibitors"],
@@ -6288,6 +8088,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med657",
       name: "Brimonidine",
+      genericName: "Brimonidine",
+      tradeName: "Brimonidine (Brimonidine)",
       contraindications: ["MAOI therapy", "neonates and infants"],
       sideEffects: ["Allergic conjunctivitis", "Eye pruritus", "Oral dryness", "Somnolence"],
       interactions: ["CNS depressants", "Antihypertensives", "MAO inhibitors"],
@@ -6296,6 +8098,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med658",
       name: "Pilocarpine",
+      genericName: "Pilocarpine",
+      tradeName: "Pilocarpine (Pilocarpine)",
       contraindications: ["acute iritis", "conditions where pupillary constriction is undesirable"],
       sideEffects: ["Blurred vision", "Eye pain", "Headache", "Myopia"],
       interactions: ["None significant"],
@@ -6304,6 +8108,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med659",
       name: "Apraclonidine",
+      genericName: "Apraclonidine",
+      tradeName: "Apraclonidine (Apraclonidine)",
       contraindications: ["MAOI therapy"],
       sideEffects: ["Ocular hyperemia", "Pruritus", "Tearing", "Dry mouth"],
       interactions: ["MAO inhibitors", "Tricyclic antidepressants"],
@@ -6312,6 +8118,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med660",
       name: "Tafluprost",
+      genericName: "Tafluprost",
+      tradeName: "Tafluprost (Tafluprost)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Conjunctival hyperemia", "Eye stinging", "Eyelash darkening"],
       interactions: ["None significant"],
@@ -6322,6 +8130,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med661",
       name: "Carboxymethylcellulose",
+      genericName: "Carboxymethylcellulose",
+      tradeName: "Carboxymethylcellulose (Carboxymethylcellulose)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Mild eye irritation", "Blurred vision (temporary)"],
       interactions: ["None significant"],
@@ -6330,6 +8140,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med662",
       name: "Hypromellose",
+      genericName: "Hypromellose",
+      tradeName: "Hypromellose (Hypromellose)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Mild eye irritation", "Blurred vision (temporary)"],
       interactions: ["None significant"],
@@ -6338,6 +8150,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med663",
       name: "Polyvinyl Alcohol",
+      genericName: "Polyvinyl Alcohol",
+      tradeName: "Polyvinyl Alcohol (Polyvinyl Alcohol)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Mild eye irritation", "Blurred vision (temporary)"],
       interactions: ["None significant"],
@@ -6346,6 +8160,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med664",
       name: "Propylene Glycol (Ophthalmic)",
+      genericName: "Propylene Glycol (Ophthalmic)",
+      tradeName: "Propylene Glycol (Ophthalmic) (Propylene Glycol (Ophthalmic))",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Mild eye irritation", "Blurred vision (temporary)"],
       interactions: ["None significant"],
@@ -6354,6 +8170,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med665",
       name: "Sodium Hyaluronate",
+      genericName: "Sodium Hyaluronate",
+      tradeName: "Sodium Hyaluronate (Sodium Hyaluronate)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Mild eye irritation", "Blurred vision (temporary)"],
       interactions: ["None significant"],
@@ -6362,6 +8180,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med666",
       name: "Dextran 70",
+      genericName: "Dextran 70",
+      tradeName: "Dextran 70 (Dextran 70)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Mild eye irritation", "Blurred vision (temporary)"],
       interactions: ["None significant"],
@@ -6370,6 +8190,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med667",
       name: "Glycerin (Ophthalmic)",
+      genericName: "Glycerin (Ophthalmic)",
+      tradeName: "Glycerin (Ophthalmic) (Glycerin (Ophthalmic))",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Mild eye irritation", "Blurred vision (temporary)"],
       interactions: ["None significant"],
@@ -6378,6 +8200,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med668",
       name: "Mineral Oil (Ophthalmic)",
+      genericName: "Mineral Oil (Ophthalmic)",
+      tradeName: "Mineral Oil (Ophthalmic) (Mineral Oil (Ophthalmic))",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Blurred vision (temporary)", "Eye irritation"],
       interactions: ["None significant"],
@@ -6386,6 +8210,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med669",
       name: "Hydroxypropyl Guar",
+      genericName: "Hydroxypropyl Guar",
+      tradeName: "Hydroxypropyl Guar (Hydroxypropyl Guar)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Mild eye irritation", "Blurred vision (temporary)"],
       interactions: ["None significant"],
@@ -6394,6 +8220,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med670",
       name: "Povidone (Ophthalmic)",
+      genericName: "Povidone (Ophthalmic)",
+      tradeName: "Povidone (Ophthalmic) (Povidone (Ophthalmic))",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Mild eye irritation", "Blurred vision (temporary)"],
       interactions: ["None significant"],
@@ -6404,6 +8232,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med671",
       name: "Erythromycin (Ophthalmic)",
+      genericName: "Erythromycin (Ophthalmic)",
+      tradeName: "Erythromycin (Ophthalmic) (Erythromycin (Ophthalmic))",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Eye irritation", "Redness", "Blurred vision"],
       interactions: ["None significant"],
@@ -6412,6 +8242,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med672",
       name: "Ciprofloxacin (Ophthalmic)",
+      genericName: "Ciprofloxacin (Ophthalmic)",
+      tradeName: "Ciprofloxacin (Ophthalmic) (Ciprofloxacin (Ophthalmic))",
       contraindications: ["hypersensitivity to quinolones"],
       sideEffects: ["White crystalline precipitate", "Eye discomfort", "Conjunctival hyperemia"],
       interactions: ["None significant"],
@@ -6420,6 +8252,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med673",
       name: "Ofloxacin (Ophthalmic)",
+      genericName: "Ofloxacin (Ophthalmic)",
+      tradeName: "Ofloxacin (Ophthalmic) (Ofloxacin (Ophthalmic))",
       contraindications: ["hypersensitivity to quinolones"],
       sideEffects: ["Transient ocular burning", "Stinging", "Redness"],
       interactions: ["None significant"],
@@ -6428,6 +8262,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med674",
       name: "Moxifloxacin (Ophthalmic)",
+      genericName: "Moxifloxacin (Ophthalmic)",
+      tradeName: "Moxifloxacin (Ophthalmic) (Moxifloxacin (Ophthalmic))",
       contraindications: ["hypersensitivity to quinolones"],
       sideEffects: ["Decreased visual acuity", "Dry eye", "Keratitis"],
       interactions: ["None significant"],
@@ -6436,6 +8272,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med675",
       name: "Gatifloxacin (Ophthalmic)",
+      genericName: "Gatifloxacin (Ophthalmic)",
+      tradeName: "Gatifloxacin (Ophthalmic) (Gatifloxacin (Ophthalmic))",
       contraindications: ["hypersensitivity to quinolones"],
       sideEffects: ["Conjunctival irritation", "Increased lacrimation", "Keratitis"],
       interactions: ["None significant"],
@@ -6444,6 +8282,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med676",
       name: "Tobramycin (Ophthalmic)",
+      genericName: "Tobramycin (Ophthalmic)",
+      tradeName: "Tobramycin (Ophthalmic) (Tobramycin (Ophthalmic))",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Tearing", "Itching", "Eyelid swelling", "Conjunctival erythema"],
       interactions: ["None significant"],
@@ -6452,6 +8292,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med677",
       name: "Gentamicin (Ophthalmic)",
+      genericName: "Gentamicin (Ophthalmic)",
+      tradeName: "Gentamicin (Ophthalmic) (Gentamicin (Ophthalmic))",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Eye burning", "Stinging", "Irritation"],
       interactions: ["None significant"],
@@ -6460,6 +8302,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med678",
       name: "Polymyxin B/Trimethoprim",
+      genericName: "Polymyxin B/Trimethoprim",
+      tradeName: "Polymyxin B/Trimethoprim (Polymyxin B/Trimethoprim)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Eye redness", "Burning", "Stinging", "Itching"],
       interactions: ["None significant"],
@@ -6468,6 +8312,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med679",
       name: "Bacitracin/Polymyxin B",
+      genericName: "Bacitracin/Polymyxin B",
+      tradeName: "Bacitracin/Polymyxin B (Bacitracin/Polymyxin B)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Eye irritation", "Burning", "Stinging"],
       interactions: ["None significant"],
@@ -6476,6 +8322,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med680",
       name: "Sulfacetamide (Ophthalmic)",
+      genericName: "Sulfacetamide (Ophthalmic)",
+      tradeName: "Sulfacetamide (Ophthalmic) (Sulfacetamide (Ophthalmic))",
       contraindications: ["hypersensitivity to sulfonamides"],
       sideEffects: ["Eye irritation", "Stinging", "Burning"],
       interactions: ["Silver preparations (incompatible)"],
@@ -6486,6 +8334,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med681",
       name: "Atropine (Ophthalmic)",
+      genericName: "Atropine (Ophthalmic)",
+      tradeName: "Atropine (Ophthalmic) (Atropine (Ophthalmic))",
       contraindications: ["glaucoma", "adhesions between iris and lens"],
       sideEffects: ["Photophobia", "Blurred vision", "Dry mouth", "Tachycardia"],
       interactions: ["Anticholinergics"],
@@ -6494,6 +8344,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med682",
       name: "Cyclopentolate",
+      genericName: "Cyclopentolate",
+      tradeName: "Cyclopentolate (Cyclopentolate)",
       contraindications: ["narrow-angle glaucoma"],
       sideEffects: ["Photophobia", "Blurred vision", "Eye irritation"],
       interactions: ["Carbachol", "Pilocarpine"],
@@ -6502,6 +8354,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med683",
       name: "Tropicamide",
+      genericName: "Tropicamide",
+      tradeName: "Tropicamide (Tropicamide)",
       contraindications: ["narrow-angle glaucoma"],
       sideEffects: ["Photophobia", "Blurred vision", "Stinging"],
       interactions: ["Carbachol", "Pilocarpine"],
@@ -6510,6 +8364,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med684",
       name: "Phenylephrine (Ophthalmic)",
+      genericName: "Phenylephrine (Ophthalmic)",
+      tradeName: "Phenylephrine (Ophthalmic) (Phenylephrine (Ophthalmic))",
       contraindications: ["narrow-angle glaucoma", "hypertension", "ventricular tachycardia"],
       sideEffects: ["Eye pain", "Stinging", "Photophobia", "Hypertension"],
       interactions: ["MAO inhibitors", "Tricyclic antidepressants"],
@@ -6518,6 +8374,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med685",
       name: "Homatropine",
+      genericName: "Homatropine",
+      tradeName: "Homatropine (Homatropine)",
       contraindications: ["glaucoma"],
       sideEffects: ["Photophobia", "Blurred vision", "Eye irritation"],
       interactions: ["Anticholinergics"],
@@ -6526,6 +8384,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med686",
       name: "Scopolamine (Ophthalmic)",
+      genericName: "Scopolamine (Ophthalmic)",
+      tradeName: "Scopolamine (Ophthalmic) (Scopolamine (Ophthalmic))",
       contraindications: ["glaucoma"],
       sideEffects: ["Photophobia", "Blurred vision", "Dry mouth", "Somnolence"],
       interactions: ["Anticholinergics"],
@@ -6534,6 +8394,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med687",
       name: "Carbachol",
+      genericName: "Carbachol",
+      tradeName: "Carbachol (Carbachol)",
       contraindications: ["acute iritis"],
       sideEffects: ["Corneal clouding", "Eye pain", "Headache", "Blurred vision"],
       interactions: ["Cyclopentolate", "Tropicamide"],
@@ -6542,6 +8404,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med688",
       name: "Echothiophate",
+      genericName: "Echothiophate",
+      tradeName: "Echothiophate (Echothiophate)",
       contraindications: ["active uveal inflammation", "glaucoma associated with iridocyclitis"],
       sideEffects: ["Iris cysts", "Lens opacities", "Eye pain", "Blurred vision"],
       interactions: ["Succinylcholine", "Organophosphate insecticides"],
@@ -6550,6 +8414,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med689",
       name: "Acetylcholine (Ophthalmic)",
+      genericName: "Acetylcholine (Ophthalmic)",
+      tradeName: "Acetylcholine (Ophthalmic) (Acetylcholine (Ophthalmic))",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Corneal edema", "Clouding", "Bradycardia", "Hypotension"],
       interactions: ["None significant"],
@@ -6558,6 +8424,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med690",
       name: "Hydroxyamphetamine",
+      genericName: "Hydroxyamphetamine",
+      tradeName: "Hydroxyamphetamine (Hydroxyamphetamine)",
       contraindications: ["narrow-angle glaucoma"],
       sideEffects: ["Photophobia", "Blurred vision", "Eye irritation"],
       interactions: ["MAO inhibitors"],
@@ -6568,6 +8436,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med691",
       name: "Oxymetazoline",
+      genericName: "Oxymetazoline",
+      tradeName: "Oxymetazoline (Oxymetazoline)",
       contraindications: ["MAOI therapy"],
       sideEffects: ["Rebound congestion (if used > 3 days)", "Nasal dryness", "Sneezing"],
       interactions: ["MAO inhibitors"],
@@ -6576,6 +8446,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med692",
       name: "Xylometazoline",
+      genericName: "Xylometazoline",
+      tradeName: "Xylometazoline (Xylometazoline)",
       contraindications: ["MAOI therapy", "narrow-angle glaucoma"],
       sideEffects: ["Rebound congestion", "Nasal dryness", "Headache"],
       interactions: ["MAO inhibitors", "Tricyclic antidepressants"],
@@ -6584,6 +8456,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med693",
       name: "Phenylephrine (Nasal)",
+      genericName: "Phenylephrine (Nasal)",
+      tradeName: "Phenylephrine (Nasal) (Phenylephrine (Nasal))",
       contraindications: ["MAOI therapy", "severe hypertension"],
       sideEffects: ["Rebound congestion", "Nasal burning", "Sneezing"],
       interactions: ["MAO inhibitors", "Beta-blockers"],
@@ -6592,6 +8466,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med694",
       name: "Pseudoephedrine",
+      genericName: "Pseudoephedrine",
+      tradeName: "Pseudoephedrine (Pseudoephedrine)",
       contraindications: ["MAOI therapy", "severe hypertension", "severe CAD"],
       sideEffects: ["Insomnia", "Nervousness", "Tachycardia", "Palpitations"],
       interactions: ["MAO inhibitors", "Antihypertensives"],
@@ -6600,6 +8476,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med695",
       name: "Naphazoline",
+      genericName: "Naphazoline",
+      tradeName: "Naphazoline (Naphazoline)",
       contraindications: ["MAOI therapy"],
       sideEffects: ["Rebound congestion", "Nasal stinging", "Sneezing"],
       interactions: ["MAO inhibitors"],
@@ -6608,6 +8486,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med696",
       name: "Tetrahydrozoline",
+      genericName: "Tetrahydrozoline",
+      tradeName: "Tetrahydrozoline (Tetrahydrozoline)",
       contraindications: ["MAOI therapy"],
       sideEffects: ["Rebound congestion", "Nasal stinging", "Sneezing"],
       interactions: ["MAO inhibitors"],
@@ -6616,6 +8496,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med697",
       name: "Tramazoline",
+      genericName: "Tramazoline",
+      tradeName: "Tramazoline (Tramazoline)",
       contraindications: ["rhinitis sicca", "glaucoma"],
       sideEffects: ["Rebound congestion", "Nasal dryness", "Headache"],
       interactions: ["MAO inhibitors", "Tricyclic antidepressants"],
@@ -6624,6 +8506,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med698",
       name: "Ephedrine (Nasal)",
+      genericName: "Ephedrine (Nasal)",
+      tradeName: "Ephedrine (Nasal) (Ephedrine (Nasal))",
       contraindications: ["MAOI therapy", "hypertension"],
       sideEffects: ["Rebound congestion", "Nasal irritation", "Tachycardia"],
       interactions: ["MAO inhibitors", "Beta-blockers"],
@@ -6632,6 +8516,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med699",
       name: "Propylhexedrine",
+      genericName: "Propylhexedrine",
+      tradeName: "Propylhexedrine (Propylhexedrine)",
       contraindications: ["MAOI therapy"],
       sideEffects: ["Nasal burning", "Sneezing", "Rebound congestion"],
       interactions: ["MAO inhibitors"],
@@ -6640,6 +8526,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med700",
       name: "Levmetamfetamine",
+      genericName: "Levmetamfetamine",
+      tradeName: "Levmetamfetamine (Levmetamfetamine)",
       contraindications: ["MAOI therapy"],
       sideEffects: ["Nasal burning", "Sneezing", "Rebound congestion"],
       interactions: ["MAO inhibitors"],
@@ -6650,6 +8538,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med701",
       name: "Ciprofloxacin/Dexamethasone",
+      genericName: "Ciprofloxacin/Dexamethasone",
+      tradeName: "Ciprofloxacin/Dexamethasone (Ciprofloxacin/Dexamethasone)",
       contraindications: ["viral infections of the external canal"],
       sideEffects: ["Ear discomfort", "Ear pain", "Ear pruritus"],
       interactions: ["None significant"],
@@ -6658,6 +8548,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med702",
       name: "Neomycin/Polymyxin B/Hydrocortisone",
+      genericName: "Neomycin/Polymyxin B/Hydrocortisone",
+      tradeName: "Neomycin/Polymyxin B/Hydrocortisone (Neomycin/Polymyxin B/Hydrocortisone)",
       contraindications: ["viral infections of the external canal", "perforated tympanic membrane"],
       sideEffects: ["Ear sensitization", "Stinging", "Burning"],
       interactions: ["None significant"],
@@ -6666,6 +8558,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med703",
       name: "Ofloxacin (Otic)",
+      genericName: "Ofloxacin (Otic)",
+      tradeName: "Ofloxacin (Otic) (Ofloxacin (Otic))",
       contraindications: ["hypersensitivity to quinolones"],
       sideEffects: ["Application site reaction", "Pruritus", "Taste perversion"],
       interactions: ["None significant"],
@@ -6674,6 +8568,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med704",
       name: "Ciprofloxacin (Otic)",
+      genericName: "Ciprofloxacin (Otic)",
+      tradeName: "Ciprofloxacin (Otic) (Ciprofloxacin (Otic))",
       contraindications: ["hypersensitivity to quinolones"],
       sideEffects: ["Application site pain", "Ear pruritus", "Fungal ear superinfection"],
       interactions: ["None significant"],
@@ -6682,6 +8578,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med705",
       name: "Acetic Acid (Otic)",
+      genericName: "Acetic Acid (Otic)",
+      tradeName: "Acetic Acid (Otic) (Acetic Acid (Otic))",
       contraindications: ["perforated tympanic membrane"],
       sideEffects: ["Transient stinging", "Burning", "Ear irritation"],
       interactions: ["None significant"],
@@ -6690,6 +8588,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med706",
       name: "Fluocinolone (Otic)",
+      genericName: "Fluocinolone (Otic)",
+      tradeName: "Fluocinolone (Otic) (Fluocinolone (Otic))",
       contraindications: ["viral infections of the external canal"],
       sideEffects: ["Burning", "Itching", "Irritation", "Dryness"],
       interactions: ["None significant"],
@@ -6698,6 +8598,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med707",
       name: "Antipyrine/Benzocaine",
+      genericName: "Antipyrine/Benzocaine",
+      tradeName: "Antipyrine/Benzocaine (Antipyrine/Benzocaine)",
       contraindications: ["perforated tympanic membrane"],
       sideEffects: ["Ear irritation", "Redness", "Itching"],
       interactions: ["None significant"],
@@ -6706,6 +8608,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med708",
       name: "Carbamide Peroxide",
+      genericName: "Carbamide Peroxide",
+      tradeName: "Carbamide Peroxide (Carbamide Peroxide)",
       contraindications: ["perforated tympanic membrane", "ear drainage"],
       sideEffects: ["Foaming in ear", "Crackling sound", "Mild irritation"],
       interactions: ["None significant"],
@@ -6714,6 +8618,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med709",
       name: "Ciprofloxacin/Hydrocortisone",
+      genericName: "Ciprofloxacin/Hydrocortisone",
+      tradeName: "Ciprofloxacin/Hydrocortisone (Ciprofloxacin/Hydrocortisone)",
       contraindications: ["viral infections of the external canal"],
       sideEffects: ["Headache", "Ear pruritus", "Cough"],
       interactions: ["None significant"],
@@ -6722,6 +8628,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med710",
       name: "Chloramphenicol (Otic)",
+      genericName: "Chloramphenicol (Otic)",
+      tradeName: "Chloramphenicol (Otic) (Chloramphenicol (Otic))",
       contraindications: ["perforated tympanic membrane", "hypersensitivity"],
       sideEffects: ["Ear irritation", "Burning", "Stinging", "Bone marrow suppression (rare)"],
       interactions: ["None significant"],
@@ -6732,6 +8640,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med711",
       name: "Cisplatin",
+      genericName: "Cisplatin",
+      tradeName: "Cisplatin (Cisplatin)",
       contraindications: ["pre-existing renal impairment", "myelosuppression", "hearing impairment"],
       sideEffects: ["Nephrotoxicity", "Ototoxicity", "Nausea", "Vomiting"],
       interactions: ["Aminoglycosides", "Loop diuretics", "Phenytoin"],
@@ -6740,6 +8650,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med712",
       name: "Carboplatin",
+      genericName: "Carboplatin",
+      tradeName: "Carboplatin (Carboplatin)",
       contraindications: ["severe bone marrow depression", "significant bleeding"],
       sideEffects: ["Myelosuppression", "Nausea", "Vomiting", "Alopecia"],
       interactions: ["Aminoglycosides", "Nephrotoxic drugs"],
@@ -6748,6 +8660,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med713",
       name: "Paclitaxel",
+      genericName: "Paclitaxel",
+      tradeName: "Paclitaxel (Paclitaxel)",
       contraindications: ["baseline neutrophil counts < 1,500 cells/mm3", "hypersensitivity to Cremophor EL"],
       sideEffects: ["Alopecia", "Myelosuppression", "Peripheral neuropathy", "Myalgia"],
       interactions: ["CYP2C8 inhibitors", "CYP3A4 inhibitors", "Doxorubicin"],
@@ -6756,6 +8670,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med714",
       name: "Docetaxel",
+      genericName: "Docetaxel",
+      tradeName: "Docetaxel (Docetaxel)",
       contraindications: ["baseline neutrophil counts < 1,500 cells/mm3", "severe hepatic impairment"],
       sideEffects: ["Alopecia", "Myelosuppression", "Fluid retention", "Neuropathy"],
       interactions: ["CYP3A4 inhibitors"],
@@ -6764,6 +8680,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med715",
       name: "Doxorubicin",
+      genericName: "Doxorubicin",
+      tradeName: "Doxorubicin (Doxorubicin)",
       contraindications: ["severe myocardial insufficiency", "recent MI", "severe arrhythmias"],
       sideEffects: ["Cardiotoxicity", "Alopecia", "Myelosuppression", "Nausea"],
       interactions: ["Trastuzumab", "Paclitaxel", "Verapamil"],
@@ -6772,6 +8690,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med716",
       name: "Cyclophosphamide",
+      genericName: "Cyclophosphamide",
+      tradeName: "Cyclophosphamide (Cyclophosphamide)",
       contraindications: ["severely depressed bone marrow function"],
       sideEffects: ["Hemorrhagic cystitis", "Alopecia", "Myelosuppression", "Nausea"],
       interactions: ["Allopurinol", "Doxorubicin", "Succinylcholine"],
@@ -6780,6 +8700,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med717",
       name: "Fluorouracil (5-FU)",
+      genericName: "Fluorouracil (5-FU)",
+      tradeName: "Fluorouracil (5-FU) (Fluorouracil (5-FU))",
       contraindications: ["poor nutritional state", "depressed bone marrow function", "potentially serious infections"],
       sideEffects: ["Stomatitis", "Diarrhea", "Myelosuppression", "Alopecia"],
       interactions: ["Leucovorin", "Warfarin", "Cimetidine"],
@@ -6788,6 +8710,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med718",
       name: "Gemcitabine",
+      genericName: "Gemcitabine",
+      tradeName: "Gemcitabine (Gemcitabine)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Myelosuppression", "Nausea", "Vomiting", "Fever"],
       interactions: ["Warfarin", "Bleomycin"],
@@ -6796,6 +8720,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med719",
       name: "Vincristine",
+      genericName: "Vincristine",
+      tradeName: "Vincristine (Vincristine)",
       contraindications: ["demyelinating form of Charcot-Marie-Tooth syndrome"],
       sideEffects: ["Peripheral neuropathy", "Constipation", "Alopecia", "Jaw pain"],
       interactions: ["CYP3A4 inhibitors", "Itraconazole", "Phenytoin"],
@@ -6804,6 +8730,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med720",
       name: "Etoposide",
+      genericName: "Etoposide",
+      tradeName: "Etoposide (Etoposide)",
       contraindications: ["severe hepatic impairment"],
       sideEffects: ["Alopecia", "Myelosuppression", "Nausea", "Hypotension (with rapid infusion)"],
       interactions: ["Warfarin", "Cyclosporine"],
@@ -6814,6 +8742,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med721",
       name: "Pembrolizumab",
+      genericName: "Pembrolizumab",
+      tradeName: "Pembrolizumab (Pembrolizumab)",
       contraindications: ["pregnancy"],
       sideEffects: ["Fatigue", "Pruritus", "Diarrhea", "Immune-mediated pneumonitis"],
       interactions: ["Systemic corticosteroids", "Immunosuppressants"],
@@ -6822,6 +8752,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med722",
       name: "Nivolumab",
+      genericName: "Nivolumab",
+      tradeName: "Nivolumab (Nivolumab)",
       contraindications: ["pregnancy"],
       sideEffects: ["Fatigue", "Rash", "Musculoskeletal pain", "Pruritus"],
       interactions: ["Systemic corticosteroids", "Immunosuppressants"],
@@ -6830,6 +8762,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med723",
       name: "Ipilimumab",
+      genericName: "Ipilimumab",
+      tradeName: "Ipilimumab (Ipilimumab)",
       contraindications: ["pregnancy"],
       sideEffects: ["Fatigue", "Diarrhea", "Pruritus", "Rash"],
       interactions: ["Systemic corticosteroids", "Immunosuppressants"],
@@ -6838,6 +8772,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med724",
       name: "Atezolizumab",
+      genericName: "Atezolizumab",
+      tradeName: "Atezolizumab (Atezolizumab)",
       contraindications: ["pregnancy"],
       sideEffects: ["Fatigue", "Nausea", "Cough", "Dyspnea"],
       interactions: ["Systemic corticosteroids", "Immunosuppressants"],
@@ -6846,6 +8782,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med725",
       name: "Durvalumab",
+      genericName: "Durvalumab",
+      tradeName: "Durvalumab (Durvalumab)",
       contraindications: ["pregnancy"],
       sideEffects: ["Cough", "Fatigue", "Pneumonitis", "Upper respiratory tract infection"],
       interactions: ["Systemic corticosteroids", "Immunosuppressants"],
@@ -6854,6 +8792,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med726",
       name: "Avelumab",
+      genericName: "Avelumab",
+      tradeName: "Avelumab (Avelumab)",
       contraindications: ["pregnancy"],
       sideEffects: ["Fatigue", "Musculoskeletal pain", "Diarrhea", "Nausea"],
       interactions: ["Systemic corticosteroids", "Immunosuppressants"],
@@ -6862,6 +8802,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med727",
       name: "Cemiplimab",
+      genericName: "Cemiplimab",
+      tradeName: "Cemiplimab (Cemiplimab)",
       contraindications: ["pregnancy"],
       sideEffects: ["Fatigue", "Rash", "Diarrhea", "Musculoskeletal pain"],
       interactions: ["Systemic corticosteroids", "Immunosuppressants"],
@@ -6870,6 +8812,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med728",
       name: "Interferon alfa-2b",
+      genericName: "Interferon alfa-2b",
+      tradeName: "Interferon alfa-2b (Interferon alfa-2b)",
       contraindications: ["autoimmune hepatitis", "decompensated liver disease"],
       sideEffects: ["Flu-like symptoms", "Depression", "Fatigue", "Myelosuppression"],
       interactions: ["Theophylline", "Zidovudine"],
@@ -6878,6 +8822,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med729",
       name: "Aldesleukin (IL-2)",
+      genericName: "Aldesleukin (IL-2)",
+      tradeName: "Aldesleukin (IL-2) (Aldesleukin (IL-2))",
       contraindications: ["abnormal thallium stress test", "abnormal pulmonary function tests"],
       sideEffects: ["Capillary leak syndrome", "Hypotension", "Fever", "Chills"],
       interactions: ["Antihypertensives", "Corticosteroids"],
@@ -6886,6 +8832,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med730",
       name: "Sipuleucel-T",
+      genericName: "Sipuleucel-T",
+      tradeName: "Sipuleucel-T (Sipuleucel-T)",
       contraindications: ["none specified"],
       sideEffects: ["Chills", "Fatigue", "Fever", "Back pain"],
       interactions: ["Immunosuppressants", "Chemotherapy"],
@@ -6896,6 +8844,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med731",
       name: "Trastuzumab",
+      genericName: "Trastuzumab",
+      tradeName: "Trastuzumab (Trastuzumab)",
       contraindications: ["none specified"],
       sideEffects: ["Cardiotoxicity", "Infusion reactions", "Fever", "Chills"],
       interactions: ["Anthracyclines", "Cyclophosphamide"],
@@ -6904,6 +8854,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med732",
       name: "Bevacizumab",
+      genericName: "Bevacizumab",
+      tradeName: "Bevacizumab (Bevacizumab)",
       contraindications: ["none specified"],
       sideEffects: ["Hypertension", "Bleeding", "Proteinuria", "GI perforation"],
       interactions: ["Sunitinib", "Sorafenib"],
@@ -6912,6 +8864,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med733",
       name: "Cetuximab",
+      genericName: "Cetuximab",
+      tradeName: "Cetuximab (Cetuximab)",
       contraindications: ["none specified"],
       sideEffects: ["Acneiform rash", "Infusion reactions", "Fatigue", "Hypomagnesemia"],
       interactions: ["Radiation therapy"],
@@ -6920,6 +8874,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med734",
       name: "Panitumumab",
+      genericName: "Panitumumab",
+      tradeName: "Panitumumab (Panitumumab)",
       contraindications: ["none specified"],
       sideEffects: ["Dermatologic toxicities", "Fatigue", "Abdominal pain", "Nausea"],
       interactions: ["Irinotecan", "Bevacizumab"],
@@ -6928,6 +8884,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med735",
       name: "Alemtuzumab",
+      genericName: "Alemtuzumab",
+      tradeName: "Alemtuzumab (Alemtuzumab)",
       contraindications: ["active systemic infection", "HIV infection"],
       sideEffects: ["Infusion reactions", "Cytopenias", "Infections", "Fatigue"],
       interactions: ["Live vaccines", "Immunosuppressants"],
@@ -6936,6 +8894,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med736",
       name: "Daratumumab",
+      genericName: "Daratumumab",
+      tradeName: "Daratumumab (Daratumumab)",
       contraindications: ["severe hypersensitivity"],
       sideEffects: ["Infusion reactions", "Fatigue", "Nausea", "Back pain"],
       interactions: ["Blood typing (interferes with cross-matching)"],
@@ -6944,6 +8904,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med737",
       name: "Pertuzumab",
+      genericName: "Pertuzumab",
+      tradeName: "Pertuzumab (Pertuzumab)",
       contraindications: ["pregnancy"],
       sideEffects: ["Diarrhea", "Alopecia", "Nausea", "Fatigue"],
       interactions: ["Anthracyclines"],
@@ -6952,6 +8914,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med738",
       name: "Obinutuzumab",
+      genericName: "Obinutuzumab",
+      tradeName: "Obinutuzumab (Obinutuzumab)",
       contraindications: ["none specified"],
       sideEffects: ["Infusion reactions", "Neutropenia", "Thrombocytopenia", "Infections"],
       interactions: ["Live vaccines", "Immunosuppressants"],
@@ -6960,6 +8924,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med739",
       name: "Ramucirumab",
+      genericName: "Ramucirumab",
+      tradeName: "Ramucirumab (Ramucirumab)",
       contraindications: ["none specified"],
       sideEffects: ["Hypertension", "Diarrhea", "Headache", "Epistaxis"],
       interactions: ["None significant"],
@@ -6968,6 +8934,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med740",
       name: "Dinutuximab",
+      genericName: "Dinutuximab",
+      tradeName: "Dinutuximab (Dinutuximab)",
       contraindications: ["history of anaphylaxis to dinutuximab"],
       sideEffects: ["Pain", "Fever", "Infusion reactions", "Hypotension"],
       interactions: ["Immunosuppressants", "Corticosteroids"],
@@ -6978,6 +8946,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med741",
       name: "Cyclosporine",
+      genericName: "Cyclosporine",
+      tradeName: "Cyclosporine (Cyclosporine)",
       contraindications: ["abnormal renal function", "uncontrolled hypertension"],
       sideEffects: ["Nephrotoxicity", "Hypertension", "Gingival hyperplasia", "Hirsutism"],
       interactions: ["CYP3A4 inhibitors", "CYP3A4 inducers", "Statins"],
@@ -6986,6 +8956,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med742",
       name: "Tacrolimus",
+      genericName: "Tacrolimus",
+      tradeName: "Tacrolimus (Tacrolimus)",
       contraindications: ["hypersensitivity to HCO-60 (polyoxyl 60 hydrogenated castor oil)"],
       sideEffects: ["Nephrotoxicity", "Neurotoxicity", "Diabetes mellitus", "Hypertension"],
       interactions: ["CYP3A4 inhibitors", "CYP3A4 inducers", "Cyclosporine"],
@@ -6994,6 +8966,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med743",
       name: "Mycophenolate Mofetil",
+      genericName: "Mycophenolate Mofetil",
+      tradeName: "Mycophenolate Mofetil (Mycophenolate Mofetil)",
       contraindications: ["pregnancy"],
       sideEffects: ["Diarrhea", "Leukopenia", "Infection", "Vomiting"],
       interactions: ["Antacids", "Cholestyramine", "Acyclovir"],
@@ -7002,6 +8976,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med744",
       name: "Sirolimus",
+      genericName: "Sirolimus",
+      tradeName: "Sirolimus (Sirolimus)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Hyperlipidemia", "Impaired wound healing", "Thrombocytopenia", "Mouth ulcers"],
       interactions: ["CYP3A4 inhibitors", "CYP3A4 inducers", "Cyclosporine"],
@@ -7010,6 +8986,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med745",
       name: "Everolimus",
+      genericName: "Everolimus",
+      tradeName: "Everolimus (Everolimus)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Stomatitis", "Infections", "Fatigue", "Pneumonitis"],
       interactions: ["CYP3A4 inhibitors", "CYP3A4 inducers", "P-gp inhibitors"],
@@ -7018,6 +8996,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med746",
       name: "Basiliximab",
+      genericName: "Basiliximab",
+      tradeName: "Basiliximab (Basiliximab)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Gastrointestinal disorders", "Pain", "Peripheral edema", "Hypertension"],
       interactions: ["None significant"],
@@ -7026,6 +9006,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med747",
       name: "Antithymocyte Globulin",
+      genericName: "Antithymocyte Globulin",
+      tradeName: "Antithymocyte Globulin (Antithymocyte Globulin)",
       contraindications: ["history of anaphylaxis to rabbit proteins"],
       sideEffects: ["Fever", "Chills", "Leukopenia", "Thrombocytopenia"],
       interactions: ["Live vaccines", "Immunosuppressants"],
@@ -7034,6 +9016,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med748",
       name: "Belatacept",
+      genericName: "Belatacept",
+      tradeName: "Belatacept (Belatacept)",
       contraindications: ["EBV seronegative patients"],
       sideEffects: ["Anemia", "Diarrhea", "Urinary tract infection", "Peripheral edema"],
       interactions: ["Live vaccines", "Immunosuppressants"],
@@ -7042,6 +9026,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med749",
       name: "Mycophenolic Acid",
+      genericName: "Mycophenolic Acid",
+      tradeName: "Mycophenolic Acid (Mycophenolic Acid)",
       contraindications: ["pregnancy"],
       sideEffects: ["Diarrhea", "Leukopenia", "Infection", "Nausea"],
       interactions: ["Antacids", "Cholestyramine", "Acyclovir"],
@@ -7050,6 +9036,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med750",
       name: "Voclosporin",
+      genericName: "Voclosporin",
+      tradeName: "Voclosporin (Voclosporin)",
       contraindications: ["concomitant use with strong CYP3A4 inhibitors"],
       sideEffects: ["Decreased GFR", "Hypertension", "Diarrhea", "Headache"],
       interactions: ["CYP3A4 inhibitors", "CYP3A4 inducers", "OATP1B1 substrates"],
@@ -7060,6 +9048,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med751",
       name: "Influenza Vaccine",
+      genericName: "Influenza Vaccine",
+      tradeName: "Influenza Vaccine (Influenza Vaccine)",
       contraindications: ["severe allergic reaction to previous dose"],
       sideEffects: ["Injection site soreness", "Fever", "Muscle aches", "Headache"],
       interactions: ["Immunosuppressants"],
@@ -7068,6 +9058,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med752",
       name: "Pneumococcal Vaccine",
+      genericName: "Pneumococcal Vaccine",
+      tradeName: "Pneumococcal Vaccine (Pneumococcal Vaccine)",
       contraindications: ["severe allergic reaction to previous dose"],
       sideEffects: ["Injection site pain", "Fever", "Muscle aches", "Fatigue"],
       interactions: ["Immunosuppressants"],
@@ -7076,6 +9068,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med753",
       name: "Hepatitis B Vaccine",
+      genericName: "Hepatitis B Vaccine",
+      tradeName: "Hepatitis B Vaccine (Hepatitis B Vaccine)",
       contraindications: ["severe allergic reaction to yeast"],
       sideEffects: ["Injection site soreness", "Fever", "Headache", "Fatigue"],
       interactions: ["Immunosuppressants"],
@@ -7084,6 +9078,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med754",
       name: "MMR Vaccine",
+      genericName: "MMR Vaccine",
+      tradeName: "MMR Vaccine (MMR Vaccine)",
       contraindications: ["pregnancy", "severe immunodeficiency", "history of anaphylaxis to neomycin"],
       sideEffects: ["Fever", "Mild rash", "Swollen glands", "Joint pain"],
       interactions: ["Immunoglobulins", "Immunosuppressants"],
@@ -7092,6 +9088,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med755",
       name: "Varicella Vaccine",
+      genericName: "Varicella Vaccine",
+      tradeName: "Varicella Vaccine (Varicella Vaccine)",
       contraindications: ["pregnancy", "severe immunodeficiency", "history of anaphylaxis to neomycin"],
       sideEffects: ["Injection site soreness", "Fever", "Mild rash"],
       interactions: ["Immunoglobulins", "Salicylates", "Immunosuppressants"],
@@ -7100,6 +9098,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med756",
       name: "Tdap Vaccine",
+      genericName: "Tdap Vaccine",
+      tradeName: "Tdap Vaccine (Tdap Vaccine)",
       contraindications: ["encephalopathy within 7 days of previous pertussis vaccine"],
       sideEffects: ["Injection site pain", "Fever", "Headache", "Fatigue"],
       interactions: ["Immunosuppressants"],
@@ -7108,6 +9108,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med757",
       name: "HPV Vaccine",
+      genericName: "HPV Vaccine",
+      tradeName: "HPV Vaccine (HPV Vaccine)",
       contraindications: ["severe allergic reaction to yeast"],
       sideEffects: ["Injection site pain", "Fever", "Headache", "Syncope"],
       interactions: ["Immunosuppressants"],
@@ -7116,6 +9118,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med758",
       name: "Zoster Vaccine",
+      genericName: "Zoster Vaccine",
+      tradeName: "Zoster Vaccine (Zoster Vaccine)",
       contraindications: ["pregnancy", "severe immunodeficiency (for live vaccine)"],
       sideEffects: ["Injection site pain", "Myalgia", "Fatigue", "Headache"],
       interactions: ["Immunosuppressants", "Antiviral drugs"],
@@ -7124,6 +9128,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med759",
       name: "Meningococcal Vaccine",
+      genericName: "Meningococcal Vaccine",
+      tradeName: "Meningococcal Vaccine (Meningococcal Vaccine)",
       contraindications: ["severe allergic reaction to previous dose"],
       sideEffects: ["Injection site pain", "Fever", "Headache", "Fatigue"],
       interactions: ["Immunosuppressants"],
@@ -7132,6 +9138,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med760",
       name: "Hepatitis A Vaccine",
+      genericName: "Hepatitis A Vaccine",
+      tradeName: "Hepatitis A Vaccine (Hepatitis A Vaccine)",
       contraindications: ["severe allergic reaction to previous dose"],
       sideEffects: ["Injection site soreness", "Headache", "Loss of appetite", "Fatigue"],
       interactions: ["Immunosuppressants"],
@@ -7142,6 +9150,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med761",
       name: "Intravenous Immunoglobulin (IVIG)",
+      genericName: "Intravenous Immunoglobulin (IVIG)",
+      tradeName: "Intravenous Immunoglobulin (IVIG) (Intravenous Immunoglobulin (IVIG))",
       contraindications: ["IgA deficiency with antibodies to IgA"],
       sideEffects: ["Headache", "Chills", "Fever", "Myalgia"],
       interactions: ["Live vaccines"],
@@ -7150,6 +9160,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med762",
       name: "Hepatitis B Immune Globulin",
+      genericName: "Hepatitis B Immune Globulin",
+      tradeName: "Hepatitis B Immune Globulin (Hepatitis B Immune Globulin)",
       contraindications: ["history of anaphylactic reactions to human immune globulin"],
       sideEffects: ["Injection site pain", "Erythema", "Headache", "Malaise"],
       interactions: ["Live vaccines"],
@@ -7158,6 +9170,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med763",
       name: "Rabies Immune Globulin",
+      genericName: "Rabies Immune Globulin",
+      tradeName: "Rabies Immune Globulin (Rabies Immune Globulin)",
       contraindications: ["none specified for post-exposure prophylaxis"],
       sideEffects: ["Injection site pain", "Headache", "Fever", "Malaise"],
       interactions: ["Live vaccines", "Rabies vaccine (do not administer in same syringe)"],
@@ -7166,6 +9180,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med764",
       name: "Tetanus Immune Globulin",
+      genericName: "Tetanus Immune Globulin",
+      tradeName: "Tetanus Immune Globulin (Tetanus Immune Globulin)",
       contraindications: ["history of anaphylactic reactions to human immune globulin"],
       sideEffects: ["Injection site pain", "Fever", "Muscle stiffness", "Erythema"],
       interactions: ["Live vaccines"],
@@ -7174,6 +9190,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med765",
       name: "Varicella-Zoster Immune Globulin",
+      genericName: "Varicella-Zoster Immune Globulin",
+      tradeName: "Varicella-Zoster Immune Globulin (Varicella-Zoster Immune Globulin)",
       contraindications: ["IgA deficiency with antibodies to IgA"],
       sideEffects: ["Injection site pain", "Headache", "Rash", "Fatigue"],
       interactions: ["Live vaccines"],
@@ -7182,6 +9200,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med766",
       name: "Rho(D) Immune Globulin",
+      genericName: "Rho(D) Immune Globulin",
+      tradeName: "Rho(D) Immune Globulin (Rho(D) Immune Globulin)",
       contraindications: ["Rh-positive individuals", "history of anaphylactic reactions to human immune globulin"],
       sideEffects: ["Injection site pain", "Fever", "Headache", "Chills"],
       interactions: ["Live vaccines"],
@@ -7190,6 +9210,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med767",
       name: "Cytomegalovirus Immune Globulin",
+      genericName: "Cytomegalovirus Immune Globulin",
+      tradeName: "Cytomegalovirus Immune Globulin (Cytomegalovirus Immune Globulin)",
       contraindications: ["IgA deficiency with antibodies to IgA"],
       sideEffects: ["Flushing", "Chills", "Muscle cramps", "Back pain"],
       interactions: ["Live vaccines"],
@@ -7198,6 +9220,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med768",
       name: "Botulism Immune Globulin",
+      genericName: "Botulism Immune Globulin",
+      tradeName: "Botulism Immune Globulin (Botulism Immune Globulin)",
       contraindications: ["history of anaphylactic reactions to human immune globulin"],
       sideEffects: ["Rash", "Chills", "Muscle cramps", "Back pain"],
       interactions: ["Live vaccines"],
@@ -7206,6 +9230,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med769",
       name: "Vaccinia Immune Globulin",
+      genericName: "Vaccinia Immune Globulin",
+      tradeName: "Vaccinia Immune Globulin (Vaccinia Immune Globulin)",
       contraindications: ["history of anaphylactic reactions to human immune globulin"],
       sideEffects: ["Injection site pain", "Headache", "Chills", "Fever"],
       interactions: ["Live vaccines"],
@@ -7214,6 +9240,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med770",
       name: "Subcutaneous Immunoglobulin (SCIG)",
+      genericName: "Subcutaneous Immunoglobulin (SCIG)",
+      tradeName: "Subcutaneous Immunoglobulin (SCIG) (Subcutaneous Immunoglobulin (SCIG))",
       contraindications: ["IgA deficiency with antibodies to IgA"],
       sideEffects: ["Injection site reactions", "Headache", "Fatigue", "Nausea"],
       interactions: ["Live vaccines"],
@@ -7224,6 +9252,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med771",
       name: "Tetanus Toxoid Adsorbed",
+      genericName: "Tetanus Toxoid Adsorbed",
+      tradeName: "Tetanus Toxoid Adsorbed (Tetanus Toxoid Adsorbed)",
       contraindications: ["severe allergic reaction to previous dose"],
       sideEffects: ["Injection site pain", "Fever", "Headache", "Malaise"],
       interactions: ["Immunosuppressants"],
@@ -7232,6 +9262,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med772",
       name: "Diphtheria Toxoid Adsorbed",
+      genericName: "Diphtheria Toxoid Adsorbed",
+      tradeName: "Diphtheria Toxoid Adsorbed (Diphtheria Toxoid Adsorbed)",
       contraindications: ["severe allergic reaction to previous dose"],
       sideEffects: ["Injection site pain", "Fever", "Headache", "Malaise"],
       interactions: ["Immunosuppressants"],
@@ -7240,6 +9272,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med773",
       name: "Tetanus and Diphtheria Toxoids (Td)",
+      genericName: "Tetanus and Diphtheria Toxoids (Td)",
+      tradeName: "Tetanus and Diphtheria Toxoids (Td) (Tetanus and Diphtheria Toxoids (Td))",
       contraindications: ["severe allergic reaction to previous dose"],
       sideEffects: ["Injection site pain", "Fever", "Headache", "Malaise"],
       interactions: ["Immunosuppressants"],
@@ -7248,6 +9282,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med774",
       name: "Diphtheria and Tetanus Toxoids (DT)",
+      genericName: "Diphtheria and Tetanus Toxoids (DT)",
+      tradeName: "Diphtheria and Tetanus Toxoids (DT) (Diphtheria and Tetanus Toxoids (DT))",
       contraindications: ["severe allergic reaction to previous dose"],
       sideEffects: ["Injection site pain", "Fever", "Headache", "Malaise"],
       interactions: ["Immunosuppressants"],
@@ -7256,6 +9292,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med775",
       name: "DTaP Vaccine",
+      genericName: "DTaP Vaccine",
+      tradeName: "DTaP Vaccine (DTaP Vaccine)",
       contraindications: ["encephalopathy within 7 days of previous pertussis vaccine"],
       sideEffects: ["Injection site pain", "Fever", "Fussiness", "Loss of appetite"],
       interactions: ["Immunosuppressants"],
@@ -7264,6 +9302,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med776",
       name: "Pentacel (DTaP-IPV/Hib)",
+      genericName: "Pentacel (DTaP-IPV/Hib)",
+      tradeName: "Pentacel (DTaP-IPV/Hib) (Pentacel (DTaP-IPV/Hib))",
       contraindications: ["encephalopathy within 7 days of previous pertussis vaccine"],
       sideEffects: ["Injection site pain", "Fever", "Fussiness", "Crying"],
       interactions: ["Immunosuppressants"],
@@ -7272,6 +9312,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med777",
       name: "Pediarix (DTaP-HepB-IPV)",
+      genericName: "Pediarix (DTaP-HepB-IPV)",
+      tradeName: "Pediarix (DTaP-HepB-IPV) (Pediarix (DTaP-HepB-IPV))",
       contraindications: ["encephalopathy within 7 days of previous pertussis vaccine", "yeast allergy"],
       sideEffects: ["Injection site pain", "Fever", "Fussiness", "Loss of appetite"],
       interactions: ["Immunosuppressants"],
@@ -7280,6 +9322,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med778",
       name: "Kinrix (DTaP-IPV)",
+      genericName: "Kinrix (DTaP-IPV)",
+      tradeName: "Kinrix (DTaP-IPV) (Kinrix (DTaP-IPV))",
       contraindications: ["encephalopathy within 7 days of previous pertussis vaccine"],
       sideEffects: ["Injection site pain", "Fever", "Fussiness", "Loss of appetite"],
       interactions: ["Immunosuppressants"],
@@ -7288,6 +9332,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med779",
       name: "Quadracel (DTaP-IPV)",
+      genericName: "Quadracel (DTaP-IPV)",
+      tradeName: "Quadracel (DTaP-IPV) (Quadracel (DTaP-IPV))",
       contraindications: ["encephalopathy within 7 days of previous pertussis vaccine"],
       sideEffects: ["Injection site pain", "Fever", "Fussiness", "Loss of appetite"],
       interactions: ["Immunosuppressants"],
@@ -7296,6 +9342,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med780",
       name: "Vaxelis (DTaP-IPV-Hib-HepB)",
+      genericName: "Vaxelis (DTaP-IPV-Hib-HepB)",
+      tradeName: "Vaxelis (DTaP-IPV-Hib-HepB) (Vaxelis (DTaP-IPV-Hib-HepB))",
       contraindications: ["encephalopathy within 7 days of previous pertussis vaccine", "yeast allergy"],
       sideEffects: ["Injection site pain", "Fever", "Fussiness", "Loss of appetite"],
       interactions: ["Immunosuppressants"],
@@ -7306,6 +9354,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med781",
       name: "Epinephrine (Adrenaline)",
+      genericName: "Epinephrine (Adrenaline)",
+      tradeName: "Epinephrine (Adrenaline) (Epinephrine (Adrenaline))",
       contraindications: ["none in life-threatening emergencies"],
       sideEffects: ["Tachycardia", "Hypertension", "Anxiety", "Tremor"],
       interactions: ["Beta-blockers", "MAO inhibitors", "Tricyclic antidepressants"],
@@ -7314,6 +9364,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med782",
       name: "Atropine",
+      genericName: "Atropine",
+      tradeName: "Atropine (Atropine)",
       contraindications: ["glaucoma", "pyloric stenosis", "thyrotoxicosis"],
       sideEffects: ["Dry mouth", "Tachycardia", "Blurred vision", "Urinary retention"],
       interactions: ["Anticholinergics", "Digoxin"],
@@ -7322,6 +9374,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med783",
       name: "Naloxone",
+      genericName: "Naloxone",
+      tradeName: "Naloxone (Naloxone)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Opioid withdrawal symptoms", "Tachycardia", "Hypertension", "Agitation"],
       interactions: ["Opioid analgesics (antagonizes effect)"],
@@ -7330,6 +9384,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med784",
       name: "Activated Charcoal",
+      genericName: "Activated Charcoal",
+      tradeName: "Activated Charcoal (Activated Charcoal)",
       contraindications: ["unprotected airway", "GI tract not intact", "ingestion of corrosives"],
       sideEffects: ["Vomiting", "Constipation", "Black stools", "Aspiration"],
       interactions: ["Decreases absorption of most oral medications"],
@@ -7338,6 +9394,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med785",
       name: "Adenosine",
+      genericName: "Adenosine",
+      tradeName: "Adenosine (Adenosine)",
       contraindications: ["second or third-degree AV block", "sick sinus syndrome"],
       sideEffects: ["Flushing", "Dyspnea", "Chest pain", "Hypotension"],
       interactions: ["Dipyridamole", "Theophylline", "Caffeine"],
@@ -7346,6 +9404,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med786",
       name: "Amiodarone",
+      genericName: "Amiodarone",
+      tradeName: "Amiodarone (Amiodarone)",
       contraindications: ["cardiogenic shock", "severe sinus node dysfunction"],
       sideEffects: ["Hypotension", "Bradycardia", "Phlebitis", "Pulmonary toxicity"],
       interactions: ["Digoxin", "Warfarin", "Simvastatin"],
@@ -7354,6 +9414,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med787",
       name: "Calcium Gluconate",
+      genericName: "Calcium Gluconate",
+      tradeName: "Calcium Gluconate (Calcium Gluconate)",
       contraindications: ["hypercalcemia", "ventricular fibrillation during CPR"],
       sideEffects: ["Bradycardia", "Hypotension", "Tissue necrosis (if extravasation)"],
       interactions: ["Digoxin", "Ceftriaxone (in neonates)"],
@@ -7362,6 +9424,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med788",
       name: "Dextrose 50%",
+      genericName: "Dextrose 50%",
+      tradeName: "Dextrose 50% (Dextrose 50%)",
       contraindications: ["intracranial hemorrhage", "delirium tremens with dehydration"],
       sideEffects: ["Hyperglycemia", "Phlebitis", "Fluid overload"],
       interactions: ["None significant"],
@@ -7370,6 +9434,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med789",
       name: "Magnesium Sulfate",
+      genericName: "Magnesium Sulfate",
+      tradeName: "Magnesium Sulfate (Magnesium Sulfate)",
       contraindications: ["heart block", "myocardial damage"],
       sideEffects: ["Flushing", "Hypotension", "Respiratory depression", "Depressed reflexes"],
       interactions: ["Neuromuscular blockers", "Calcium channel blockers"],
@@ -7378,6 +9444,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med790",
       name: "Sodium Bicarbonate",
+      genericName: "Sodium Bicarbonate",
+      tradeName: "Sodium Bicarbonate (Sodium Bicarbonate)",
       contraindications: ["metabolic alkalosis", "hypocalcemia"],
       sideEffects: ["Metabolic alkalosis", "Hypernatremia", "Hypokalemia", "Tissue necrosis"],
       interactions: ["Calcium salts (precipitation)"],
@@ -7388,6 +9456,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med791",
       name: "0.9% Sodium Chloride (Normal Saline)",
+      genericName: "0.9% Sodium Chloride (Normal Saline)",
+      tradeName: "0.9% Sodium Chloride (Normal Saline) (0.9% Sodium Chloride (Normal Saline))",
       contraindications: ["hypernatremia", "fluid retention"],
       sideEffects: ["Fluid overload", "Hypernatremia", "Hyperchloremic acidosis"],
       interactions: ["None significant"],
@@ -7396,6 +9466,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med792",
       name: "Lactated Ringer's Solution",
+      genericName: "Lactated Ringer's Solution",
+      tradeName: "Lactated Ringer's Solution (Lactated Ringer's Solution)",
       contraindications: ["severe liver disease", "lactic acidosis"],
       sideEffects: ["Fluid overload", "Hyperkalemia (in renal failure)"],
       interactions: ["Ceftriaxone (precipitation)"],
@@ -7404,6 +9476,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med793",
       name: "5% Dextrose in Water (D5W)",
+      genericName: "5% Dextrose in Water (D5W)",
+      tradeName: "5% Dextrose in Water (D5W) (5% Dextrose in Water (D5W))",
       contraindications: ["intracranial hemorrhage", "delirium tremens"],
       sideEffects: ["Hyponatremia", "Fluid overload", "Hyperglycemia"],
       interactions: ["None significant"],
@@ -7412,6 +9486,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med794",
       name: "0.45% Sodium Chloride (Half Normal Saline)",
+      genericName: "0.45% Sodium Chloride (Half Normal Saline)",
+      tradeName: "0.45% Sodium Chloride (Half Normal Saline) (0.45% Sodium Chloride (Half Normal Saline))",
       contraindications: ["hyponatremia", "fluid retention"],
       sideEffects: ["Fluid overload", "Hyponatremia"],
       interactions: ["None significant"],
@@ -7420,6 +9496,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med795",
       name: "5% Dextrose in 0.45% Sodium Chloride (D5 1/2 NS)",
+      genericName: "5% Dextrose in 0.45% Sodium Chloride (D5 1/2 NS)",
+      tradeName: "5% Dextrose in 0.45% Sodium Chloride (D5 1/2 NS) (5% Dextrose in 0.45% Sodium Chloride (D5 1/2 NS))",
       contraindications: ["hyperglycemia", "fluid retention"],
       sideEffects: ["Fluid overload", "Hyperglycemia", "Hyponatremia"],
       interactions: ["None significant"],
@@ -7428,6 +9506,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med796",
       name: "5% Dextrose in 0.9% Sodium Chloride (D5NS)",
+      genericName: "5% Dextrose in 0.9% Sodium Chloride (D5NS)",
+      tradeName: "5% Dextrose in 0.9% Sodium Chloride (D5NS) (5% Dextrose in 0.9% Sodium Chloride (D5NS))",
       contraindications: ["hyperglycemia", "fluid retention"],
       sideEffects: ["Fluid overload", "Hyperglycemia", "Hypernatremia"],
       interactions: ["None significant"],
@@ -7436,6 +9516,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med797",
       name: "3% Sodium Chloride (Hypertonic Saline)",
+      genericName: "3% Sodium Chloride (Hypertonic Saline)",
+      tradeName: "3% Sodium Chloride (Hypertonic Saline) (3% Sodium Chloride (Hypertonic Saline))",
       contraindications: ["hypernatremia", "fluid retention"],
       sideEffects: ["Hypernatremia", "Fluid overload", "Osmotic demyelination syndrome (if corrected too fast)"],
       interactions: ["None significant"],
@@ -7444,6 +9526,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med798",
       name: "Plasma-Lyte 148",
+      genericName: "Plasma-Lyte 148",
+      tradeName: "Plasma-Lyte 148 (Plasma-Lyte 148)",
       contraindications: ["hyperkalemia", "renal failure"],
       sideEffects: ["Fluid overload", "Hyperkalemia"],
       interactions: ["None significant"],
@@ -7452,6 +9536,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med799",
       name: "5% Albumin (Human)",
+      genericName: "5% Albumin (Human)",
+      tradeName: "5% Albumin (Human) (5% Albumin (Human))",
       contraindications: ["severe anemia", "heart failure"],
       sideEffects: ["Fluid overload", "Allergic reactions", "Fever", "Chills"],
       interactions: ["None significant"],
@@ -7460,6 +9546,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med800",
       name: "25% Albumin (Human)",
+      genericName: "25% Albumin (Human)",
+      tradeName: "25% Albumin (Human) (25% Albumin (Human))",
       contraindications: ["severe anemia", "heart failure"],
       sideEffects: ["Fluid overload", "Allergic reactions", "Fever", "Chills"],
       interactions: ["None significant"],
@@ -7470,6 +9558,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med801",
       name: "Furosemide",
+      genericName: "Furosemide",
+      tradeName: "Lasix (Furosemide)",
       contraindications: ["anuria", "hepatic coma"],
       sideEffects: ["Hypokalemia", "Dehydration", "Hypotension", "Ototoxicity"],
       interactions: ["Lithium", "Aminoglycosides", "Digoxin"],
@@ -7478,6 +9568,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med802",
       name: "Hydrochlorothiazide",
+      genericName: "Hydrochlorothiazide",
+      tradeName: "Esidrex (Hydrochlorothiazide)",
       contraindications: ["anuria", "sulfonamide allergy"],
       sideEffects: ["Hypokalemia", "Hyponatremia", "Hyperuricemia", "Hyperglycemia"],
       interactions: ["Lithium", "NSAIDs", "Antidiabetic agents"],
@@ -7486,6 +9578,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med803",
       name: "Spironolactone",
+      genericName: "Spironolactone",
+      tradeName: "Aldactone (Spironolactone)",
       contraindications: ["anuria", "acute renal insufficiency", "hyperkalemia"],
       sideEffects: ["Hyperkalemia", "Gynecomastia", "Menstrual irregularities"],
       interactions: ["ACE inhibitors", "ARBs", "Potassium supplements"],
@@ -7494,6 +9588,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med804",
       name: "Bumetanide",
+      genericName: "Bumetanide",
+      tradeName: "Bumetanide (Bumetanide)",
       contraindications: ["anuria", "hepatic coma"],
       sideEffects: ["Hypokalemia", "Dehydration", "Hypotension", "Muscle cramps"],
       interactions: ["Lithium", "Aminoglycosides", "Digoxin"],
@@ -7502,6 +9598,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med805",
       name: "Torsemide",
+      genericName: "Torsemide",
+      tradeName: "Torsemide (Torsemide)",
       contraindications: ["anuria", "hepatic coma"],
       sideEffects: ["Hypokalemia", "Dehydration", "Hypotension", "Excessive urination"],
       interactions: ["Lithium", "Aminoglycosides", "Digoxin"],
@@ -7510,6 +9608,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med806",
       name: "Chlorthalidone",
+      genericName: "Chlorthalidone",
+      tradeName: "Chlorthalidone (Chlorthalidone)",
       contraindications: ["anuria", "sulfonamide allergy"],
       sideEffects: ["Hypokalemia", "Hyponatremia", "Hyperuricemia", "Dizziness"],
       interactions: ["Lithium", "NSAIDs", "Digoxin"],
@@ -7518,6 +9618,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med807",
       name: "Metolazone",
+      genericName: "Metolazone",
+      tradeName: "Metolazone (Metolazone)",
       contraindications: ["anuria", "hepatic coma"],
       sideEffects: ["Hypokalemia", "Hyponatremia", "Hyperuricemia", "Muscle cramps"],
       interactions: ["Lithium", "NSAIDs", "Digoxin"],
@@ -7526,6 +9628,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med808",
       name: "Amiloride",
+      genericName: "Amiloride",
+      tradeName: "Amiloride (Amiloride)",
       contraindications: ["hyperkalemia", "impaired renal function"],
       sideEffects: ["Hyperkalemia", "Nausea", "Vomiting", "Headache"],
       interactions: ["ACE inhibitors", "ARBs", "Potassium supplements"],
@@ -7534,6 +9638,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med809",
       name: "Triamterene",
+      genericName: "Triamterene",
+      tradeName: "Triamterene (Triamterene)",
       contraindications: ["hyperkalemia", "severe renal disease"],
       sideEffects: ["Hyperkalemia", "Nausea", "Vomiting", "Dizziness"],
       interactions: ["ACE inhibitors", "ARBs", "Potassium supplements"],
@@ -7542,6 +9648,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med810",
       name: "Acetazolamide",
+      genericName: "Acetazolamide",
+      tradeName: "Acetazolamide (Acetazolamide)",
       contraindications: ["depressed sodium/potassium blood levels", "marked kidney/liver disease"],
       sideEffects: ["Paresthesia", "Hearing dysfunction", "Loss of appetite", "Polyuria"],
       interactions: ["High-dose aspirin", "Phenytoin"],
@@ -7552,6 +9660,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med811",
       name: "Tamsulosin",
+      genericName: "Tamsulosin",
+      tradeName: "Omnic (Tamsulosin)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Orthostatic hypotension", "Dizziness", "Abnormal ejaculation", "Rhinitis"],
       interactions: ["PDE5 inhibitors", "Strong CYP3A4 inhibitors", "Cimetidine"],
@@ -7560,6 +9670,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med812",
       name: "Finasteride",
+      genericName: "Finasteride",
+      tradeName: "Finasteride (Finasteride)",
       contraindications: ["pregnancy", "women of childbearing potential"],
       sideEffects: ["Decreased libido", "Erectile dysfunction", "Ejaculation disorder", "Breast tenderness"],
       interactions: ["None significant"],
@@ -7568,6 +9680,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med813",
       name: "Dutasteride",
+      genericName: "Dutasteride",
+      tradeName: "Dutasteride (Dutasteride)",
       contraindications: ["pregnancy", "women of childbearing potential", "pediatric patients"],
       sideEffects: ["Decreased libido", "Erectile dysfunction", "Ejaculation disorder", "Gynecomastia"],
       interactions: ["Strong CYP3A4 inhibitors"],
@@ -7576,6 +9690,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med814",
       name: "Alfuzosin",
+      genericName: "Alfuzosin",
+      tradeName: "Alfuzosin (Alfuzosin)",
       contraindications: ["moderate to severe hepatic impairment", "co-administration with potent CYP3A4 inhibitors"],
       sideEffects: ["Dizziness", "Upper respiratory tract infection", "Headache", "Fatigue"],
       interactions: ["Strong CYP3A4 inhibitors", "PDE5 inhibitors", "Antihypertensives"],
@@ -7584,6 +9700,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med815",
       name: "Silodosin",
+      genericName: "Silodosin",
+      tradeName: "Silodosin (Silodosin)",
       contraindications: ["severe renal impairment", "severe hepatic impairment", "co-administration with strong CYP3A4 inhibitors"],
       sideEffects: ["Retrograde ejaculation", "Dizziness", "Diarrhea", "Orthostatic hypotension"],
       interactions: ["Strong CYP3A4 inhibitors", "Strong P-gp inhibitors", "PDE5 inhibitors"],
@@ -7592,6 +9710,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med816",
       name: "Terazosin",
+      genericName: "Terazosin",
+      tradeName: "Terazosin (Terazosin)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Asthenia", "Postural hypotension", "Dizziness", "Somnolence"],
       interactions: ["PDE5 inhibitors", "Antihypertensives"],
@@ -7600,6 +9720,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med817",
       name: "Doxazosin",
+      genericName: "Doxazosin",
+      tradeName: "Doxazosin (Doxazosin)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Dizziness", "Fatigue", "Hypotension", "Edema"],
       interactions: ["PDE5 inhibitors", "Antihypertensives"],
@@ -7608,6 +9730,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med818",
       name: "Dutasteride/Tamsulosin",
+      genericName: "Dutasteride/Tamsulosin",
+      tradeName: "Dutasteride/Tamsulosin (Dutasteride/Tamsulosin)",
       contraindications: ["pregnancy", "women of childbearing potential", "pediatric patients"],
       sideEffects: ["Decreased libido", "Erectile dysfunction", "Ejaculation disorder", "Dizziness"],
       interactions: ["Strong CYP3A4 inhibitors", "PDE5 inhibitors"],
@@ -7616,6 +9740,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med819",
       name: "Tadalafil (BPH)",
+      genericName: "Tadalafil (BPH)",
+      tradeName: "Tadalafil (BPH) (Tadalafil (BPH))",
       contraindications: ["nitrate therapy", "riociguat"],
       sideEffects: ["Headache", "Dyspepsia", "Back pain", "Myalgia"],
       interactions: ["Nitrates", "Alpha-blockers", "Strong CYP3A4 inhibitors"],
@@ -7624,6 +9750,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med820",
       name: "Saw Palmetto Extract",
+      genericName: "Saw Palmetto Extract",
+      tradeName: "Saw Palmetto Extract (Saw Palmetto Extract)",
       contraindications: ["pregnancy", "lactation"],
       sideEffects: ["Mild GI distress", "Headache", "Decreased libido"],
       interactions: ["Anticoagulants", "Antiplatelets"],
@@ -7634,6 +9762,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med821",
       name: "Sildenafil",
+      genericName: "Sildenafil",
+      tradeName: "Virecta (Sildenafil)",
       contraindications: ["nitrate therapy", "riociguat"],
       sideEffects: ["Headache", "Flushing", "Dyspepsia", "Visual disturbances"],
       interactions: ["Nitrates", "Alpha-blockers", "Strong CYP3A4 inhibitors"],
@@ -7642,6 +9772,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med822",
       name: "Tadalafil",
+      genericName: "Tadalafil",
+      tradeName: "StarCop (Tadalafil)",
       contraindications: ["nitrate therapy", "riociguat"],
       sideEffects: ["Headache", "Dyspepsia", "Back pain", "Myalgia"],
       interactions: ["Nitrates", "Alpha-blockers", "Strong CYP3A4 inhibitors"],
@@ -7650,6 +9782,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med823",
       name: "Vardenafil",
+      genericName: "Vardenafil",
+      tradeName: "Vardenafil (Vardenafil)",
       contraindications: ["nitrate therapy", "riociguat"],
       sideEffects: ["Headache", "Flushing", "Rhinitis", "Dyspepsia"],
       interactions: ["Nitrates", "Alpha-blockers", "Strong CYP3A4 inhibitors", "Class IA/III antiarrhythmics"],
@@ -7658,6 +9792,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med824",
       name: "Avanafil",
+      genericName: "Avanafil",
+      tradeName: "Avanafil (Avanafil)",
       contraindications: ["nitrate therapy", "riociguat"],
       sideEffects: ["Headache", "Flushing", "Nasal congestion", "Nasopharyngitis"],
       interactions: ["Nitrates", "Alpha-blockers", "Strong CYP3A4 inhibitors"],
@@ -7666,6 +9802,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med825",
       name: "Alprostadil (Intracavernosal)",
+      genericName: "Alprostadil (Intracavernosal)",
+      tradeName: "Alprostadil (Intracavernosal) (Alprostadil (Intracavernosal))",
       contraindications: ["conditions predisposing to priapism", "anatomical deformation of the penis"],
       sideEffects: ["Penile pain", "Prolonged erection", "Priapism", "Injection site hematoma"],
       interactions: ["Anticoagulants"],
@@ -7674,6 +9812,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med826",
       name: "Alprostadil (Urethral Suppository)",
+      genericName: "Alprostadil (Urethral Suppository)",
+      tradeName: "Alprostadil (Urethral Suppository) (Alprostadil (Urethral Suppository))",
       contraindications: ["conditions predisposing to priapism", "anatomical deformation of the penis", "pregnant partner (unless condom used)"],
       sideEffects: ["Penile pain", "Urethral burning", "Testicular pain", "Minor urethral bleeding"],
       interactions: ["None significant"],
@@ -7682,6 +9822,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med827",
       name: "Papaverine",
+      genericName: "Papaverine",
+      tradeName: "Papaverine (Papaverine)",
       contraindications: ["complete AV heart block"],
       sideEffects: ["Priapism", "Penile fibrosis", "Hepatotoxicity", "Hypotension"],
       interactions: ["Levodopa", "CNS depressants"],
@@ -7690,6 +9832,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med828",
       name: "Phentolamine",
+      genericName: "Phentolamine",
+      tradeName: "Phentolamine (Phentolamine)",
       contraindications: ["myocardial infarction", "coronary insufficiency"],
       sideEffects: ["Hypotension", "Tachycardia", "Nasal congestion", "Priapism (when used for ED)"],
       interactions: ["Epinephrine", "Ephedrine"],
@@ -7698,6 +9842,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med829",
       name: "Udenafil",
+      genericName: "Udenafil",
+      tradeName: "Udenafil (Udenafil)",
       contraindications: ["nitrate therapy"],
       sideEffects: ["Flushing", "Headache", "Nasal congestion", "Dyspepsia"],
       interactions: ["Nitrates", "Alpha-blockers", "CYP3A4 inhibitors"],
@@ -7706,6 +9852,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med830",
       name: "Mirodenafil",
+      genericName: "Mirodenafil",
+      tradeName: "Mirodenafil (Mirodenafil)",
       contraindications: ["nitrate therapy"],
       sideEffects: ["Flushing", "Headache", "Dyspepsia", "Visual disturbances"],
       interactions: ["Nitrates", "Alpha-blockers", "CYP3A4 inhibitors"],
@@ -7716,6 +9864,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med831",
       name: "Oxybutynin",
+      genericName: "Oxybutynin",
+      tradeName: "Uripan (Oxybutynin)",
       contraindications: ["urinary retention", "gastric retention", "uncontrolled narrow-angle glaucoma"],
       sideEffects: ["Dry mouth", "Constipation", "Dizziness", "Somnolence"],
       interactions: ["Other anticholinergics", "CYP3A4 inhibitors"],
@@ -7724,6 +9874,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med832",
       name: "Tolterodine",
+      genericName: "Tolterodine",
+      tradeName: "Tolterodine (Tolterodine)",
       contraindications: ["urinary retention", "gastric retention", "uncontrolled narrow-angle glaucoma"],
       sideEffects: ["Dry mouth", "Headache", "Constipation", "Abdominal pain"],
       interactions: ["CYP3A4 inhibitors", "CYP2D6 inhibitors", "Other anticholinergics"],
@@ -7732,6 +9884,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med833",
       name: "Solifenacin",
+      genericName: "Solifenacin",
+      tradeName: "Solifenacin (Solifenacin)",
       contraindications: ["urinary retention", "gastric retention", "uncontrolled narrow-angle glaucoma"],
       sideEffects: ["Dry mouth", "Constipation", "Blurred vision", "Urinary retention"],
       interactions: ["Strong CYP3A4 inhibitors", "Other anticholinergics"],
@@ -7740,6 +9894,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med834",
       name: "Darifenacin",
+      genericName: "Darifenacin",
+      tradeName: "Darifenacin (Darifenacin)",
       contraindications: ["urinary retention", "gastric retention", "uncontrolled narrow-angle glaucoma"],
       sideEffects: ["Dry mouth", "Constipation", "Dyspepsia", "Abdominal pain"],
       interactions: ["Strong CYP3A4 inhibitors", "Other anticholinergics"],
@@ -7748,6 +9904,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med835",
       name: "Fesoterodine",
+      genericName: "Fesoterodine",
+      tradeName: "Fesoterodine (Fesoterodine)",
       contraindications: ["urinary retention", "gastric retention", "uncontrolled narrow-angle glaucoma"],
       sideEffects: ["Dry mouth", "Constipation", "Dry eyes", "Dysuria"],
       interactions: ["Strong CYP3A4 inhibitors", "Other anticholinergics"],
@@ -7756,6 +9914,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med836",
       name: "Trospium",
+      genericName: "Trospium",
+      tradeName: "Trospium (Trospium)",
       contraindications: ["urinary retention", "gastric retention", "uncontrolled narrow-angle glaucoma"],
       sideEffects: ["Dry mouth", "Constipation", "Headache", "Dry eyes"],
       interactions: ["Other anticholinergics", "Metformin (competes for renal tubular secretion)"],
@@ -7764,6 +9924,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med837",
       name: "Mirabegron",
+      genericName: "Mirabegron",
+      tradeName: "Mirabegron (Mirabegron)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Hypertension", "Nasopharyngitis", "Urinary tract infection", "Headache"],
       interactions: ["CYP2D6 substrates (metoprolol, desipramine)", "Digoxin"],
@@ -7772,6 +9934,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med838",
       name: "Flavoxate",
+      genericName: "Flavoxate",
+      tradeName: "Flavoxate (Flavoxate)",
       contraindications: ["pyloric or duodenal obstruction", "obstructive intestinal lesions", "GI hemorrhage"],
       sideEffects: ["Nausea", "Vomiting", "Dry mouth", "Blurred vision"],
       interactions: ["Other anticholinergics"],
@@ -7780,6 +9944,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med839",
       name: "Vibegron",
+      genericName: "Vibegron",
+      tradeName: "Vibegron (Vibegron)",
       contraindications: ["hypersensitivity"],
       sideEffects: ["Headache", "Urinary tract infection", "Nasopharyngitis", "Diarrhea"],
       interactions: ["Digoxin"],
@@ -7788,6 +9954,8 @@ export const medicationsDatabase: Record<string, any[]> = {
     {
       id: "med840",
       name: "Propantheline",
+      genericName: "Propantheline",
+      tradeName: "Propantheline (Propantheline)",
       contraindications: ["glaucoma", "obstructive uropathy", "obstructive disease of GI tract"],
       sideEffects: ["Dry mouth", "Decreased sweating", "Blurred vision", "Tachycardia"],
       interactions: ["Other anticholinergics", "Antacids"],

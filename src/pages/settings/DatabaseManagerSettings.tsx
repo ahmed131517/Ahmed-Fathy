@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { 
   Database, Trash2, RefreshCw, Search, FileText, BrainCircuit, Pill, 
   MessageSquare, AlertCircle, CheckCircle, Download, Wifi, WifiOff,
-  Sliders, History, Play, ShieldAlert, Table, Settings, Clock, Server, Eye, ArrowRight
+  Sliders, History, Play, ShieldAlert, Table, Settings, Clock, Server, Eye, ArrowRight,
+  Activity, Wrench, ShieldCheck, CheckCircle2, AlertTriangle, Cpu, Layers
 } from 'lucide-react';
 import { db } from '../../lib/db';
 import { cn } from '../../lib/utils';
@@ -21,10 +22,33 @@ interface TableStats {
 }
 
 export function DatabaseManagerSettings() {
-  const [activeTab, setActiveTab] = useState<'sync' | 'knowledge'>('sync');
+  const [activeTab, setActiveTab] = useState<'sync' | 'health' | 'knowledge'>('sync');
   const [stats, setStats] = useState<TableStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [clearing, setClearing] = useState<string | null>(null);
+
+  // Health & Diagnostic State
+  const [isDiagnosing, setIsDiagnosing] = useState(false);
+  const [isRepairing, setIsRepairing] = useState(false);
+  const [diagnosticResults, setDiagnosticResults] = useState<{
+    orphanItems: number;
+    orphanBatches: number;
+    orphanLabs: number;
+    orphanAppointments: number;
+    softDeletedCount: number;
+    totalRecords: number;
+    lastCheckTime: number | null;
+    status: 'idle' | 'running' | 'healthy' | 'warnings';
+  }>({
+    orphanItems: 0,
+    orphanBatches: 0,
+    orphanLabs: 0,
+    orphanAppointments: 0,
+    softDeletedCount: 0,
+    totalRecords: 0,
+    lastCheckTime: null,
+    status: 'idle'
+  });
   
   // Settings values
   const [syncBgEnabled, setSyncBgEnabled] = useState(() => localStorage.getItem('sync_background_enabled') !== 'false');
@@ -184,6 +208,126 @@ export function DatabaseManagerSettings() {
     }
   };
 
+  const runHealthDiagnostics = async () => {
+    setIsDiagnosing(true);
+    try {
+      const patientsList = await db.patients.toArray();
+      const patientIds = new Set(patientsList.map(p => p.id || p.localId?.toString()));
+
+      const prescriptionsList = await db.prescriptions.toArray();
+      const prescriptionIds = new Set(prescriptionsList.map(p => p.id || p.localId?.toString()));
+
+      const inventoryList = await db.pharmacy_inventory.toArray();
+      const inventoryIds = new Set(inventoryList.map(i => i.id || i.localId?.toString()));
+
+      // Check orphan prescription items
+      const itemsList = await db.prescription_items.toArray();
+      const orphanItems = itemsList.filter(item => item.prescriptionId && !prescriptionIds.has(item.prescriptionId)).length;
+
+      // Check orphan pharmacy batches
+      const batchesList = await db.pharmacy_batches.toArray();
+      const orphanBatches = batchesList.filter(b => b.inventoryItemId && !inventoryIds.has(b.inventoryItemId)).length;
+
+      // Check orphan lab results
+      const labsList = await db.lab_results.toArray();
+      const orphanLabs = labsList.filter(l => l.patientId && !patientIds.has(l.patientId)).length;
+
+      // Check orphan appointments
+      const apptsList = await db.appointments.toArray();
+      const orphanAppointments = apptsList.filter(a => a.patientId && !patientIds.has(a.patientId)).length;
+
+      // Check soft deleted records
+      let softDeletedCount = 0;
+      const tablesToCheck = [db.patients, db.prescriptions, db.pharmacy_inventory, db.appointments];
+      for (const t of tablesToCheck) {
+        const records = await t.toArray();
+        softDeletedCount += records.filter(r => (r as any).isDeleted === 1 || (r as any).isDeleted === true).length;
+      }
+
+      // Total records count across all Dexie tables
+      let totalRecords = 0;
+      for (const table of db.tables) {
+        totalRecords += await table.count();
+      }
+
+      setDiagnosticResults({
+        orphanItems,
+        orphanBatches,
+        orphanLabs,
+        orphanAppointments,
+        softDeletedCount,
+        totalRecords,
+        lastCheckTime: Date.now(),
+        status: (orphanItems + orphanBatches + orphanLabs + orphanAppointments) > 0 ? 'warnings' : 'healthy'
+      });
+
+      toast.success("Database Health Diagnostics completed successfully!");
+    } catch (err) {
+      console.error("Diagnostic error", err);
+      toast.error("Failed to execute database diagnostics.");
+    } finally {
+      setIsDiagnosing(false);
+    }
+  };
+
+  const repairAndOptimizeDB = async () => {
+    setIsRepairing(true);
+    try {
+      const prescriptionsList = await db.prescriptions.toArray();
+      const prescriptionIds = new Set(prescriptionsList.map(p => p.id || p.localId?.toString()));
+
+      const inventoryList = await db.pharmacy_inventory.toArray();
+      const inventoryIds = new Set(inventoryList.map(i => i.id || i.localId?.toString()));
+
+      // Clean orphan items
+      const itemsList = await db.prescription_items.toArray();
+      const orphanItemIds = itemsList.filter(item => item.prescriptionId && !prescriptionIds.has(item.prescriptionId)).map(i => i.id || i.localId);
+      for (const id of orphanItemIds) {
+        if (id) await db.prescription_items.delete(id as any);
+      }
+
+      // Clean orphan batches
+      const batchesList = await db.pharmacy_batches.toArray();
+      const orphanBatchIds = batchesList.filter(b => b.inventoryItemId && !inventoryIds.has(b.inventoryItemId)).map(b => b.id || b.localId);
+      for (const id of orphanBatchIds) {
+        if (id) await db.pharmacy_batches.delete(id as any);
+      }
+
+      // Purge soft deleted records
+      const tablesToPurge = [db.patients, db.prescriptions, db.pharmacy_inventory, db.appointments];
+      let purgedCount = 0;
+      for (const t of tablesToPurge) {
+        const records = await t.toArray();
+        const deletedRecords = records.filter(r => (r as any).isDeleted === 1 || (r as any).isDeleted === true);
+        for (const r of deletedRecords) {
+          const id = (r as any).id || (r as any).localId;
+          if (id) {
+            await t.delete(id);
+            purgedCount++;
+          }
+        }
+      }
+
+      // Audit log entry
+      await db.audit_logs.add({
+        id: crypto.randomUUID(),
+        userId: 'system-admin',
+        action: 'DATABASE_MAINTENANCE_REPAIR',
+        entity: 'SystemDatabase',
+        entityId: `repair-${Date.now()}`,
+        timestamp: Date.now()
+      });
+
+      toast.success(`Database maintenance complete! Removed ${orphanItemIds.length + orphanBatchIds.length} orphan records and purged ${purgedCount} soft-deleted entries.`);
+      await runHealthDiagnostics();
+    } catch (err) {
+      console.error("Repair failed", err);
+      toast.error("Database repair encountered an error.");
+    } finally {
+      setIsRepairing(false);
+    }
+  };
+
   const handleManualSyncNow = async () => {
     if (isCurrentlySyncing) return;
     toast.info("Database synchronization started...");
@@ -258,6 +402,18 @@ export function DatabaseManagerSettings() {
           >
             <RefreshCw className={cn("w-3.5 h-3.5", isCurrentlySyncing && "animate-spin")} />
             Sync & Offline Console
+          </button>
+          <button
+            onClick={() => setActiveTab('health')}
+            className={cn(
+              "flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all",
+              activeTab === 'health' 
+                ? "bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-450 shadow-sm"
+                : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
+            )}
+          >
+            <Activity className="w-3.5 h-3.5" />
+            DB Health & Maintenance
           </button>
           <button
             onClick={() => setActiveTab('knowledge')}
@@ -650,6 +806,118 @@ export function DatabaseManagerSettings() {
                 <p className="text-[10px] text-slate-400 max-w-xs mx-auto mt-0.5">Start a manual synchronization or trigger actions to build event rows.</p>
               </div>
             )}
+          </div>
+        </div>
+      ) : activeTab === 'health' ? (
+        /* Database Health & Maintenance Console */
+        <div className="space-y-6">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl">
+                  <Activity className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 dark:text-white text-base">Database Health & Referential Integrity Diagnostics</h3>
+                  <p className="text-xs text-slate-500">Analyze orphan records, foreign key consistency, and IndexedDB storage metrics</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={runHealthDiagnostics}
+                  disabled={isDiagnosing}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-2 disabled:opacity-50"
+                >
+                  <RefreshCw className={cn("w-3.5 h-3.5", isDiagnosing && "animate-spin")} />
+                  {isDiagnosing ? "Analyzing DB..." : "Run Health Audit"}
+                </button>
+                <button
+                  onClick={repairAndOptimizeDB}
+                  disabled={isRepairing}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-2 disabled:opacity-50"
+                >
+                  <Wrench className="w-3.5 h-3.5" />
+                  {isRepairing ? "Repairing..." : "Repair & Optimize"}
+                </button>
+              </div>
+            </div>
+
+            {/* Diagnostic Metrics Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-slate-50 dark:bg-slate-800/40 p-4 rounded-xl border border-slate-100 dark:border-slate-800">
+                <div className="text-xs text-slate-500 font-medium mb-1">Total IndexedDB Records</div>
+                <div className="text-xl font-bold text-slate-900 dark:text-white">
+                  {diagnosticResults.totalRecords > 0 ? diagnosticResults.totalRecords : '—'}
+                </div>
+                <div className="text-[10px] text-slate-400 mt-1">Across 18 system tables</div>
+              </div>
+
+              <div className="bg-slate-50 dark:bg-slate-800/40 p-4 rounded-xl border border-slate-100 dark:border-slate-800">
+                <div className="text-xs text-slate-500 font-medium mb-1">Orphan Items & Batches</div>
+                <div className={cn("text-xl font-bold", (diagnosticResults.orphanItems + diagnosticResults.orphanBatches) > 0 ? "text-amber-600" : "text-emerald-600")}>
+                  {diagnosticResults.orphanItems + diagnosticResults.orphanBatches}
+                </div>
+                <div className="text-[10px] text-slate-400 mt-1">Items referencing missing parents</div>
+              </div>
+
+              <div className="bg-slate-50 dark:bg-slate-800/40 p-4 rounded-xl border border-slate-100 dark:border-slate-800">
+                <div className="text-xs text-slate-500 font-medium mb-1">Soft-Deleted Records</div>
+                <div className="text-xl font-bold text-slate-900 dark:text-white">
+                  {diagnosticResults.softDeletedCount}
+                </div>
+                <div className="text-[10px] text-slate-400 mt-1">Flagged for defragmentation purge</div>
+              </div>
+
+              <div className="bg-slate-50 dark:bg-slate-800/40 p-4 rounded-xl border border-slate-100 dark:border-slate-800">
+                <div className="text-xs text-slate-500 font-medium mb-1">Integrity Status</div>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  {diagnosticResults.status === 'healthy' ? (
+                    <>
+                      <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                      <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">100% Healthy</span>
+                    </>
+                  ) : diagnosticResults.status === 'warnings' ? (
+                    <>
+                      <AlertTriangle className="w-5 h-5 text-amber-500" />
+                      <span className="text-sm font-bold text-amber-600 dark:text-amber-400">Action Suggested</span>
+                    </>
+                  ) : (
+                    <span className="text-xs font-bold text-slate-400">Audit Not Run Yet</span>
+                  )}
+                </div>
+                <div className="text-[10px] text-slate-400 mt-1">
+                  {diagnosticResults.lastCheckTime ? `Checked ${new Date(diagnosticResults.lastCheckTime).toLocaleTimeString()}` : 'Click Run Health Audit'}
+                </div>
+              </div>
+            </div>
+
+            {/* Schema Table Summary */}
+            <div className="space-y-3 pt-2">
+              <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">Dexie Local Storage Table Structure & Indexes</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs">
+                {[
+                  { name: 'patients', label: 'Patients', key: 'id, name, localId, isSynced' },
+                  { name: 'appointments', label: 'Appointments', key: 'id, patientId, date, status' },
+                  { name: 'prescriptions', label: 'Prescriptions', key: 'id, patientId, status' },
+                  { name: 'prescription_items', label: 'Prescription Items', key: 'id, prescriptionId' },
+                  { name: 'pharmacy_inventory', label: 'Pharmacy Stock', key: 'id, name, sku, category' },
+                  { name: 'pharmacy_batches', label: 'Stock Batches (FEFO)', key: 'id, inventoryId, expiryDate' },
+                  { name: 'lab_results', label: 'Lab Results', key: 'id, patientId, date' },
+                  { name: 'diagnoses', label: 'ICD-10 Diagnoses', key: 'id, patientId, code' },
+                  { name: 'audit_logs', label: 'Audit Trail Logs', key: 'id, userId, timestamp' },
+                ].map(item => (
+                  <div key={item.name} className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-100 dark:border-slate-800 flex flex-col justify-between">
+                    <div>
+                      <div className="font-bold text-slate-900 dark:text-white mb-0.5">{item.label}</div>
+                      <div className="font-mono text-[10px] text-slate-400 truncate">{item.name}</div>
+                    </div>
+                    <div className="mt-2 text-[10px] text-indigo-600 dark:text-indigo-400 font-mono bg-indigo-50 dark:bg-indigo-950/40 px-2 py-0.5 rounded inline-block w-fit">
+                      Index: {item.key}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       ) : (

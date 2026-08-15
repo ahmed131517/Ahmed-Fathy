@@ -17,24 +17,37 @@ export async function generateSoapNote(
   redFlags: string[],
   aiSettings: AISettings
 ): Promise<string> {
-  const prompt = `
-    Generate a professional SOAP note for the following patient encounter:
-    Patient: ${patient.name}, Age: ${patient.age}, Gender: ${patient.gender}
-    Chronic Conditions: ${patient.chronicConditions?.join(', ')}
-    Medications: ${patient.medications?.join(', ')}
-    
-    Subjective: Patient reports symptoms: ${symptoms.join(', ')}.
-    Red Flags ruled out: ${redFlags.join(', ')}
-    
-    Assessment: Primary diagnosis: ${diagnosis.name}.
-    
-    Please structure the note as follows:
-    S: Subjective findings
-    O: Objective findings (based on symptoms and patient history)
-    A: Assessment including the diagnosis and rationale
-    P: Plan including diagnostic tests and treatments: ${diagnosis.diagnosticTests?.join(', ')}, ${diagnosis.firstLineTreatments?.join(', ')}
+  const allergies = patient.allergies?.map(a => `${a.name}${a.severity ? ` (${a.severity})` : ''}`).join(', ') || 'No known drug allergies (NKDA)';
+  const chronic = patient.chronicConditions?.join(', ') || 'None documented';
+  const meds = patient.medications?.map(m => `${m.name}${m.dosage ? ` ${m.dosage}` : ''}`).join(', ') || 'None active';
+  const vitals = patient.vitalsHistory?.[0] ? `BP ${patient.vitalsHistory[0].bloodPressure}, HR ${patient.vitalsHistory[0].heartRate} bpm, Weight ${patient.vitalsHistory[0].weight} kg` : 'Not recorded';
+  const labs = patient.labResults?.map(l => `${l.labName}: ${l.value} ${l.unit}`).join('; ') || 'None';
 
-    Keep it concise and professional.
+  const prompt = `
+    You are an AI Clinical Scribe. Generate a professional, patient-aware SOAP note for the encounter:
+    
+    [PATIENT PROFILE]
+    Patient: ${patient.name}, Age: ${patient.age}, Gender: ${patient.gender}, MRN: ${patient.mrn || 'N/A'}, Blood Type: ${patient.bloodType || 'N/A'}
+    Allergies: ${allergies}
+    Chronic Conditions: ${chronic}
+    Active Home Medications: ${meds}
+    Latest Vitals: ${vitals}
+    Recent Lab Results: ${labs}
+    
+    [ENCOUNTER DATA]
+    Presenting Symptoms: ${symptoms.join(', ')}
+    Red Flags Evaluated: ${redFlags.join(', ')}
+    Primary Diagnosis: ${diagnosis.name}
+    Recommended Diagnostic Tests: ${diagnosis.diagnosticTests?.join(', ') || 'None'}
+    First-Line Treatments: ${diagnosis.firstLineTreatments?.join(', ') || 'None'}
+    
+    Structure the note as follows:
+    Subjective: Subjective findings, HPI, ROS, and relevant chronic history/allergies/meds.
+    Objective: Objective findings based on vitals, physical exam, and labs.
+    Assessment: Assessment including the primary diagnosis, differential considerations, and rationale.
+    Plan: Plan including diagnostic tests, medication orders, patient education, and red flag precautions.
+
+    Keep it professional and clinical.
   `;
 
   const responseText = await clinicalAIRequest(

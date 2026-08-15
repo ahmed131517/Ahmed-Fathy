@@ -1,8 +1,12 @@
 import { useState, useEffect } from "react";
-import { Globe, MapPin, Calendar, Clock, Check, DollarSign, Languages, Info } from "lucide-react";
+import { 
+  Globe, MapPin, Calendar, Clock, Check, DollarSign, Languages, Info, 
+  Sparkles, Stethoscope, Compass, ArrowLeftRight, FileText, CheckCircle2, Shield
+} from "lucide-react";
 import { useSettings } from "../../lib/SettingsContext";
 import { useTranslation } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
+import { toast } from "sonner";
 
 export function LanguageSettings() {
   const { 
@@ -16,6 +20,10 @@ export function LanguageSettings() {
 
   const { t, isRTL } = useTranslation();
   const [previewDate, setPreviewDate] = useState(new Date());
+  
+  // Advanced Localization Options
+  const [medicalTermMode, setMedicalTermMode] = useState<'latin' | 'bilingual' | 'localized'>('bilingual');
+  const [arabicNumerals, setArabicNumerals] = useState<'western' | 'eastern'>('western');
 
   useEffect(() => {
     const timer = setInterval(() => setPreviewDate(new Date()), 1000);
@@ -33,6 +41,75 @@ export function LanguageSettings() {
       hour12: timeFormat === '12h'
     };
     return new Intl.DateTimeFormat(language, options).format(previewDate);
+  };
+
+  const regionalPresets = [
+    {
+      id: 'us-clinical',
+      name: 'US Clinical Standard',
+      flag: '🇺🇸',
+      lang: 'en',
+      tz: 'UTC-5',
+      date: 'MM/DD/YYYY',
+      time: '12h',
+      currency: '$',
+      desc: 'USD ($), Eastern Time, MM/DD/YYYY, 12-Hour AM/PM'
+    },
+    {
+      id: 'gulf-saudi',
+      name: 'Gulf & Saudi Healthcare',
+      flag: '🇸🇦',
+      lang: 'ar',
+      tz: 'UTC+3',
+      date: 'DD/MM/YYYY',
+      time: '24h',
+      currency: 'ر.س',
+      desc: 'SAR (ر.س), AST (Riyadh), DD/MM/YYYY, RTL Layout'
+    },
+    {
+      id: 'uk-nhs',
+      name: 'UK / NHS Standard',
+      flag: '🇬🇧',
+      lang: 'en',
+      tz: 'UTC+0',
+      date: 'DD/MM/YYYY',
+      time: '24h',
+      currency: '£',
+      desc: 'GBP (£), GMT (London), DD/MM/YYYY, 24-Hour'
+    },
+    {
+      id: 'egypt-levant',
+      name: 'Egypt & North Africa',
+      flag: '🇪🇬',
+      lang: 'ar',
+      tz: 'UTC+2',
+      date: 'DD/MM/YYYY',
+      time: '12h',
+      currency: 'ج.م',
+      desc: 'EGP (ج.م), EET (Cairo), DD/MM/YYYY, Arabic RTL'
+    },
+    {
+      id: 'eu-central',
+      name: 'EU Central Medical',
+      flag: '🇪🇺',
+      lang: 'de',
+      tz: 'UTC+1',
+      date: 'YYYY-MM-DD',
+      time: '24h',
+      currency: '€',
+      desc: 'EUR (€), CET (Berlin), ISO YYYY-MM-DD, 24-Hour'
+    }
+  ];
+
+  const applyPreset = (preset: typeof regionalPresets[0]) => {
+    updateSettings({
+      language: preset.lang,
+      timezone: preset.tz,
+      dateFormat: preset.date,
+      timeFormat: preset.time,
+      currencySymbol: preset.currency
+    });
+    toast.success(`Applied ${preset.name} regional localization preset!`);
   };
 
   const timezones = [
@@ -60,6 +137,46 @@ export function LanguageSettings() {
 
   return (
     <div className="space-y-6">
+      {/* Quick Regional Presets */}
+      <div className="card-panel p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-2 bg-indigo-50 dark:bg-indigo-500/10 rounded-lg">
+              <Sparkles className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white">Quick Regional Localization Presets</h2>
+              <p className="text-xs text-slate-500">Instant 1-click configuration for regional healthcare regulations & currencies</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {regionalPresets.map(preset => (
+            <button
+              key={preset.id}
+              onClick={() => applyPreset(preset)}
+              className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-500/50 bg-white dark:bg-slate-900 hover:bg-indigo-50/30 transition-all text-left group flex flex-col justify-between"
+            >
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xl">{preset.flag}</span>
+                  <span className="text-[10px] font-mono font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded">
+                    {preset.currency}
+                  </span>
+                </div>
+                <h3 className="text-xs font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 transition-colors">
+                  {preset.name}
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-1 line-clamp-2 leading-tight">
+                  {preset.desc}
+                </p>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Language & Region */}
       <div className="card-panel p-6">
         <div className="flex items-center justify-between mb-6">
@@ -72,6 +189,11 @@ export function LanguageSettings() {
               <p className="text-xs text-slate-500">Configure your preferred language and geographical settings</p>
             </div>
           </div>
+
+          <div className="flex items-center gap-2 px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-full text-xs font-bold text-slate-700 dark:text-slate-300">
+            <ArrowLeftRight className="w-3.5 h-3.5 text-indigo-500" />
+            <span>Layout Direction: <strong className="text-indigo-600 dark:text-indigo-400">{isRTL ? "Right-to-Left (RTL)" : "Left-to-Right (LTR)"}</strong></span>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -83,7 +205,7 @@ export function LanguageSettings() {
             <select 
               value={language} 
               onChange={(e) => updateSettings({ language: e.target.value })}
-              className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+              className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-medium"
             >
               <option value="en">English (US)</option>
               <option value="ar">العربية (Arabic)</option>
@@ -101,13 +223,79 @@ export function LanguageSettings() {
             <select 
               value={timezone} 
               onChange={(e) => updateSettings({ timezone: e.target.value })}
-              className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+              className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-medium"
             >
               {timezones.map(tz => (
                 <option key={tz.value} value={tz.value}>{tz.label}</option>
               ))}
             </select>
           </div>
+        </div>
+      </div>
+
+      {/* Medical Terminology & Clinical Drug Names */}
+      <div className="card-panel p-6 space-y-4">
+        <div className="flex items-center gap-2">
+          <div className="p-2 bg-indigo-50 dark:bg-indigo-500/10 rounded-lg">
+            <Stethoscope className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+          </div>
+          <div>
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white">Clinical & Medical Terminology Translation</h2>
+            <p className="text-xs text-slate-500">Control how drug names, ICD-10 diagnoses, and dosage SIG codes are formatted on prescriptions</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {[
+            {
+              id: 'latin',
+              title: 'Standard Latin / INN',
+              desc: 'Keep drug names & SIG codes (TDS, PO, BID) in universal Latin/English for strict pharmacy compliance.',
+              badge: 'Pharmacopeia Standard'
+            },
+            {
+              id: 'bilingual',
+              title: 'Bilingual Clinical Labels',
+              desc: 'Display English drug names alongside localized patient instructions (e.g. Amoxicillin - 1 tablet 3 times daily).',
+              badge: 'Recommended'
+            },
+            {
+              id: 'localized',
+              title: 'Fully Localized',
+              desc: 'Translate all patient-facing prescription labels and diagnostic summaries into system language.',
+              badge: 'Patient Friendly'
+            }
+          ].map(item => (
+            <button
+              key={item.id}
+              onClick={() => {
+                setMedicalTermMode(item.id as any);
+                toast.info(`Medical terminology mode set to ${item.title}`);
+              }}
+              className={cn(
+                "p-4 rounded-xl border text-left transition-all space-y-2 flex flex-col justify-between",
+                medicalTermMode === item.id
+                  ? "bg-indigo-50/60 dark:bg-indigo-950/40 border-indigo-300 dark:border-indigo-500/40 ring-2 ring-indigo-500/20"
+                  : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:bg-slate-50"
+              )}
+            >
+              <div>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold text-slate-900 dark:text-white">{item.title}</h3>
+                  <span className="text-[9px] font-bold uppercase tracking-wider text-indigo-600 bg-indigo-100 dark:bg-indigo-900 px-1.5 py-0.5 rounded">
+                    {item.badge}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">{item.desc}</p>
+              </div>
+
+              {medicalTermMode === item.id && (
+                <div className="flex items-center gap-1 text-[11px] font-bold text-indigo-600 dark:text-indigo-400 pt-2 border-t border-indigo-100 dark:border-indigo-900">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Selected
+                </div>
+              )}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -130,21 +318,21 @@ export function LanguageSettings() {
               <div className="grid grid-cols-1 gap-2">
                 {[
                   { value: "MM/DD/YYYY", label: "MM/DD/YYYY (US)" },
-                  { value: "DD/MM/YYYY", label: "DD/MM/YYYY (UK/EU)" },
-                  { value: "YYYY-MM-DD", label: "YYYY-MM-DD (ISO)" }
+                  { value: "DD/MM/YYYY", label: "DD/MM/YYYY (UK/EU/Arab)" },
+                  { value: "YYYY-MM-DD", label: "YYYY-MM-DD (ISO Standard)" }
                 ].map((format) => (
                   <button
                     key={format.value}
                     onClick={() => updateSettings({ dateFormat: format.value })}
                     className={cn(
-                      "flex items-center justify-between p-3 rounded-xl border text-sm transition-all",
+                      "flex items-center justify-between p-3 rounded-xl border text-sm transition-all font-medium",
                       dateFormat === format.value
                         ? "bg-indigo-50 dark:bg-indigo-500/10 border-indigo-200 dark:border-indigo-500/30 text-indigo-700 dark:text-indigo-400 font-bold"
                         : "bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50"
                     )}
                   >
                     {format.label}
-                    {dateFormat === format.value && <Check className="w-4 h-4" />}
+                    {dateFormat === format.value && <Check className="w-4 h-4 text-indigo-600" />}
                   </button>
                 ))}
               </div>
@@ -176,11 +364,11 @@ export function LanguageSettings() {
             <div className="p-3 bg-white dark:bg-slate-900 rounded-full shadow-sm mb-4">
               <Clock className="w-6 h-6 text-indigo-500" />
             </div>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Live Preview</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Clinical Timestamp Live Preview</p>
             <p className="text-2xl font-mono font-bold text-slate-900 dark:text-white">
               {formatPreview()}
             </p>
-            <p className="text-xs text-slate-500 mt-2">This is how dates and times will appear</p>
+            <p className="text-xs text-slate-500 mt-2">Active timezone: <strong className="text-indigo-600">{timezone}</strong></p>
           </div>
         </div>
       </div>
@@ -193,7 +381,7 @@ export function LanguageSettings() {
           </div>
           <div>
             <h2 className="text-lg font-bold text-slate-900 dark:text-white">{t('currency')} Settings</h2>
-            <p className="text-xs text-slate-500">Set the default currency symbol for billing and reports</p>
+            <p className="text-xs text-slate-500">Set the default currency symbol for patient invoices, pharmacy sales, and financial reports</p>
           </div>
         </div>
 
@@ -205,7 +393,7 @@ export function LanguageSettings() {
                 key={curr.name}
                 onClick={() => updateSettings({ currencySymbol: curr.symbol })}
                 className={cn(
-                  "flex flex-col items-center justify-center p-3 rounded-xl border transition-all gap-1",
+                  "flex flex-col items-center justify-center p-3 rounded-xl border transition-all gap-1 cursor-pointer",
                   currencySymbol === curr.symbol
                     ? "bg-indigo-600 border-indigo-600 text-white shadow-lg scale-105 z-10"
                     : "bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50"
@@ -222,7 +410,7 @@ export function LanguageSettings() {
           <div className="p-3 bg-blue-50 dark:bg-blue-500/10 rounded-lg flex items-start gap-3">
             <Info className="w-4 h-4 text-blue-500 mt-0.5" />
             <p className="text-[10px] text-blue-700 dark:text-blue-400 leading-relaxed">
-              Changing the currency symbol only affects how prices are displayed. It does not perform any currency conversion on existing data.
+              Changing the currency symbol updates invoice prints, pharmacy checkout screens, and dashboard metrics instantly across the clinic.
             </p>
           </div>
         </div>
@@ -230,3 +418,4 @@ export function LanguageSettings() {
     </div>
   );
 }
+

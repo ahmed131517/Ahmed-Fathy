@@ -51,17 +51,23 @@ async function startServer() {
 
   const ai = process.env.GEMINI_API_KEY ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }) : null;
 
-  const retryAI = async (fn: () => Promise<any>, maxRetries = 3) => {
+  const retryAI = async (fn: () => Promise<any>, maxRetries = 2) => {
     let lastError: any;
     for (let i = 0; i < maxRetries; i++) {
       try {
         return await fn();
       } catch (error: any) {
         lastError = error;
-        // Only retry on rate limits (429) or transient server errors (5xx)
+        const errMsg = typeof error?.message === 'string' ? error.message : '';
+        const isQuota = errMsg.includes('Quota exceeded') || errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.includes('quota');
+        if (isQuota) {
+          // Immediately throw so fallback can instantly switch models without waiting through useless retries
+          throw error;
+        }
+        // Only retry on transient rate limits (429) or transient server errors (5xx)
         const status = error.status || (error.response ? error.response.status : null);
         if (status === 429 || (status >= 500 && status < 600)) {
-          const delay = Math.pow(2, i) * 1000 + Math.random() * 1000;
+          const delay = Math.pow(2, i) * 1000 + Math.random() * 500;
           console.log(`[AI RETRY] Attempt ${i + 1} failed with status ${status}. Retrying in ${Math.round(delay)}ms...`);
           await new Promise(resolve => setTimeout(resolve, delay));
           continue;
@@ -72,7 +78,37 @@ async function startServer() {
     throw lastError;
   };
 
-  app.use(express.json({ limit: "1mb" })); // Mitigate Large Payload/DoS injection
+  const generateWithFallback = async (genAI: GoogleGenAI, primaryModel: string | undefined, contents: any, config: any) => {
+    const requested = primaryModel || 'gemini-2.5-flash';
+    const modelsToTry = Array.from(new Set([
+      requested,
+      'gemini-2.5-flash',
+      'gemini-2.5-pro',
+      'gemini-2.0-flash',
+      'gemini-1.5-flash',
+      'gemini-1.5-pro'
+    ]));
+
+    let lastError: any;
+    for (const mName of modelsToTry) {
+      try {
+        return await retryAI(async () => {
+          return await genAI.models.generateContent({
+            model: mName,
+            contents,
+            config
+          });
+        }, 1);
+      } catch (err: any) {
+        lastError = err;
+        const shortErr = typeof err?.message === 'string' ? err.message.slice(0, 100) : 'Error';
+        console.log(`[AI FALLBACK] Model '${mName}' failed (${shortErr}). Trying next fallback model...`);
+      }
+    }
+    throw lastError;
+  };
+
+  app.use(express.json({ limit: "20mb" })); // Support multimodal image payloads (X-Rays, CT Scans, Lab photos)
  
   const settingsFilePath = path.join(process.cwd(), 'settings.json');
  
@@ -113,6 +149,10 @@ async function startServer() {
     messages: z.array(z.object({
       role: z.string(),
       content: z.string(),
+      images: z.array(z.object({
+        mimeType: z.string(),
+        data: z.string(),
+      })).optional(),
     })),
     provider: z.enum(['gemini', 'openrouter']),
     model: z.string().optional(),
@@ -120,7 +160,7 @@ async function startServer() {
     systemInstruction: z.string().optional(),
   });
 
-  app.post("/api/clinical-workflow/analyze", customRateLimiter(60, 60 * 1000), async (req, res) => {
+  app.post("/api/clinical-workflow/analyze", customRateLimiter(300, 60 * 1000), async (req, res) => {
     const validation = ChatSchema.safeParse(req.body);
     if (!validation.success) {
       return res.status(400).json({ error: "Invalid request body", details: validation.error });
@@ -134,21 +174,32 @@ async function startServer() {
       try {
         const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
         
-        // Convert messages to Gemini format with flexible role matching
-        const contents = messages.map((m: any) => ({
-          role: ['model', 'ai', 'assistant', 'assistant'].includes(m.role?.toLowerCase()) ? 'model' : 'user',
-          parts: [{ text: m.content }]
-        }));
-
-        const result = await retryAI(async () => {
-          return await genAI.models.generateContent({ 
-            model: model || 'gemini-3.1-flash-lite',
-            contents,
-            config: {
-              systemInstruction: systemInstruction || undefined,
-            }
-          });
+        // Convert messages to Gemini format with flexible role matching and inlineData for images
+        const contents = messages.map((m: any) => {
+          const parts: any[] = [{ text: m.content }];
+          if (m.images && Array.isArray(m.images)) {
+            m.images.forEach((img: any) => {
+              const cleanData = img.data.includes(',') ? img.data.split(',')[1] : img.data;
+              parts.push({
+                inlineData: {
+                  mimeType: img.mimeType || 'image/jpeg',
+                  data: cleanData
+                }
+              });
+            });
+          }
+          return {
+            role: ['model', 'ai', 'assistant'].includes(m.role?.toLowerCase()) ? 'model' : 'user',
+            parts
+          };
         });
+
+        const result = await generateWithFallback(
+          genAI,
+          model,
+          contents,
+          { systemInstruction: systemInstruction || undefined }
+        );
         
         res.json({ content: result.text || "" });
       } catch (error: any) {
@@ -174,15 +225,16 @@ async function startServer() {
           } catch (e) {}
         }
 
+        let httpStatusCode = 500;
         if (status === 403 || status === 401) {
           userMessage = "Authentication error with AI provider. Please check API key.";
-        } else if (status === 429) {
-          userMessage = "AI provider rate limit exceeded. Please try again in a few moments.";
-        } else if (error.message && error.message.includes("quota")) {
-          userMessage = "AI service quota exceeded.";
+          httpStatusCode = status;
+        } else if (status === 429 || (error.message && (error.message.includes("quota") || error.message.includes("RESOURCE_EXHAUSTED") || error.message.includes("429")))) {
+          userMessage = "AI provider rate limit / quota exceeded. Please wait a few moments before trying again.";
+          httpStatusCode = 429;
         }
 
-        res.status(500).json({ 
+        res.status(httpStatusCode).json({ 
           error: userMessage,
           details: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
@@ -242,20 +294,19 @@ async function startServer() {
     try {
       const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       
-      const response = await retryAI(async () => {
-        return await genAI.models.generateContent({
-          model: "gemini-3.1-flash-tts-preview",
-          contents: [{ parts: [{ text }] }],
-          config: {
-            responseModalities: [Modality.AUDIO],
-            speechConfig: {
-              voiceConfig: {
-                prebuiltVoiceConfig: { voiceName: voiceId || 'Kore' },
-              },
+      const response = await generateWithFallback(
+        genAI,
+        'gemini-2.5-flash',
+        [{ parts: [{ text }] }],
+        {
+          responseModalities: [Modality.AUDIO],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: voiceId || 'Kore' },
             },
           },
-        } as any);
-      });
+        }
+      );
 
       const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
       if (!base64Audio) {
@@ -308,7 +359,10 @@ async function startServer() {
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: process.env.DISABLE_HMR === 'true' ? false : undefined,
+      },
       appType: "spa",
     });
     app.use(vite.middlewares);
@@ -320,8 +374,17 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  const server = app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
+  });
+
+  server.on("error", (err: any) => {
+    if (err.code === "EADDRINUSE") {
+      console.error(`[Server] Port ${PORT} is already in use.`);
+      process.exit(1);
+    } else {
+      console.error("[Server] Error:", err);
+    }
   });
 }
 

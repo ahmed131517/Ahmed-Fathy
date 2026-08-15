@@ -1,5 +1,6 @@
 import React from 'react';
 import { Pill, FlaskConical, Syringe, Wind, Sparkles, Droplets, Package, ShieldAlert, FileText } from 'lucide-react';
+import { getRouteForDosageForm } from '@/data/medications';
 
 export type DosageFormCategory =
   | 'tablet'
@@ -215,20 +216,25 @@ export function getDosageFormDetails(formInput?: string | null): DosageFormDetai
 
 interface DosageFormBadgeProps {
   form: string;
+  route?: string;
   size?: 'xs' | 'sm' | 'md' | 'lg';
   showSafetyNote?: boolean;
   showSymbol?: boolean;
+  showRoute?: boolean;
   className?: string;
 }
 
 export function DosageFormBadge({
   form,
+  route,
   size = 'sm',
   showSymbol = true,
+  showRoute = false,
   className = '',
 }: DosageFormBadgeProps) {
   const details = getDosageFormDetails(form);
   const { Icon } = details;
+  const mappedRoute = route || getRouteForDosageForm(form);
 
   const sizeClasses = {
     xs: 'px-1.5 py-0.5 text-[10px] gap-1',
@@ -245,15 +251,20 @@ export function DosageFormBadge({
   }[size];
 
   return (
-    <div className={`inline-flex items-center ${className}`}>
+    <div className={`inline-flex items-center gap-1.5 ${className}`}>
       <span
         className={`inline-flex items-center rounded-md border shadow-2xs transition-all ${details.badgeBg} ${details.badgeText} ${details.badgeBorder} ${sizeClasses}`}
-        title={`${details.label} - ${form}`}
+        title={`${details.label} (${mappedRoute}) - ${form}`}
       >
         {showSymbol && <span className="select-none leading-none">{details.symbol}</span>}
         <Icon className={`${iconSizes} ${details.iconColor} shrink-0`} />
         <span className="truncate">{form || details.label}</span>
       </span>
+      {showRoute && (
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-200 uppercase tracking-wider">
+          Route: {mappedRoute}
+        </span>
+      )}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { usePatient } from '../lib/PatientContext';
 import { cn } from '../lib/utils';
 import { 
@@ -267,6 +267,26 @@ export function SOAPNotePage() {
       .toArray()
   );
 
+  const patientDiagnoses = useLiveQuery(
+    () => selectedPatient?.id ? db.diagnoses.where('patientId').equals(selectedPatient.id).toArray() : [],
+    [selectedPatient?.id]
+  ) || [];
+
+  const patientPhysicalExams = useLiveQuery(
+    () => selectedPatient?.id ? db.physical_exams.where('patientId').equals(selectedPatient.id).toArray() : [],
+    [selectedPatient?.id]
+  ) || [];
+
+  const patientNotes = useLiveQuery(
+    () => selectedPatient?.id ? db.patient_notes.where('patientId').equals(selectedPatient.id).toArray() : [],
+    [selectedPatient?.id]
+  ) || [];
+
+  const patientPrescriptions = useLiveQuery(
+    () => selectedPatient?.id ? db.prescriptions.where('patientId').equals(selectedPatient.id).toArray() : [],
+    [selectedPatient?.id]
+  ) || [];
+
   function parseSOAP(text: string) {
     const subjective = text.match(/(?:Subjective:|S:)\s*([\s\S]*?)(?=(?:Objective:|O:|Assessment:|A:|Plan:|P:|$))/i)?.[1]?.trim() || "";
     const objective = text.match(/(?:Objective:|O:)\s*([\s\S]*?)(?=(?:Assessment:|A:|Plan:|P:|Subjective:|S:|$))/i)?.[1]?.trim() || "";
@@ -289,6 +309,68 @@ export function SOAPNotePage() {
     setContent(reconstructed);
   };
 
+  const patientProfileSummary = useMemo(() => {
+    if (!selectedPatient) return "No specific patient profile attached.";
+    const p = selectedPatient;
+    const allergiesStr = p.allergies?.length 
+      ? p.allergies.map(a => `${a.name}${a.severity ? ` (${a.severity})` : ''}`).join(", ") 
+      : "No known drug allergies (NKDA)";
+    const condsStr = p.chronicConditions?.length 
+      ? p.chronicConditions.join(", ") 
+      : "None documented";
+    const medsStr = p.medications?.length 
+      ? p.medications.map(m => `${m.name}${m.dosage ? ` ${m.dosage}` : ''}${m.frequency ? ` (${m.frequency})` : ''}`).join(", ") 
+      : "None active";
+    const vitalsStr = p.vitalsHistory?.length 
+      ? `BP ${p.vitalsHistory[0].bloodPressure}, HR ${p.vitalsHistory[0].heartRate} bpm, Weight ${p.vitalsHistory[0].weight} kg` 
+      : "None recorded";
+    const labsStr = p.labResults?.length 
+      ? p.labResults.map(l => `${l.labName}: ${l.value} ${l.unit} [${l.range}]`).join("; ") 
+      : "No recent labs";
+    const surgeriesStr = p.surgeries?.length 
+      ? p.surgeries.join(", ") 
+      : "None reported";
+
+    const dxHistoryStr = patientDiagnoses.length
+      ? patientDiagnoses.slice(0, 5).map(d => `- [${d.date || 'Recent'}] ${d.code ? `(${d.code}) ` : ''}${d.description || d.condition}${d.reasoning ? `: ${d.reasoning}` : ''}`).join("\n")
+      : "No past recorded diagnoses in EMR";
+
+    const examHistoryStr = patientPhysicalExams.length
+      ? patientPhysicalExams.slice(0, 3).map(e => `- [${e.date || 'Recent'}] Status: ${e.status || 'recorded'}. Exam data: ${JSON.stringify(e.data || e)}`).join("\n")
+      : "No previous structured physical exam logs";
+
+    const notesHistoryStr = patientNotes.length
+      ? patientNotes.slice(0, 3).map(n => `- [${n.date || 'Recent'}] (${n.category || 'Clinical Note'}) ${n.title ? `${n.title}: ` : ''}${n.content}`).join("\n")
+      : "No past progress notes recorded";
+
+    const rxHistoryStr = patientPrescriptions.length
+      ? patientPrescriptions.slice(0, 3).map(p => `- Prescribed on ${p.createdAt ? new Date(p.createdAt).toLocaleDateString() : 'Recent'}: ${p.notes || 'Regimen active'}`).join("\n")
+      : "No past EMR prescription records";
+
+    return `[PATIENT PROFILE & CLINICAL HISTORY]
+Patient Name: ${p.name}
+Demographics: Age ${p.age} | Gender ${p.gender} | MRN: ${p.mrn || 'N/A'} | Blood Type: ${p.bloodType || 'N/A'}
+Known Allergies: ${allergiesStr}
+Chronic Conditions / Comorbidities: ${condsStr}
+Active Maintenance Medications: ${medsStr}
+Latest Vital Signs: ${vitalsStr}
+Recent Laboratory Results: ${labsStr}
+Past Surgical History: ${surgeriesStr}
+
+[EMR MEDICAL RECORDS & HISTORICAL DATA]
+Recorded Diagnoses History:
+${dxHistoryStr}
+
+Physical Exam Findings History:
+${examHistoryStr}
+
+Clinical Progress Notes:
+${notesHistoryStr}
+
+EHR Prescriptions History:
+${rxHistoryStr}`;
+  }, [selectedPatient, patientDiagnoses, patientPhysicalExams, patientNotes, patientPrescriptions]);
+
   // Upgraded Feature: AI Scribble Processing
   const handleScribeProcess = async () => {
     if (!scribeInput.trim()) {
@@ -297,16 +379,19 @@ export function SOAPNotePage() {
     }
     setIsScribeProcessing(true);
     try {
-      const prompt = `You are a highly skilled clinical AI scribe. Take the following unstructured, messy notes (which might be raw spoken speech, abbreviations, vitals, and bullet thoughts) and professionally synthesize them. 
-Organize and expand them into a complete structured SOAP clinical note representing the patient encounter.
+      const prompt = `You are a highly skilled clinical AI scribe. Take the following unstructured physician dictation scribble notes and synthesize them into a patient-aware, structured SOAP note.
 
-Scribble notes:
+${patientProfileSummary}
+
+Physician Dictation / Scribble Notes:
 "${scribeInput}"
 
-Format the output strictly as a JSON object with keys: "subjective", "objective", "assessment", "plan".
-Ensure clinical terminology is correct, abbreviations are expanded where necessary, chest exam and symptoms are formal.
-
-Return ONLY direct, raw JSON. Do not include markdown codeblock characters or wrap in backticks.`;
+Instructions:
+1. Synthesize the raw dictation while actively incorporating and aligning with the patient's demographics, chronic conditions, active home medications, allergies, and vital signs.
+2. Ensure active medications, allergies, and chronic conditions are accurately integrated into the Subjective, Objective, Assessment, or Plan sections as clinically appropriate.
+3. Organize and expand into a complete structured SOAP clinical note.
+4. Format the output strictly as a JSON object with keys: "subjective", "objective", "assessment", "plan".
+5. Return ONLY direct, raw JSON. Do not include markdown codeblock characters or wrap in backticks.`;
 
       const responseText = await clinicalAIRequest(
         [{ role: "user", content: prompt }],
@@ -319,7 +404,7 @@ Return ONLY direct, raw JSON. Do not include markdown codeblock characters or wr
         const reconstructed = `Subjective:\n${parsed.subjective}\n\nObjective:\n${parsed.objective}\n\nAssessment:\n${parsed.assessment}\n\nPlan:\n${parsed.plan}`;
         setContent(reconstructed);
         setScribeInput("");
-        toast.success("AI Scribe populated SOAP structure successfully!");
+        toast.success("AI Scribe auto-drafted SOAP note with full patient profile context!");
       } else {
         throw new Error("Unable to parse structured JSON from scribe response");
       }
@@ -345,13 +430,13 @@ Return ONLY direct, raw JSON. Do not include markdown codeblock characters or wr
     try {
       let prompt = "";
       if (sectionId === "subjective") {
-        prompt = `Refine this subjective history into a polished Clinical HPI (History of Present Illness) using standard frameworks (OPQRST) and introducing elegant clinical prose.\n\nOriginal draft:\n${currentVal}`;
+        prompt = `Refine this subjective history into a polished Clinical HPI (History of Present Illness) using standard frameworks (OPQRST), considering the patient's profile context.\n\n${patientProfileSummary}\n\nOriginal draft:\n${currentVal}`;
       } else if (sectionId === "objective") {
-        prompt = `Take this medical objective record and generate a pristine full physical examination layout covering critical organ systems (Constitutional, Respiratory, Cardiovascular, Abdomen, Neuro). If physical details are limited, complete regular systems findings appropriately.\n\nOriginal draft:\n${currentVal}`;
+        prompt = `Take this medical objective record and generate a pristine full physical examination layout covering critical organ systems, incorporating patient vitals and labs.\n\n${patientProfileSummary}\n\nOriginal draft:\n${currentVal}`;
       } else if (sectionId === "assessment") {
-        prompt = `Generate a rigorous clinical assessment and prioritized differential diagnoses list with reasoning/justification bullets based on these indications:\n\nOriginal draft:\n${currentVal}`;
+        prompt = `Generate a rigorous clinical assessment and prioritized differential diagnoses list with reasoning/justification bullets, taking into account patient comorbidities, age, and chronic conditions.\n\n${patientProfileSummary}\n\nOriginal draft:\n${currentVal}`;
       } else {
-        prompt = `Structure this clinical treatment plan into specific prescriptions, dosage frequencies, recommended follow-ups, strict warning flags (when to seek emergency care), and helpful lifestyle advice.\n\nOriginal draft:\n${currentVal}`;
+        prompt = `Structure this clinical treatment plan into specific prescriptions, dosage frequencies, recommended follow-ups, strict warning flags, and lifestyle advice. Cross-check against known allergies and active home medications.\n\n${patientProfileSummary}\n\nOriginal draft:\n${currentVal}`;
       }
 
       const responseText = await clinicalAIRequest(
@@ -362,7 +447,7 @@ Return ONLY direct, raw JSON. Do not include markdown codeblock characters or wr
 
       if (responseText) {
         updateSection(sectionId, responseText.trim());
-        toast.success(`Enhanced ${sectionId} with AI successfully!`);
+        toast.success(`Enhanced ${sectionId} with patient-aware AI!`);
       }
     } catch (err) {
       console.error(err);
@@ -378,8 +463,11 @@ Return ONLY direct, raw JSON. Do not include markdown codeblock characters or wr
     
     setIsBeautifying(true);
     try {
-      const prompt = `Refine and beautify the following clinical SOAP note into a highly professional, well-structured format. 
-Ensure clear headings (Subjective:, Objective:, Assessment:, Plan:), expand medical abbreviations where appropriate for clarity, organize findings into bullet points, and use formal clinical language. 
+      const prompt = `Refine and beautify the following clinical SOAP note into a highly professional, well-structured format aligned with the patient's profile.
+
+${patientProfileSummary}
+
+Ensure clear headings (Subjective:, Objective:, Assessment:, Plan:), expand medical abbreviations where appropriate, organize findings into bullet points, and use formal clinical language. 
       
 Original Note:
 ${textToProcess}
@@ -394,7 +482,7 @@ Return ONLY the refined SOAP note text.`;
       const refinedText = responseText || textToProcess;
       setContent(refinedText);
       setSections(parseSOAP(refinedText));
-      if (!initialText) toast.success("Note professionally formatted");
+      if (!initialText) toast.success("Note professionally formatted with patient context");
     } catch (err) {
       console.error("Beautify failed:", err);
       if (!initialText) toast.error("Failed to format note");
@@ -730,6 +818,18 @@ Return ONLY the refined SOAP note text.`;
                 <p className="text-xs text-indigo-200/70 font-medium">Type unstructured physician bullet summaries or raw vocal dictations to auto-fill the SOAP note.</p>
               </div>
             </div>
+
+            {selectedPatient && (
+              <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl px-3.5 py-1.5 flex items-center gap-2 self-start md:self-auto">
+                <div className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                <div className="text-left">
+                  <span className="text-[10px] font-bold text-emerald-300 block leading-tight">Patient Context Loaded</span>
+                  <span className="text-[10px] text-emerald-100/80 font-medium block leading-tight">
+                    {selectedPatient.name} ({selectedPatient.age}yo) • {selectedPatient.medications?.length || 0} Meds • {selectedPatient.allergies?.length || 0} Allergies
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="space-y-3 relative z-10">

@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { UserCheck, Eye, Wind, Heart, Activity, Move, Cpu, Feather as FeatherIcon, Clipboard, Save, Check, Thermometer, Droplets, Scale, Ruler, Mic, Sparkles, FileText, RefreshCw, CheckCircle2, AlertCircle, Camera, Trash2, CheckCircle, ChevronDown, ChevronUp, Edit2, X, Plus, AlertTriangle, Stethoscope, Ear, Hand, Info, Maximize2, Minimize2 } from "lucide-react";
+import { UserCheck, Eye, Wind, Heart, Activity, Move, Cpu, Feather as FeatherIcon, Clipboard, Save, Check, Thermometer, Droplets, Scale, Ruler, Mic, Sparkles, FileText, RefreshCw, CheckCircle2, AlertCircle, Camera, Trash2, CheckCircle, ChevronDown, ChevronUp, Edit2, X, Plus, AlertTriangle, Stethoscope, Ear, Hand, Info, Maximize2, Minimize2, MapPin, TrendingUp, History, Baby, Zap, ArrowRight, Calculator, ShieldAlert } from "lucide-react";
 import { clinicalAIRequest } from "../services/aiWorkflowService";
 import { useAISettings } from "../lib/AISettingsContext";
 import { cn } from "@/lib/utils";
@@ -18,6 +18,10 @@ import { ExaminationGuidance } from "@/components/physical-exam/ExaminationGuida
 import { FindingsAnalyzer } from "@/components/physical-exam/FindingsAnalyzer";
 import { JointBodyMap } from "./msk/JointBodyMap";
 import { JointExamCard } from "./msk/JointExamCard";
+import { AIDifferentialGenerator } from "@/components/physical-exam/AIDifferentialGenerator";
+import { AnatomicalBodyMap, BodyPin } from "@/components/physical-exam/AnatomicalBodyMap";
+import { LongitudinalMatrix } from "@/components/physical-exam/LongitudinalMatrix";
+import { DemographicExamAdaptive } from "@/components/physical-exam/DemographicExamAdaptive";
 import { db } from "@/lib/db";
 import { toast } from "sonner";
 import { usePatient } from "@/lib/PatientContext";
@@ -248,7 +252,9 @@ const tabs = [
   { id: 'neurological', name: 'Neurological', icon: Cpu },
   { id: 'skin', name: 'Skin', icon: FeatherIcon },
   { id: 'psychiatric', name: 'Psychiatric', icon: Sparkles },
-  { id: 'geriatric', name: 'Geriatric', icon: Scale },
+  { id: 'body-map', name: 'Anatomical Body Map', icon: MapPin },
+  { id: 'longitudinal', name: 'Longitudinal Matrix', icon: History },
+  { id: 'adaptive-demo', name: 'Demographic Normals', icon: Baby },
 ];
 
 // Full SSE mapping from heent-module.js
@@ -1359,84 +1365,186 @@ export function SkinTab({ findings, onChange, onMarkNormal, onClear }: { finding
 
 // Full HEENT mapping from heent-module.js
 const heentMapping: Record<string, HeentPart> = {
-  'head': { title: 'Head', normal: 'Normocephalic, atraumatic', options: [
+  'head': { title: 'Head & Facies', normal: 'Normocephalic, atraumatic (NC/AT), symmetric facies', options: [
     { id: 'head-hematoma', text: 'Hematoma', type: 'checkbox' },
     { id: 'head-laceration', text: 'Laceration', type: 'checkbox' },
-    { id: 'head-tenderness', text: 'Tenderness', type: 'checkbox' },
+    { id: 'head-tenderness', text: 'Scalp / Skull Tenderness', type: 'checkbox' },
+    { id: 'head-mass', text: 'Scalp Mass / Lesion', type: 'checkbox' },
+    { id: 'head-facial-asymmetry', text: 'Facial Asymmetry / Droop (CN VII Palsy)', type: 'select', values: ['Left CN VII Palsy', 'Right CN VII Palsy', 'Bilateral'] },
   ]},
-  'head-hair': { title: 'Hair', normal: 'Normal distribution', options: [
+  'head-hair': { title: 'Hair & Scalp', normal: 'Normal distribution & hair texture', options: [
     { id: 'hair-thinning', text: 'Thinning', type: 'checkbox' },
-    { id: 'hair-alopecia', text: 'Alopecia', type: 'checkbox' },
+    { id: 'hair-alopecia', text: 'Alopecia (Areata / Diffuse)', type: 'checkbox' },
+    { id: 'hair-lesions', text: 'Scalp Lesions / Tinea Capitis', type: 'checkbox' },
   ]},
-  'sinus-frontal': { title: 'Frontal Sinus', normal: 'Non-tender', options: [
-    { id: 'sinus-frontal-tender', text: 'Tenderness', type: 'select', values: ['Mild', 'Moderate', 'Severe'] },
+  'head-temporal': { title: 'Temporal Artery', normal: 'Normal pulses, non-tender', options: [
+    { id: 'temporal-tenderness', text: 'Temporal Artery Tenderness (Giant Cell Arteritis Screen)', type: 'checkbox', bilateral: true },
+    { id: 'temporal-induration', text: 'Induration / Thickened Nodular Vessel', type: 'checkbox', bilateral: true },
+    { id: 'temporal-pulse-reduced', text: 'Reduced / Absent Temporal Pulse', type: 'checkbox', bilateral: true },
   ]},
-  'sinus-maxillary': { title: 'Maxillary Sinus', normal: 'Non-tender', options: [
-    { id: 'sinus-maxillary-tender', text: 'Tenderness', type: 'select', values: ['Mild', 'Moderate', 'Severe'] },
+  'sinus-frontal': { title: 'Frontal Sinus', normal: 'Non-tender to percussion', options: [
+    { id: 'sinus-frontal-tender', text: 'Tenderness to Percussion', type: 'select', values: ['Mild', 'Moderate', 'Severe'], bilateral: true },
   ]},
-  'eyes-pupils': { title: 'Pupils', normal: 'PERRLA', options: [
-    { id: 'pupils-sluggish', text: 'Sluggish reaction', type: 'checkbox' },
-    { id: 'pupils-nonreactive', text: 'Non-reactive', type: 'checkbox' },
-    { id: 'pupils-anisocoria', text: 'Anisocoria', type: 'checkbox' },
+  'sinus-maxillary': { title: 'Maxillary Sinus', normal: 'Non-tender to percussion', options: [
+    { id: 'sinus-maxillary-tender', text: 'Tenderness to Percussion', type: 'select', values: ['Mild', 'Moderate', 'Severe'], bilateral: true },
   ]},
-  'eyes-eom': { title: 'EOM', normal: 'Intact', options: [
-    { id: 'eom-restricted', text: 'Restricted movement', type: 'checkbox', bilateral: true },
+  'eyes-pupils': { title: 'Pupils (PERRLA)', normal: 'PERRLA (Pupils Equal, Round, Reactive to Light & Accommodation)', options: [
+    { id: 'pupils-sluggish', text: 'Sluggish reaction', type: 'checkbox', bilateral: true },
+    { id: 'pupils-nonreactive', text: 'Non-reactive (Fixed)', type: 'checkbox', bilateral: true },
+    { id: 'pupils-anisocoria', text: 'Anisocoria (Unequal Pupil Diameter)', type: 'checkbox' },
+    { id: 'pupils-rapd', text: 'Marcus Gunn RAPD (Relative Afferent Pupillary Defect)', type: 'checkbox', bilateral: true },
   ]},
-  'eyes-conjunctiva': { title: 'Conjunctiva', normal: 'Clear', options: [
-    { id: 'conj-injection', text: 'Injection', type: 'checkbox', bilateral: true },
-    { id: 'conj-pallor', text: 'Pallor', type: 'checkbox', bilateral: true },
+  'eyes-eom': { title: 'EOM & Cranial Nerves', normal: 'Full EOM intact without nystagmus or diplopia', options: [
+    { id: 'eom-restricted', text: 'Restricted Movement', type: 'checkbox', bilateral: true },
+    { id: 'eom-nystagmus', text: 'Nystagmus', type: 'select', values: ['Horizontal', 'Vertical', 'Rotary', 'Direction-Changing'] },
+    { id: 'eom-diplopia', text: 'Diplopia (Double Vision)', type: 'checkbox' },
+    { id: 'eom-cn3-palsy', text: 'CN III Oculomotor Palsy', type: 'checkbox', bilateral: true },
+    { id: 'eom-cn4-palsy', text: 'CN IV Trochlear Palsy', type: 'checkbox', bilateral: true },
+    { id: 'eom-cn6-palsy', text: 'CN VI Abducens Palsy', type: 'checkbox', bilateral: true },
   ]},
-  'eyes-sclera': { title: 'Sclera', normal: 'Clear', options: [
-    { id: 'sclera-icterus', text: 'Icterus', type: 'checkbox' },
+  'eyes-lids': { title: 'Lids & Lacrimal', normal: 'Normal lids & lacrimal apparatus', options: [
+    { id: 'lids-ptosis', text: 'Ptosis (Drooping Lid)', type: 'checkbox', bilateral: true },
+    { id: 'lids-xanthelasma', text: 'Xanthelasma', type: 'checkbox', bilateral: true },
+    { id: 'lids-edema', text: 'Periorbital Edema', type: 'checkbox', bilateral: true },
+    { id: 'lids-cellulitis', text: 'Periorbital Erythema / Preseptal Cellulitis', type: 'checkbox', bilateral: true },
+    { id: 'lids-dacryocystitis', text: 'Dacryocystitis / Lacrimal Sac Inflammation', type: 'checkbox', bilateral: true },
   ]},
-  'eyes-vf': { title: 'Visual Fields', normal: 'Intact', options: [
-    { id: 'vf-deficit', text: 'Deficit', type: 'checkbox' },
+  'eyes-cornea': { title: 'Cornea & Chamber', normal: 'Clear cornea, quiet anterior chamber', options: [
+    { id: 'cornea-arcus', text: 'Arcus Senilis', type: 'checkbox' },
+    { id: 'cornea-abrasion', text: 'Corneal Abrasion / Ulcer', type: 'checkbox', bilateral: true },
+    { id: 'cornea-hyphema', text: 'Hyphema (Blood in AC)', type: 'checkbox', bilateral: true },
+    { id: 'cornea-hypopyon', text: 'Hypopyon (Pus in AC)', type: 'checkbox', bilateral: true },
   ]},
-  'ears-canals': { title: 'Canals', normal: 'Clear', options: [
-    { id: 'ears-discharge', text: 'Discharge', type: 'select', values: ['Serous', 'Purulent', 'Bloody', 'Mucoid'], bilateral: true },
-    { id: 'ears-erythema-canals', text: 'Erythema', type: 'checkbox', bilateral: true },
+  'eyes-conjunctiva': { title: 'Conjunctiva', normal: 'Clear, pink, non-injected', options: [
+    { id: 'conj-injection', text: 'Conjunctival Injection / Redness', type: 'select', values: ['Mild', 'Moderate', 'Ciliary Flush / Severe'], bilateral: true },
+    { id: 'conj-pallor', text: 'Subconjunctival Pallor (Anemia Screen)', type: 'checkbox', bilateral: true },
+    { id: 'conj-hemorrhage', text: 'Subconjunctival Hemorrhage', type: 'checkbox', bilateral: true },
   ]},
-  'ears-tms': { title: 'TMs', normal: 'Normal light reflex', options: [
-    { id: 'tm-erythema', text: 'Erythema', type: 'checkbox', bilateral: true },
-    { id: 'tm-cerumen', text: 'Cerumen', type: 'checkbox', bilateral: true },
-    { id: 'tm-bulging', text: 'Bulging', type: 'checkbox', bilateral: true },
+  'eyes-sclera': { title: 'Sclera', normal: 'Anicteric, white sclera', options: [
+    { id: 'sclera-icterus', text: 'Scleral Icterus (Jaundice)', type: 'checkbox' },
   ]},
-  'ears-pinna': { title: 'Pinna/Tragus', normal: 'Non-tender', options: [
-    { id: 'pinna-tender', text: 'Tenderness', type: 'checkbox', bilateral: true },
+  'eyes-vf': { title: 'Visual Fields', normal: 'Full by confrontation bilaterally', options: [
+    { id: 'vf-deficit', text: 'Visual Field Deficit (Hemianopia / Quadrantanopia)', type: 'select', values: ['Bitemporal Hemianopia', 'Left Homonymous Hemianopia', 'Right Homonymous Hemianopia', 'Scotoma'] },
   ]},
-  'nose-patency': { title: 'Nose', normal: 'Patent', options: [
-    { id: 'nose-discharge', text: 'Discharge', type: 'select', values: ['Serous', 'Purulent', 'Bloody'] },
-    { id: 'nose-congestion', text: 'Congestion', type: 'checkbox' },
+  'eyes-fundoscopy': { title: 'Fundoscopy', normal: 'Sharp optic disc margins, normal C/D ratio (0.3), no hemorrhages', options: [
+    { id: 'fundus-papilledema', text: 'Papilledema (Optic Disc Swelling)', type: 'checkbox', bilateral: true },
+    { id: 'fundus-cupping', text: 'Increased Cup-to-Disc Ratio (>0.5)', type: 'checkbox', bilateral: true },
+    { id: 'fundus-av-nicking', text: 'AV Nicking / Hypertensive Retinopathy', type: 'checkbox', bilateral: true },
+    { id: 'fundus-cotton-wool', text: 'Cotton Wool Spots', type: 'checkbox', bilateral: true },
+    { id: 'fundus-hemorrhage', text: 'Retinal Hemorrhages (Flame / Dot-Blot)', type: 'checkbox', bilateral: true },
   ]},
-  'throat-op': { title: 'Oropharynx', normal: 'Clear', options: [
-    { id: 'op-erythema', text: 'Erythema', type: 'checkbox' },
-    { id: 'op-thrush', text: 'Thrush', type: 'checkbox' },
-    { id: 'op-exudate', text: 'Exudate', type: 'checkbox' },
+  'ears-canals': { title: 'Canals (EAC)', normal: 'Clear of cerumen or foreign bodies', options: [
+    { id: 'ears-discharge', text: 'Otorrhea / Discharge', type: 'select', values: ['Serous', 'Purulent', 'Bloody', 'Mucoid'], bilateral: true },
+    { id: 'ears-erythema-canals', text: 'Erythema / Swelling (Otitis Externa)', type: 'checkbox', bilateral: true },
+    { id: 'ears-cerumen-impacted', text: 'Impacted Cerumen', type: 'checkbox', bilateral: true },
+    { id: 'ears-foreign-body', text: 'Foreign Body in EAC', type: 'checkbox', bilateral: true },
   ]},
-  'throat-mucosa': { title: 'Mucosa', normal: 'Moist', options: [
-    { id: 'mucosa-dry', text: 'Dry', type: 'checkbox' },
+  'ears-tms': { title: 'Tympanic Membranes', normal: 'Intact, translucent, sharp cone of light', options: [
+    { id: 'tm-erythema', text: 'TM Erythema / Hyperemia', type: 'checkbox', bilateral: true },
+    { id: 'tm-bulging', text: 'TM Bulging (Acute Otitis Media)', type: 'checkbox', bilateral: true },
+    { id: 'tm-fluid', text: 'Fluid / Air-Fluid Levels (Serous OM)', type: 'checkbox', bilateral: true },
+    { id: 'tm-hemotympanum', text: 'Hemotympanum (Basilar Trauma)', type: 'checkbox', bilateral: true },
+    { id: 'tm-perforation', text: 'TM Perforation', type: 'checkbox', bilateral: true },
+    { id: 'tm-retraction', text: 'Retraction Pocket / Cholesteatoma', type: 'checkbox', bilateral: true },
+    { id: 'tm-pneumatic-mobility', text: 'Reduced Mobility on Pneumatic Otoscopy', type: 'checkbox', bilateral: true },
   ]},
-  'throat-tonsils': { title: 'Tonsils', normal: 'Normal', options: [
-    { id: 'tonsil-hypertrophy', text: 'Hypertrophy', type: 'select', values: ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4'] },
+  'ears-pinna': { title: 'Pinna & Tragus', normal: 'Non-tender, no lesions', options: [
+    { id: 'pinna-tender', text: 'Tragus / Auricle Tenderness (Otitis Externa Sign)', type: 'checkbox', bilateral: true },
+    { id: 'pinna-tophi', text: 'Gouty Tophi', type: 'checkbox', bilateral: true },
   ]},
-  'neck-rom': { title: 'Neck/ROM', normal: 'Supple', options: [
-    { id: 'neck-meningismus', text: 'Meningismus', type: 'checkbox' },
-    { id: 'neck-limited-rom', text: 'Limited ROM', type: 'checkbox' },
+  'ears-mastoid': { title: 'Mastoid Process', normal: 'Non-tender, no ecchymosis', options: [
+    { id: 'mastoid-tender', text: 'Mastoid Tenderness (Mastoiditis Screen)', type: 'checkbox', bilateral: true },
+    { id: 'mastoid-erythema', text: 'Mastoid Erythema & Fluctuance', type: 'checkbox', bilateral: true },
+    { id: 'mastoid-battles', text: "Battle's Sign (Retroauricular Ecchymosis)", type: 'checkbox', bilateral: true },
   ]},
-  'neck-trachea': { title: 'Trachea', normal: 'Midline', options: [
-    { id: 'trachea-deviated', text: 'Deviated', type: 'checkbox' },
+  'ears-hearing': { title: 'Hearing & Tuning Fork', normal: 'Gross hearing intact, Weber midline, Rinne AC > BC', options: [
+    { id: 'hearing-whisper-deficit', text: 'Gross Hearing Deficit / Whisper Test Failure', type: 'checkbox', bilateral: true },
+    { id: 'hearing-weber', text: 'Weber Test Lateralization (512 Hz)', type: 'select', values: ['Midline (Normal)', 'Lateralizes Left', 'Lateralizes Right'] },
+    { id: 'hearing-rinne', text: 'Rinne Test Result', type: 'select', values: ['AC > BC (Normal / Sensorineural)', 'BC > AC Left (Conductive Loss L)', 'BC > AC Right (Conductive Loss R)'] },
   ]},
-  'neck-thyroid': { title: 'Thyroid', normal: 'Normal', options: [
-    { id: 'thyroid-enlarged', text: 'Enlarged', type: 'checkbox' },
-    { id: 'thyroid-nodular', text: 'Nodular', type: 'checkbox' },
-    { id: 'thyroid-tender', text: 'Tender', type: 'checkbox' },
+  'nose-patency': { title: 'Nose & Airflow', normal: 'Patent nares bilaterally, clear airflow', options: [
+    { id: 'nose-discharge', text: 'Rhinorrhea / Discharge', type: 'select', values: ['Clear / Serous', 'Purulent / Green', 'Bloody (Epistaxis)', 'CSF Rhinorrhea'] },
+    { id: 'nose-congestion', text: 'Nasal Congestion / Obstruction', type: 'checkbox', bilateral: true },
+    { id: 'nose-epistaxis', text: 'Active Epistaxis', type: 'select', values: ['Anterior Kiesselbach', 'Posterior Bleed'] },
   ]},
-  'neck-lymph': { title: 'Lymph Nodes', normal: 'No lymphadenopathy', options: [
-    { id: 'lymph-supraclav', text: 'Supraclavicular', type: 'checkbox' },
-    { id: 'lymph-cervical', text: 'Cervical', type: 'checkbox' },
+  'nose-septum-mucosa': { title: 'Nasal Septum & Mucosa', normal: 'Pink, moist mucosa; septum midline', options: [
+    { id: 'nose-septal-deviation', text: 'Septal Deviation', type: 'select', values: ['Deviated Left', 'Deviated Right'] },
+    { id: 'nose-septal-perforation', text: 'Septal Perforation / Hematoma', type: 'checkbox' },
+    { id: 'nose-turbinate-hypertrophy', text: 'Turbinate Hypertrophy / Boggy Allergic Mucosa', type: 'checkbox', bilateral: true },
+    { id: 'nose-polyps', text: 'Nasal Polyps', type: 'checkbox', bilateral: true },
   ]},
-  'neck-carotids': { title: 'Carotids', normal: 'No bruits', options: [
-    { id: 'carotid-bruit', text: 'Bruit', type: 'checkbox', bilateral: true },
+  'throat-op': { title: 'Oropharynx', normal: 'Clear mucosal lining without exudates', options: [
+    { id: 'op-erythema', text: 'Oropharyngeal Erythema', type: 'checkbox' },
+    { id: 'op-thrush', text: 'Oral Candidiasis / Thrush', type: 'checkbox' },
+    { id: 'op-exudate', text: 'Posterior Pharyngeal Exudate', type: 'checkbox' },
+    { id: 'op-cobblestoning', text: 'Lymphoid Cobblestoning', type: 'checkbox' },
+  ]},
+  'throat-uvula': { title: 'Uvula', normal: 'Midline without edema', options: [
+    { id: 'uvula-deviated', text: 'Uvular Deviation (Peritonsillar Abscess Sign)', type: 'select', values: ['Deviated Left', 'Deviated Right'] },
+    { id: 'uvula-edema', text: 'Uvular Edema (Quincke Edema)', type: 'checkbox' },
+  ]},
+  'throat-tongue': { title: 'Tongue & Palate', normal: 'Normal mucosal appearance, tongue midline', options: [
+    { id: 'tongue-fasciculations', text: 'Tongue Fasciculations (ALS / Lower Motor Neuron)', type: 'checkbox' },
+    { id: 'tongue-glossitis', text: 'Atrophic Glossitis / Smooth Red Tongue', type: 'checkbox' },
+    { id: 'tongue-strawberry', text: 'Strawberry Tongue (Kawasaki / Scarlet Fever)', type: 'checkbox' },
+    { id: 'tongue-deviation', text: 'Tongue Deviation on Protrusion (CN XII Palsy)', type: 'select', values: ['Deviated Left', 'Deviated Right'] },
+    { id: 'tongue-leukoplakia', text: 'Oral Leukoplakia / Erythroplakia', type: 'checkbox' },
+    { id: 'throat-palate-palsy', text: 'Soft Palate Elevation Palsy (CN IX, X)', type: 'checkbox' },
+  ]},
+  'throat-dentition': { title: 'Dentition & Gums', normal: 'Good oral hygiene, dentition intact', options: [
+    { id: 'dentition-dentures', text: 'Dentures', type: 'select', values: ['Upper Partial', 'Lower Partial', 'Full Dentures'] },
+    { id: 'dentition-loose', text: 'Loose Teeth / Dental Trauma', type: 'checkbox' },
+    { id: 'dentition-caries', text: 'Dental Caries', type: 'checkbox' },
+    { id: 'dentition-gingivitis', text: 'Gingival Hyperplasia / Bleeding Gums', type: 'checkbox' },
+    { id: 'dentition-abscess', text: 'Periapical / Dental Abscess', type: 'checkbox' },
+  ]},
+  'throat-salivary': { title: 'Salivary Glands', normal: 'Non-tender, unswollen salivary glands', options: [
+    { id: 'salivary-parotid', text: 'Parotid Gland Swelling / Tenderness (Mumps / Sialadenitis)', type: 'checkbox', bilateral: true },
+    { id: 'salivary-submandibular', text: 'Submandibular Gland Swelling / Stone', type: 'checkbox', bilateral: true },
+  ]},
+  'throat-mucosa': { title: 'Oral Mucosa', normal: 'Moist, intact mucosa', options: [
+    { id: 'mucosa-dry', text: 'Dry Mucosa / Dehydration Sign', type: 'checkbox' },
+    { id: 'mucosa-ulcers', text: 'Aphthous Ulcers / Stomatitis', type: 'checkbox' },
+  ]},
+  'throat-tonsils': { title: 'Tonsils & Airway', normal: 'Tonsils Grade 1+, no exudates or airway obstruction', options: [
+    { id: 'tonsil-grading', text: 'Tonsillar Size Grading', type: 'select', values: ['Grade 0 (Surgically Removed)', 'Grade 1+ (<25% Airway)', 'Grade 2+ (25-50% Airway)', 'Grade 3+ (50-75% Airway)', 'Grade 4+ (Kissing Tonsils >75%)'] },
+    { id: 'tonsil-exudate', text: 'Tonsillar Exudate / Cryptic Pus', type: 'checkbox', bilateral: true },
+    { id: 'tonsil-asymmetry', text: 'Tonsillar Asymmetry / PTA Bulging', type: 'checkbox' },
+    { id: 'throat-trismus', text: 'Trismus (Inability to open mouth - PTA / Tetanus)', type: 'checkbox' },
+  ]},
+  'neck-rom': { title: 'Neck & Meningeal Signs', normal: 'Supple, full ROM, negative Brudzinski/Kernig', options: [
+    { id: 'neck-nuchal-rigidity', text: 'Nuchal Rigidity / Stiff Neck', type: 'checkbox' },
+    { id: 'neck-brudzinski-kernig', text: 'Positive Brudzinski or Kernig Sign (Meningitis)', type: 'checkbox' },
+    { id: 'neck-limited-rom', text: 'Limited Cervical ROM / Muscle Spasm', type: 'checkbox' },
+  ]},
+  'neck-trachea': { title: 'Trachea', normal: 'Midline without tugging', options: [
+    { id: 'trachea-deviated', text: 'Deviated Trachea (Tension Pneumothorax / Mass)', type: 'select', values: ['Deviated Left', 'Deviated Right'] },
+  ]},
+  'neck-thyroid': { title: 'Thyroid Gland', normal: 'Normal size, smooth, non-tender, no nodules or bruits', options: [
+    { id: 'thyroid-enlarged', text: 'Thyromegaly / Goiter', type: 'checkbox' },
+    { id: 'thyroid-nodular', text: 'Thyroid Nodule(s)', type: 'select', values: ['Single Solitary Nodule', 'Multinodular'] },
+    { id: 'thyroid-tender', text: 'Thyroid Tenderness (Subacute Thyroiditis)', type: 'checkbox' },
+    { id: 'thyroid-bruit', text: 'Thyroid Bruit (Graves Disease)', type: 'checkbox' },
+  ]},
+  'neck-lymph': { title: 'Lymph Node Chains', normal: 'No lymphadenopathy (non-tender, soft, mobile)', options: [
+    { id: 'lymph-anterior-cervical', text: 'Anterior Cervical Nodes', type: 'checkbox', bilateral: true },
+    { id: 'lymph-posterior-cervical', text: 'Posterior Cervical Nodes', type: 'checkbox', bilateral: true },
+    { id: 'lymph-submandibular', text: 'Submandibular Nodes', type: 'checkbox', bilateral: true },
+    { id: 'lymph-submental', text: 'Submental Nodes', type: 'checkbox' },
+    { id: 'lymph-occipital', text: 'Occipital Nodes', type: 'checkbox', bilateral: true },
+    { id: 'lymph-auricular', text: 'Pre / Post-Auricular Nodes', type: 'checkbox', bilateral: true },
+    { id: 'lymph-supraclavicular', text: 'Supraclavicular Node (Virchow Node / Malignancy)', type: 'checkbox', bilateral: true },
+    { id: 'lymph-infraclavicular', text: 'Infraclavicular Nodes', type: 'checkbox', bilateral: true },
+  ]},
+  'neck-jvp': { title: 'JVP & Venous Pulsations', normal: 'No JVD, JVP ≤ 3cm above sternal angle', options: [
+    { id: 'jvp-elevated', text: 'Elevated JVP (> 3cm above sternal angle)', type: 'checkbox' },
+    { id: 'jvp-jvd-present', text: 'Jugular Venous Distension (JVD)', type: 'checkbox' },
+    { id: 'jvp-kussmaul', text: 'Kussmaul Sign (Inspiratory JVP Rise)', type: 'checkbox' },
+  ]},
+  'neck-carotids': { title: 'Carotid Arteries', normal: 'No bruits, 2+ symmetric pulses', options: [
+    { id: 'carotid-bruit', text: 'Carotid Bruit', type: 'checkbox', bilateral: true },
+    { id: 'carotid-character', text: 'Pulse Character', type: 'select', values: ['Normal 2+', 'Weak / Thready 1+', 'Bounding 3+', 'Bisferiens / Pulsus Alternans'], bilateral: true },
+    { id: 'carotid-reduced', text: 'Reduced / Absent Pulse', type: 'checkbox', bilateral: true },
   ]},
 };
 
@@ -1463,36 +1571,931 @@ interface FindingData {
 type HeentState = Record<string, { status: 'normal' | 'abnormal'; findings: Record<string, FindingData> }>;
 
 const heentSections = [
-  { key: "head", title: "Head & Sinuses", parts: ["head", "head-hair", "sinus-frontal", "sinus-maxillary"] },
-  { key: "eyes", title: "Eyes & Vision", parts: ["eyes-pupils", "eyes-eom", "eyes-conjunctiva", "eyes-sclera", "eyes-vf"] },
-  { key: "ears", title: "Ears & Hearing", parts: ["ears-canals", "ears-tms", "ears-pinna"] },
-  { key: "noseMouth", title: "Nose & Mouth", parts: ["nose-patency", "throat-op", "throat-mucosa", "throat-tonsils"] },
-  { key: "neck", title: "Neck & Thyroid", parts: ["neck-rom", "neck-trachea", "neck-thyroid", "neck-lymph", "neck-carotids"] },
+  { key: "head", title: "Head & Sinuses", parts: ["head", "head-hair", "head-temporal", "sinus-frontal", "sinus-maxillary"] },
+  { key: "eyes", title: "Eyes & Vision", parts: ["eyes-pupils", "eyes-eom", "eyes-lids", "eyes-cornea", "eyes-conjunctiva", "eyes-sclera", "eyes-vf", "eyes-fundoscopy"] },
+  { key: "ears", title: "Ears & Hearing", parts: ["ears-canals", "ears-tms", "ears-pinna", "ears-mastoid", "ears-hearing"] },
+  { key: "noseMouth", title: "Nose & Mouth", parts: ["nose-patency", "nose-septum-mucosa", "throat-op", "throat-uvula", "throat-tongue", "throat-dentition", "throat-salivary", "throat-mucosa", "throat-tonsils"] },
+  { key: "neck", title: "Neck & Thyroid", parts: ["neck-rom", "neck-trachea", "neck-thyroid", "neck-lymph", "neck-jvp", "neck-carotids"] },
 ];
 
 const heentSmartPhrases = [
-  { label: "No Lymph", text: "No cervical lymphadenopathy." },
-  { label: "OP Clear", text: "Oropharynx clear without exudate or erythema." },
-  { label: "TMs Normal", text: "TMs clear with normal light reflex bilaterally." },
-  { label: "PERRLA", text: "Pupils equal, round, reactive to light and accommodation." },
+  { 
+    label: "NC/AT, Pupils PERRLA, EOM", 
+    category: "Eyes & Head",
+    text: "NC/AT. Pupils PERRLA. EOM intact. Sclera anicteric, conjunctiva clear." 
+  },
+  { 
+    label: "TMs Intact & Clear Canals", 
+    category: "Ears",
+    text: "TMs intact, translucent bilaterally with good light reflex. External canals clear." 
+  },
+  { 
+    label: "Oropharynx & Tonsils 1+", 
+    category: "Mouth & Throat",
+    text: "Oropharynx clear without erythema or exudates. Mucosa moist. Tonsils grade 1+." 
+  },
+  { 
+    label: "Neck Supple, Midline, No JVD", 
+    category: "Neck",
+    text: "Neck supple, non-tender. Trachea midline. No thyromegaly or cervical lymphadenopathy. No JVD." 
+  },
+  { 
+    label: "No Cervical Lymphadenopathy", 
+    category: "Neck",
+    text: "No cervical, supraclavicular, or submandibular lymphadenopathy." 
+  },
+  { 
+    label: "PERRLA Complete", 
+    category: "Eyes & Head",
+    text: "Pupils equal, round, reactive to light and accommodation bilaterally." 
+  },
+  { 
+    label: "JVP Normal ≤ 3cm", 
+    category: "Neck",
+    text: "No JVD noted, JVP ≤ 3cm above sternal angle." 
+  },
+  { 
+    label: "Temporal Non-tender", 
+    category: "Eyes & Head",
+    text: "Temporal arteries non-tender without induration bilaterally." 
+  },
+  { 
+    label: "Dentition Intact", 
+    category: "Mouth & Throat",
+    text: "Good dentition and oral hygiene without dental caries or loose teeth." 
+  },
 ];
 
-export function HeentTab({ findings, onChange, onMarkNormal, onClear }: { findings: any, onChange: (field: string, value: any) => void, onMarkNormal: () => void, onClear: () => void }) {
-  const { heentState, pupilSize, notes } = findings;
+function HeentInteractiveDiagram({ 
+  heentState, 
+  onJumpToSection, 
+  onMarkSectionNormal,
+  onClearSection,
+  onOpenPartAbnormalModal,
+  onChangePartStatus
+}: { 
+  heentState: HeentState, 
+  onJumpToSection: (secKey: string) => void,
+  onMarkSectionNormal: (secKey: string) => void,
+  onClearSection: (secKey: string) => void,
+  onOpenPartAbnormalModal?: (partId: string) => void,
+  onChangePartStatus?: (partId: string, status: 'normal' | 'abnormal' | undefined) => void
+}) {
+  const [selectedRegionModalKey, setSelectedRegionModalKey] = useState<string | null>(null);
+
+  const getRegionStats = (secKey: string) => {
+    const sec = heentSections.find(s => s.key === secKey);
+    if (!sec) return { total: 0, normal: 0, abnormal: 0, untouched: 0 };
+    let normal = 0;
+    let abnormal = 0;
+    let untouched = 0;
+    sec.parts.forEach(p => {
+      const st = (heentState || {})[p]?.status;
+      if (st === 'normal') normal++;
+      else if (st === 'abnormal') abnormal++;
+      else untouched++;
+    });
+    return { total: sec.parts.length, normal, abnormal, untouched };
+  };
+
+  const regions = [
+    { key: 'head', title: 'Head & Sinuses', icon: '🧠', partsLabel: 'Cranium, Scalp, Sinuses' },
+    { key: 'eyes', title: 'Eyes & Vision', icon: '👁️', partsLabel: 'Pupils, EOM, Lids, Sclera' },
+    { key: 'ears', title: 'Ears & Hearing', icon: '👂', partsLabel: 'Canals, TMs, Mastoid' },
+    { key: 'noseMouth', title: 'Nose & Mouth', icon: '👄', partsLabel: 'Oropharynx, Tonsils, Dentition' },
+    { key: 'neck', title: 'Neck & Thyroid', icon: '🧣', partsLabel: 'Thyroid, Trachea, JVP, Lymph' },
+  ];
+
+  const selectedSec = heentSections.find(s => s.key === selectedRegionModalKey);
+  const selectedRegionInfo = regions.find(r => r.key === selectedRegionModalKey);
+  const regionStats = selectedRegionModalKey ? getRegionStats(selectedRegionModalKey) : { total: 0, normal: 0, abnormal: 0, untouched: 0 };
+  const abnormalParts = (selectedSec?.parts || []).filter(p => (heentState || {})[p]?.status === 'abnormal');
+
+  return (
+    <div className="bg-slate-900 text-white rounded-2xl p-4 sm:p-5 shadow-lg border border-slate-800 space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+        <div className="flex items-center gap-2.5">
+          <div className="p-2 bg-indigo-500/20 text-indigo-300 rounded-xl border border-indigo-500/30">
+            <Stethoscope className="w-5 h-5" />
+          </div>
+          <div>
+            <h4 className="text-sm font-bold text-white flex items-center gap-2">
+              <span>HEENT Anatomic Region Quick Navigator</span>
+              <span className="px-2 py-0.5 bg-indigo-500/20 text-indigo-300 text-[10px] rounded-full border border-indigo-500/30 uppercase tracking-wider font-semibold">
+                1-Tap Pop-Up Exam
+              </span>
+            </h4>
+            <p className="text-xs text-slate-400">
+              Click any region card to open detailed findings modal and review abnormal results.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Region Cards Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {regions.map(r => {
+          const stats = getRegionStats(r.key);
+          const isAbnormal = stats.abnormal > 0;
+          const isAllNormal = stats.normal === stats.total;
+
+          return (
+            <div 
+              key={r.key}
+              className={cn(
+                "p-3.5 rounded-xl border text-left transition-all cursor-pointer relative group flex flex-col justify-between space-y-2.5 shadow-sm hover:shadow-md",
+                isAbnormal ? "bg-rose-950/40 border-rose-500/50 hover:bg-rose-900/50 hover:border-rose-400" :
+                isAllNormal ? "bg-emerald-950/30 border-emerald-500/40 hover:bg-emerald-900/40 hover:border-emerald-400" :
+                "bg-slate-800/80 border-slate-700/80 hover:bg-slate-800 hover:border-indigo-500/50"
+              )}
+              onClick={() => setSelectedRegionModalKey(r.key)}
+            >
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-2 text-xs font-bold text-white">
+                  <span className="text-base">{r.icon}</span>
+                  <span>{r.title}</span>
+                </span>
+
+                {isAbnormal ? (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/30 text-rose-300 border border-rose-500/40 flex items-center gap-1 animate-pulse">
+                    <AlertCircle className="w-3 h-3 text-rose-400" />
+                    {stats.abnormal} Abnormal
+                  </span>
+                ) : isAllNormal ? (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                    WNL
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-700 text-slate-300 border border-slate-600">
+                    {stats.normal}/{stats.total} Checked
+                  </span>
+                )}
+              </div>
+
+              <p className="text-[11px] text-slate-400 line-clamp-1 leading-tight">
+                {r.partsLabel}
+              </p>
+
+              <div className="flex items-center justify-between pt-1 border-t border-slate-700/50 text-[10px]" onClick={e => e.stopPropagation()}>
+                <button
+                  type="button"
+                  onClick={() => setSelectedRegionModalKey(r.key)}
+                  className="text-indigo-300 hover:text-indigo-100 font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                >
+                  <span>Open Region Modal</span>
+                  <Maximize2 className="w-3 h-3 text-indigo-400" />
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onMarkSectionNormal(r.key)}
+                    className="text-emerald-400 hover:text-emerald-300 font-semibold transition-colors cursor-pointer"
+                    title="Mark all items in this section as Normal"
+                  >
+                    ✓ All Normal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onClearSection(r.key)}
+                    className="text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
+                    title="Clear section selection"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Region Pop-Up Findings Modal */}
+      <Dialog open={!!selectedRegionModalKey} onOpenChange={(open) => { if (!open) setSelectedRegionModalKey(null); }}>
+        <DialogContent className="max-w-xl bg-white text-slate-900 border-slate-200 shadow-2xl rounded-2xl p-5 max-h-[90vh] overflow-y-auto">
+          <DialogHeader className="border-b border-slate-100 pb-3">
+            <DialogTitle className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <span className="text-2xl">{selectedRegionInfo?.icon}</span>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">{selectedRegionInfo?.title} Examination Modal</h3>
+                  <p className="text-xs text-slate-500 font-normal">Detailed findings breakdown & abnormal summary</p>
+                </div>
+              </div>
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Summary Status Banner */}
+            {regionStats.abnormal > 0 ? (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl space-y-1">
+                <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wider text-rose-800">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>{regionStats.abnormal} Abnormal Finding{regionStats.abnormal > 1 ? 's' : ''} Recorded</span>
+                </div>
+                <p className="text-xs text-rose-900 font-medium">
+                  Abnormal physical findings detected in this anatomical region.
+                </p>
+              </div>
+            ) : regionStats.normal === regionStats.total && regionStats.total > 0 ? (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between">
+                <div className="flex items-center gap-2 font-semibold text-xs text-emerald-900">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>All {regionStats.total} Parts Marked Normal (Within Normal Limits)</span>
+                </div>
+              </div>
+            ) : (
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 flex items-center justify-between">
+                <span>Region Progress: <strong>{regionStats.normal} Normal</strong>, <strong>{regionStats.abnormal} Abnormal</strong>, {regionStats.untouched} Unexamined</span>
+              </div>
+            )}
+
+            {/* Abnormal Findings List */}
+            {abnormalParts.length > 0 && (
+              <div className="space-y-2 bg-rose-50/50 p-3 rounded-xl border border-rose-100">
+                <h5 className="text-xs font-extrabold text-rose-950 uppercase tracking-wider flex items-center justify-between">
+                  <span>Active Abnormal Findings ({abnormalParts.length})</span>
+                  <span className="text-[10px] px-2 py-0.5 bg-rose-200 text-rose-900 font-bold rounded-full">
+                    Positive Results
+                  </span>
+                </h5>
+                <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                  {abnormalParts.map(partId => {
+                    const partInfo = heentMapping[partId];
+                    const partState = (heentState || {})[partId];
+                    const activeFindingsKeys = Object.keys(partState?.findings || {}).filter(k => partState?.findings[k]?.active);
+
+                    return (
+                      <div key={partId} className="p-2.5 bg-white border border-rose-200 rounded-lg shadow-2xs space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-xs text-rose-950 flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-rose-600"></span>
+                            {partInfo?.title || partId}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (onOpenPartAbnormalModal) onOpenPartAbnormalModal(partId);
+                            }}
+                            className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-bold rounded flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                          >
+                            <Edit2 className="w-3 h-3" />
+                            <span>Edit Options</span>
+                          </button>
+                        </div>
+
+                        {activeFindingsKeys.length > 0 ? (
+                          <div className="flex flex-wrap gap-1.5 pt-0.5">
+                            {activeFindingsKeys.map(optId => {
+                              const optData = partState?.findings[optId];
+                              const optDef = partInfo?.options?.find(o => o.id === optId);
+                              const textLabel = optDef?.text || optId;
+
+                              return (
+                                <span key={optId} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-rose-100 text-rose-900 border border-rose-200">
+                                  <span>{textLabel}</span>
+                                  {optData?.side && <span className="font-extrabold text-[9px] px-1 bg-rose-200 text-rose-950 rounded">({optData.side})</span>}
+                                  {optData?.value && <span className="font-bold text-[10px] text-rose-800">: {optData.value}</span>}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <p className="text-[11px] text-rose-700 italic">
+                            Abnormal flag toggled (no specific checkbox selected). Click 'Edit Options' to specify details.
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Region Parts Checklist */}
+            <div className="space-y-2">
+              <h5 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                Region Exam Checklist ({selectedSec?.parts?.length || 0} Items)
+              </h5>
+              <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
+                {(selectedSec?.parts || []).map(pId => {
+                  const pInfo = heentMapping[pId];
+                  const status = (heentState || {})[pId]?.status;
+
+                  return (
+                    <div key={pId} className="flex items-center justify-between p-2.5 rounded-lg border border-slate-200 bg-slate-50/70 hover:bg-slate-100/80 transition-colors">
+                      <div className="pr-2">
+                        <span className="text-xs font-semibold text-slate-900 block">{pInfo?.title || pId}</span>
+                        <span className="text-[10px] text-slate-500 line-clamp-1">WNL: {pInfo?.normal}</span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (onChangePartStatus) {
+                              onChangePartStatus(pId, status === 'normal' ? undefined : 'normal');
+                            }
+                          }}
+                          className={cn(
+                            "px-2.5 py-1 rounded text-[11px] font-bold transition-all cursor-pointer shadow-2xs",
+                            status === 'normal' 
+                              ? "bg-emerald-600 text-white" 
+                              : "bg-white text-slate-700 hover:bg-slate-200 border border-slate-300"
+                          )}
+                        >
+                          ✓ Normal
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (onOpenPartAbnormalModal) {
+                              onOpenPartAbnormalModal(pId);
+                            }
+                          }}
+                          className={cn(
+                            "px-2.5 py-1 rounded text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 shadow-2xs",
+                            status === 'abnormal' 
+                              ? "bg-rose-600 text-white" 
+                              : "bg-white text-rose-700 hover:bg-rose-50 border border-rose-200"
+                          )}
+                        >
+                          <span>Abnormal</span>
+                          {status === 'abnormal' && <Edit2 className="w-3 h-3" />}
+                        </button>
+
+                        {status && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (onChangePartStatus) {
+                                onChangePartStatus(pId, undefined);
+                              }
+                            }}
+                            className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
+                            title="Clear"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="flex flex-col sm:flex-row gap-2 items-center justify-between border-t border-slate-100 pt-3">
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (selectedRegionModalKey) onMarkSectionNormal(selectedRegionModalKey);
+                }}
+                className="text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border-emerald-200 text-xs font-semibold cursor-pointer"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
+                All Normal
+              </Button>
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (selectedRegionModalKey) onClearSection(selectedRegionModalKey);
+                }}
+                className="text-slate-600 bg-slate-50 hover:bg-slate-100 border-slate-200 text-xs font-semibold cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5 mr-1" />
+                Clear
+              </Button>
+            </div>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  const keyToJump = selectedRegionModalKey;
+                  setSelectedRegionModalKey(null);
+                  if (keyToJump) onJumpToSection(keyToJump);
+                }}
+                className="text-xs font-semibold cursor-pointer"
+              >
+                Jump to Exam Card
+              </Button>
+
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => setSelectedRegionModalKey(null)}
+                className="text-xs font-bold cursor-pointer bg-slate-900 text-white hover:bg-slate-800"
+              >
+                Close Modal
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function HeentSpecializedCalculators({ onInsertToNotes }: { onInsertToNotes: (text: string) => void }) {
+  // Centor / McIsaac state
+  const [centorAge, setCentorAge] = useState<string>("15-44");
+  const [centorFever, setCentorFever] = useState(false);
+  const [centorNoCough, setCentorNoCough] = useState(false);
+  const [centorNodes, setCentorNodes] = useState(false);
+  const [centorExudate, setCentorExudate] = useState(false);
+
+  const centorScore = useMemo(() => {
+    let score = 0;
+    if (centorFever) score += 1;
+    if (centorNoCough) score += 1;
+    if (centorNodes) score += 1;
+    if (centorExudate) score += 1;
+    if (centorAge === "3-14") score += 1;
+    if (centorAge === ">=45") score -= 1;
+    return Math.max(0, score);
+  }, [centorAge, centorFever, centorNoCough, centorNodes, centorExudate]);
+
+  const centorRecommendation = useMemo(() => {
+    if (centorScore <= 1) {
+      return { risk: "< 10%", rec: "Low risk. No throat culture or antibiotic therapy indicated.", badgeColor: "bg-emerald-100 text-emerald-800 border-emerald-300" };
+    } else if (centorScore <= 3) {
+      return { risk: "15 - 32%", rec: "Intermediate risk. Perform Rapid Antigen Detection Test (RADT) or throat culture; treat if positive.", badgeColor: "bg-amber-100 text-amber-800 border-amber-300" };
+    } else {
+      return { risk: "38 - 56%", rec: "High risk. Perform RADT/culture or consider empiric antibiotic treatment per clinical judgment.", badgeColor: "bg-rose-100 text-rose-900 border-rose-300" };
+    }
+  }, [centorScore]);
+
+  // Airway Red Flags state
+  const [airwayStridor, setAirwayStridor] = useState(false);
+  const [airwayDrooling, setAirwayDrooling] = useState(false);
+  const [airwayMuffledVoice, setAirwayMuffledVoice] = useState(false);
+  const [airwayTripod, setAirwayTripod] = useState(false);
+  const [airwayTrismus, setAirwayTrismus] = useState(false);
+
+  const hasAirwayRedFlag = airwayStridor || airwayDrooling || airwayMuffledVoice || airwayTripod || airwayTrismus;
+
+  // HINTS state
+  const [hintsImpulse, setHintsImpulse] = useState<string>("none");
+  const [hintsNystagmus, setHintsNystagmus] = useState<string>("none");
+  const [hintsSkew, setHintsSkew] = useState<string>("none");
+
+  const hintsResult = useMemo(() => {
+    if (hintsImpulse === "none" && hintsNystagmus === "none" && hintsSkew === "none") return null;
+    const isCentral = hintsImpulse === "normal" || hintsNystagmus === "direction_changing" || hintsSkew === "skew";
+    if (isCentral) {
+      return {
+        type: "CENTRAL (High Suspicion for Posterior Circulation Stroke)",
+        desc: "🚨 CRITICAL: Normal head impulse test, direction-changing nystagmus, OR skew deviation indicates a CENTRAL acute vestibular syndrome. Immediate brain MRI with diffusion-weighted imaging (DWI) and neurology consult required.",
+        isWarning: true
+      };
+    } else {
+      return {
+        type: "PERIPHERAL (Consistent with Acute Vestibular Neuritis / Labyrinthitis)",
+        desc: "Abnormal head impulse (catch-up saccade), unidirectional horizontal nystagmus, and no skew deviation suggest peripheral vestibular etiology.",
+        isWarning: false
+      };
+    }
+  }, [hintsImpulse, hintsNystagmus, hintsSkew]);
+
+  return (
+    <div className="space-y-4 p-4 bg-slate-50 border border-slate-200 rounded-xl">
+      <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+        <div className="flex items-center gap-2">
+          <Calculator className="w-5 h-5 text-indigo-600" />
+          <h4 className="text-sm font-bold text-slate-900 uppercase tracking-wide">
+            Specialized High-Yield Triage & Clinical Decision Rules
+          </h4>
+        </div>
+        <span className="text-[11px] font-semibold text-slate-500 bg-white px-2.5 py-0.5 rounded-full border border-slate-200">
+          Section 7 Decision Support
+        </span>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* 1. Centor / McIsaac Score Calculator */}
+        <div className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-3 flex flex-col justify-between shadow-2xs">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
+              <span className="text-xs font-bold text-indigo-950 flex items-center gap-1.5">
+                <Activity className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Centor / McIsaac GAS Score</span>
+              </span>
+              <span className={cn("px-2 py-0.5 rounded text-xs font-extrabold border", centorRecommendation.badgeColor)}>
+                Score: {centorScore}
+              </span>
+            </div>
+
+            <div className="space-y-1.5 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-600">Patient Age:</span>
+                <select
+                  value={centorAge}
+                  onChange={e => setCentorAge(e.target.value)}
+                  className="text-xs bg-slate-50 border border-slate-200 rounded px-2 py-0.5 font-medium"
+                >
+                  <option value="3-14">3 - 14 yrs (+1)</option>
+                  <option value="15-44">15 - 44 yrs (0)</option>
+                  <option value=">=45">≥ 45 yrs (-1)</option>
+                </select>
+              </div>
+
+              <label className="flex items-center justify-between cursor-pointer py-1 hover:bg-slate-50 rounded px-1">
+                <span className="text-slate-700">Fever &gt; 38.0°C (100.4°F)</span>
+                <Checkbox checked={centorFever} onCheckedChange={v => setCentorFever(!!v)} />
+              </label>
+
+              <label className="flex items-center justify-between cursor-pointer py-1 hover:bg-slate-50 rounded px-1">
+                <span className="text-slate-700">Absence of Cough</span>
+                <Checkbox checked={centorNoCough} onCheckedChange={v => setCentorNoCough(!!v)} />
+              </label>
+
+              <label className="flex items-center justify-between cursor-pointer py-1 hover:bg-slate-50 rounded px-1">
+                <span className="text-slate-700">Tender Anterior Cervical Nodes</span>
+                <Checkbox checked={centorNodes} onCheckedChange={v => setCentorNodes(!!v)} />
+              </label>
+
+              <label className="flex items-center justify-between cursor-pointer py-1 hover:bg-slate-50 rounded px-1">
+                <span className="text-slate-700">Tonsillar Exudate / Swelling</span>
+                <Checkbox checked={centorExudate} onCheckedChange={v => setCentorExudate(!!v)} />
+              </label>
+            </div>
+
+            <div className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-[11px] space-y-0.5">
+              <div className="font-bold text-slate-800">GAS Strep Risk: {centorRecommendation.risk}</div>
+              <p className="text-slate-600 leading-tight">{centorRecommendation.rec}</p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              const text = `[Centor/McIsaac GAS Strep Score]: ${centorScore} (Age: ${centorAge}, Temp>38C: ${centorFever?'Yes':'No'}, No Cough: ${centorNoCough?'Yes':'No'}, Tender Ant Cervical Nodes: ${centorNodes?'Yes':'No'}, Tonsillar Exudate: ${centorExudate?'Yes':'No'}). Estimated GAS Strep Risk: ${centorRecommendation.risk}. Plan: ${centorRecommendation.rec}`;
+              onInsertToNotes(text);
+              toast.success("Appended Centor/McIsaac Score to Notes!");
+            }}
+            className="w-full py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-lg transition-colors border border-indigo-200 cursor-pointer"
+          >
+            + Append Centor Result to Notes
+          </button>
+        </div>
+
+        {/* 2. Airway Red-Flag Triage Banner & Assessment */}
+        <div className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-3 flex flex-col justify-between shadow-2xs">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
+              <span className="text-xs font-bold text-rose-950 flex items-center gap-1.5">
+                <ShieldAlert className="w-3.5 h-3.5 text-rose-600" />
+                <span>Airway & Epiglottitis Red-Flag Triage</span>
+              </span>
+              {hasAirwayRedFlag && (
+                <span className="px-1.5 py-0.5 bg-rose-600 text-white text-[10px] rounded font-bold animate-pulse">
+                  CRITICAL
+                </span>
+              )}
+            </div>
+
+            <div className="space-y-1.5 text-xs">
+              <label className="flex items-center justify-between cursor-pointer py-1 hover:bg-slate-50 rounded px-1">
+                <span className="text-slate-700 font-medium">Stridor (Inspiratory / Expiratory)</span>
+                <Checkbox checked={airwayStridor} onCheckedChange={v => setAirwayStridor(!!v)} />
+              </label>
+
+              <label className="flex items-center justify-between cursor-pointer py-1 hover:bg-slate-50 rounded px-1">
+                <span className="text-slate-700 font-medium">Drooling / Inability to Swallow</span>
+                <Checkbox checked={airwayDrooling} onCheckedChange={v => setAirwayDrooling(!!v)} />
+              </label>
+
+              <label className="flex items-center justify-between cursor-pointer py-1 hover:bg-slate-50 rounded px-1">
+                <span className="text-slate-700 font-medium">"Hot Potato" Muffled Voice</span>
+                <Checkbox checked={airwayMuffledVoice} onCheckedChange={v => setAirwayMuffledVoice(!!v)} />
+              </label>
+
+              <label className="flex items-center justify-between cursor-pointer py-1 hover:bg-slate-50 rounded px-1">
+                <span className="text-slate-700 font-medium">Tripod Positioning (Sniffing Posture)</span>
+                <Checkbox checked={airwayTripod} onCheckedChange={v => setAirwayTripod(!!v)} />
+              </label>
+
+              <label className="flex items-center justify-between cursor-pointer py-1 hover:bg-slate-50 rounded px-1">
+                <span className="text-slate-700 font-medium">Trismus (Inability to open jaw)</span>
+                <Checkbox checked={airwayTrismus} onCheckedChange={v => setAirwayTrismus(!!v)} />
+              </label>
+            </div>
+
+            {hasAirwayRedFlag ? (
+              <div className="p-2 bg-rose-50 border border-rose-300 rounded-lg text-[11px] space-y-1 text-rose-950">
+                <div className="font-extrabold flex items-center gap-1">
+                  <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                  <span>EMERGENCY AIRWAY ALERT</span>
+                </div>
+                <p className="leading-tight">
+                  🚨 High risk for Epiglottitis, Peritonsillar Abscess (PTA), or Retropharyngeal Abscess. Avoid forceful oral instrumentation with tongue depressor. Prepare airway resuscitation & urgent ENT consult.
+                </p>
+              </div>
+            ) : (
+              <div className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-[11px] text-slate-500">
+                Check any positive red-flag symptoms to activate automated emergency airway protocols.
+              </div>
+            )}
+          </div>
+
+          {hasAirwayRedFlag && (
+            <button
+              type="button"
+              onClick={() => {
+                const flags = [];
+                if (airwayStridor) flags.push("Stridor");
+                if (airwayDrooling) flags.push("Drooling");
+                if (airwayMuffledVoice) flags.push("Hot potato voice");
+                if (airwayTripod) flags.push("Tripod positioning");
+                if (airwayTrismus) flags.push("Trismus");
+                const text = `[AIRWAY RED-FLAG TRIAGE ALERT]: Positive for ${flags.join(", ")}. High clinical concern for impending airway compromise (Epiglottitis / PTA / Ludwig's). Avoid oral instrumentation. ENT consult & airway management readiness advised.`;
+                onInsertToNotes(text);
+                toast.success("Appended Airway Alert to Notes!");
+              }}
+              className="w-full py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-lg transition-colors cursor-pointer shadow-2xs"
+            >
+              + Append Airway Alert to Notes
+            </button>
+          )}
+        </div>
+
+        {/* 3. HINTS Exam Cross-Link */}
+        <div className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-3 flex flex-col justify-between shadow-2xs">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
+              <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                <Eye className="w-3.5 h-3.5 text-indigo-600" />
+                <span>HINTS Exam (Acute Vestibular Syndrome)</span>
+              </span>
+            </div>
+
+            <div className="space-y-1.5 text-xs">
+              <div className="space-y-0.5">
+                <span className="text-slate-600 font-medium text-[11px]">Head Impulse Test (HI):</span>
+                <select
+                  value={hintsImpulse}
+                  onChange={e => setHintsImpulse(e.target.value)}
+                  className="w-full text-xs bg-slate-50 border border-slate-200 rounded px-2 py-1 font-medium"
+                >
+                  <option value="none">Select finding...</option>
+                  <option value="abnormal">Abnormal / Catch-up saccade (Peripheral)</option>
+                  <option value="normal">Normal / No saccade (CENTRAL STROKE!)</option>
+                </select>
+              </div>
+
+              <div className="space-y-0.5">
+                <span className="text-slate-600 font-medium text-[11px]">Nystagmus (N):</span>
+                <select
+                  value={hintsNystagmus}
+                  onChange={e => setHintsNystagmus(e.target.value)}
+                  className="w-full text-xs bg-slate-50 border border-slate-200 rounded px-2 py-1 font-medium"
+                >
+                  <option value="none">Select finding...</option>
+                  <option value="unidirectional">Unidirectional horizontal (Peripheral)</option>
+                  <option value="direction_changing">Direction-changing / Vertical (CENTRAL STROKE!)</option>
+                </select>
+              </div>
+
+              <div className="space-y-0.5">
+                <span className="text-slate-600 font-medium text-[11px]">Test of Skew (TS):</span>
+                <select
+                  value={hintsSkew}
+                  onChange={e => setHintsSkew(e.target.value)}
+                  className="w-full text-xs bg-slate-50 border border-slate-200 rounded px-2 py-1 font-medium"
+                >
+                  <option value="none">Select finding...</option>
+                  <option value="none_skew">No skew deviation (Peripheral)</option>
+                  <option value="skew">Vertical skew deviation present (CENTRAL STROKE!)</option>
+                </select>
+              </div>
+            </div>
+
+            {hintsResult ? (
+              <div className={cn("p-2 rounded-lg text-[11px] border space-y-0.5", hintsResult.isWarning ? "bg-rose-50 border-rose-300 text-rose-950 font-medium" : "bg-emerald-50 border-emerald-300 text-emerald-950")}>
+                <div className="font-bold">{hintsResult.type}</div>
+                <p className="leading-tight text-[10px]">{hintsResult.desc}</p>
+              </div>
+            ) : (
+              <div className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-[11px] text-slate-500">
+                Evaluate HI-N-TS to differentiate central posterior circulation stroke from peripheral vestibular neuritis in continuous vertigo.
+              </div>
+            )}
+          </div>
+
+          {hintsResult && (
+            <button
+              type="button"
+              onClick={() => {
+                const text = `[HINTS EXAM]: Head Impulse=${hintsImpulse}, Nystagmus=${hintsNystagmus}, Test of Skew=${hintsSkew}. Assessment: ${hintsResult.type}. ${hintsResult.desc}`;
+                onInsertToNotes(text);
+                toast.success("Appended HINTS Exam Result to Notes!");
+              }}
+              className="w-full py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-lg transition-colors border border-slate-300 cursor-pointer"
+            >
+              + Append HINTS Result to Notes
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function HeentTab({ 
+  findings, 
+  onChange, 
+  onMarkNormal, 
+  onClear,
+  onNavigateToTab,
+  onSyncToSse
+}: { 
+  findings: any, 
+  onChange: (field: string, value: any) => void, 
+  onMarkNormal: () => void, 
+  onClear: () => void,
+  onNavigateToTab?: (tabId: string) => void,
+  onSyncToSse?: () => void
+}) {
+  const { heentState = {}, pupilSize = [3], notes = "" } = findings || {};
   const [modalOpen, setModalOpen] = useState(false);
   const [currentPart, setCurrentPart] = useState<string | null>(null);
   const [modalFindings, setModalFindings] = useState<Record<string, FindingData>>({});
+  const [isRedFlagsCollapsed, setIsRedFlagsCollapsed] = useState(false);
+  const [activeSmartCategory, setActiveSmartCategory] = useState<string>("All");
 
-  const getChipStatus = (partId: string) => heentState[partId]?.status;
+  const handleJumpToSection = (secKey: string) => {
+    const el = document.getElementById(`heent-sec-${secKey}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('ring-2', 'ring-indigo-500', 'transition-all');
+      setTimeout(() => {
+        el.classList.remove('ring-2', 'ring-indigo-500');
+      }, 2000);
+    }
+  };
+
+  const handleMarkSectionNormal = (secKey: string) => {
+    const sec = heentSections.find(s => s.key === secKey);
+    if (!sec) return;
+    const updates: HeentState = {};
+    (sec.parts || []).forEach(p => { updates[p] = { status: 'normal', findings: {} }; });
+    onChange('heentState', { ...heentState, ...updates });
+    toast.success(`Marked ${sec.title} as Normal!`);
+  };
+
+  const handleClearSection = (secKey: string) => {
+    const sec = heentSections.find(s => s.key === secKey);
+    if (!sec) return;
+    const next = { ...heentState };
+    (sec.parts || []).forEach(p => { delete next[p]; });
+    onChange('heentState', next);
+    toast.info(`Cleared ${sec.title}.`);
+  };
+
+  // Automated HEENT Emergency Red-Flag Banner calculation
+  const heentRedFlags = useMemo(() => {
+    const flags: { title: string; category: string; description: string; urgency: 'critical' | 'warning' }[] = [];
+
+    const isOptActive = (partId: string, optId: string) => {
+      return !!(heentState || {})[partId]?.findings?.[optId]?.active;
+    };
+
+    // 1. Tracheal Deviation + Neck Vein Distension ➔ Suspect Tension Pneumothorax
+    const tracheaDev = isOptActive('neck-trachea', 'trachea-deviated');
+    const jvd = isOptActive('neck-jvp', 'jvp-elevated') || isOptActive('neck-jvp', 'jvp-jvd-present');
+    if (tracheaDev && jvd) {
+      flags.push({
+        title: "Tracheal Deviation + Elevated JVP / JVD",
+        category: "Tension Pneumothorax",
+        description: "🚨 CRITICAL: Tracheal deviation combined with jugular venous distension indicates obstructive shock secondary to tension pneumothorax. Requires immediate needle thoracostomy decompression.",
+        urgency: "critical"
+      });
+    } else if (tracheaDev) {
+      flags.push({
+        title: "Tracheal Deviation",
+        category: "Airway / Pleural Emergency",
+        description: "Tracheal deviation noted. Rule out tension pneumothorax, massive pleural effusion, severe atelectasis, or substernal goiter.",
+        urgency: "warning"
+      });
+    }
+
+    // 2. Temporal Artery Tenderness + Visual Changes ➔ Suspect Giant Cell Arteritis (GCA)
+    const temporalTender = isOptActive('head-temporal', 'temporal-tenderness') || isOptActive('head-temporal', 'temporal-induration') || isOptActive('head-temporal', 'temporal-pulse-reduced');
+    const visualChanges = isOptActive('eyes-vf', 'vf-deficit') || isOptActive('eyes-pupils', 'pupils-rapd') || isOptActive('eyes-pupils', 'pupils-sluggish');
+    if (temporalTender && visualChanges) {
+      flags.push({
+        title: "Temporal Artery Tenderness + Visual Field / Pupillary Deficit",
+        category: "Giant Cell Arteritis (GCA)",
+        description: "🚨 CRITICAL: High risk of Anterior Ischemic Optic Neuropathy (AION) and permanent vision loss. Immediate high-dose systemic corticosteroid therapy, ESR/CRP, and temporal artery biopsy needed.",
+        urgency: "critical"
+      });
+    } else if (temporalTender) {
+      flags.push({
+        title: "Temporal Artery Tenderness / Induration",
+        category: "Giant Cell Arteritis",
+        description: "Tenderness or nodular induration over temporal artery. Evaluate for headache, jaw claudication, ESR/CRP, and GCA risk.",
+        urgency: "warning"
+      });
+    }
+
+    // 3. Nuchal Rigidity / Positive Brudzinski or Kernig Sign ➔ Suspect Acute Meningitis
+    const nuchalRigidity = isOptActive('neck-rom', 'neck-meningismus') || isOptActive('neck-rom', 'neck-nuchal-rigidity') || isOptActive('neck-rom', 'neck-brudzinski-kernig');
+    if (nuchalRigidity) {
+      flags.push({
+        title: "Nuchal Rigidity / Positive Brudzinski or Kernig Sign",
+        category: "Acute Meningitis",
+        description: "🚨 CRITICAL: Meningeal irritation signs detected. Urgent lumbar puncture, blood cultures, STAT head CT (if focal neuro deficits), and empiric IV antibiotics + dexamethasone indicated.",
+        urgency: "critical"
+      });
+    }
+
+    // 4. Uvular Deviation + Trismus + Unilateral Tonsillar Exudate/Bulging ➔ Suspect Peritonsillar Abscess
+    const uvulaDev = isOptActive('throat-uvula', 'uvula-deviated');
+    const trismus = isOptActive('throat-tonsils', 'throat-trismus');
+    const tonsillarExudateBulge = isOptActive('throat-tonsils', 'tonsil-exudate') || isOptActive('throat-tonsils', 'tonsil-asymmetry') || isOptActive('throat-op', 'op-exudate');
+    if (uvulaDev && (trismus || tonsillarExudateBulge)) {
+      flags.push({
+        title: "Uvular Deviation + Trismus / Unilateral Tonsillar Exudate",
+        category: "Peritonsillar Abscess (Quinsy)",
+        description: "🚨 CRITICAL: Signs of deep neck infection / peritonsillar abscess. Risk of acute airway compromise or carotid sheath extension. Urgent ENT consult for needle aspiration or I&D.",
+        urgency: "critical"
+      });
+    } else if (uvulaDev) {
+      flags.push({
+        title: "Uvular Deviation",
+        category: "Oropharyngeal Emergency",
+        description: "Uvular deviation noted. Rule out peritonsillar abscess (Quinsy) or cranial nerve X neuropathy.",
+        urgency: "warning"
+      });
+    }
+
+    // 5. Mastoid Tenderness + Erythema ➔ Suspect Acute Mastoiditis / Battle's Sign
+    const mastoidTender = isOptActive('ears-mastoid', 'mastoid-tender') || isOptActive('ears-mastoid', 'mastoid-erythema');
+    const battlesSign = isOptActive('ears-mastoid', 'mastoid-battles');
+    if (mastoidTender) {
+      flags.push({
+        title: "Mastoid Tenderness & Erythema",
+        category: "Acute Mastoiditis",
+        description: "🚨 CRITICAL: Complication of acute otitis media with risk of intracranial spread (epidural abscess, venous sinus thrombosis). Urgent temporal bone CT & IV antibiotics required.",
+        urgency: "critical"
+      });
+    }
+    if (battlesSign) {
+      flags.push({
+        title: "Battle's Sign (Mastoid Ecchymosis)",
+        category: "Basilar Skull Fracture",
+        description: "🚨 CRITICAL: Retroauricular ecchymosis indicating basilar skull fracture. Rule out CSF otorrhea/rhinorrhea and neurotrauma emergency.",
+        urgency: "critical"
+      });
+    }
+
+    // 6. Acute Unilateral Ptosis + Anisocoria ➔ Suspect Horner's Syndrome or 3rd Nerve Palsy (Aneurysm)
+    const ptosis = isOptActive('eyes-lids', 'lids-ptosis');
+    const anisocoria = isOptActive('eyes-pupils', 'pupils-anisocoria');
+    if (ptosis && anisocoria) {
+      flags.push({
+        title: "Unilateral Ptosis + Anisocoria",
+        category: "Horner's / 3rd Nerve Palsy (Aneurysm)",
+        description: "🚨 CRITICAL: Unilateral ptosis with anisocoria. Rule out carotid artery dissection (Horner's) or expanding Posterior Communicating Artery (PCoA) aneurysm (painful CN III palsy). Emergency CTA/MRA head & neck required.",
+        urgency: "critical"
+      });
+    }
+
+    return flags;
+  }, [heentState]);
+
+  const handleInsertRedFlagsToNotes = () => {
+    if (heentRedFlags.length === 0) return;
+    const flagText = heentRedFlags
+      .map(f => `[HEENT RED FLAG - ${f.category}]: ${f.title} - ${f.description}`)
+      .join('\n');
+    const updatedNotes = notes ? `${notes}\n\n${flagText}` : flagText;
+    onChange('notes', updatedNotes);
+    toast.success(`${heentRedFlags.length} HEENT Red Flags appended to Examination Notes & SOAP Feed!`);
+  };
+
+  const getChipStatus = (partId: string) => (heentState || {})[partId]?.status;
 
   const openAbnormalModal = (partId: string) => {
     setCurrentPart(partId);
-    setModalFindings(heentState[partId]?.findings || {});
+    setModalFindings((heentState || {})[partId]?.findings || {});
     setModalOpen(true);
   };
 
   const handleChipClick = (partId: string) => {
-    const current = heentState[partId]?.status;
+    const current = (heentState || {})[partId]?.status;
     if (!current) {
       onChange('heentState', { ...heentState, [partId]: { status: 'normal', findings: {} } });
     } else if (current === 'normal') {
@@ -1502,14 +2505,6 @@ export function HeentTab({ findings, onChange, onMarkNormal, onClear }: { findin
       delete next[partId];
       onChange('heentState', next);
     }
-  };
-
-  const markAllNormal = () => {
-    onMarkNormal();
-  };
-
-  const clearAll = () => {
-    onClear();
   };
 
   const saveAbnormalFindings = () => {
@@ -1553,37 +2548,141 @@ export function HeentTab({ findings, onChange, onMarkNormal, onClear }: { findin
 
   const currentPartInfo = currentPart ? heentMapping[currentPart] : null;
 
+  const categories = ["All", "Eyes & Head", "Ears", "Mouth & Throat", "Neck"];
+  const filteredSmartPhrases = activeSmartCategory === "All" 
+    ? heentSmartPhrases 
+    : heentSmartPhrases.filter(p => p.category === activeSmartCategory);
+
   return (
     <div className="space-y-6">
       <SectionHeader 
         title="HEENT & Neck Examination" 
-        onMarkNormal={markAllNormal} 
-        onClear={clearAll} 
+        onMarkNormal={onMarkNormal} 
+        onClear={onClear} 
       />
 
+      {/* Interactive HEENT Mini-Diagram / Region Selector */}
+      <HeentInteractiveDiagram 
+        heentState={heentState || {}}
+        onJumpToSection={handleJumpToSection}
+        onMarkSectionNormal={handleMarkSectionNormal}
+        onClearSection={handleClearSection}
+        onOpenPartAbnormalModal={openAbnormalModal}
+        onChangePartStatus={(partId, newStatus) => {
+          if (!newStatus) {
+            const next = { ...heentState };
+            delete next[partId];
+            onChange('heentState', next);
+          } else if (newStatus === 'normal') {
+            onChange('heentState', { ...heentState, [partId]: { status: 'normal', findings: {} } });
+          } else if (newStatus === 'abnormal') {
+            openAbnormalModal(partId);
+          }
+        }}
+      />
+
+      {/* High-Risk Red Flag Alerts Banner */}
+      {heentRedFlags.length > 0 && (
+        <div className="bg-rose-50 border-2 border-rose-400/80 rounded-xl p-4 space-y-3 shadow-md animate-in slide-in-from-top-2 duration-300">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-rose-200 pb-2.5">
+            <div 
+              className="flex items-center gap-2.5 cursor-pointer select-none group"
+              onClick={() => setIsRedFlagsCollapsed(prev => !prev)}
+            >
+              <div className="p-1.5 bg-rose-600 text-white rounded-lg animate-pulse shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-xs font-extrabold text-rose-950 uppercase tracking-wider flex items-center gap-2">
+                  <span>HEENT Emergency Red Flag Alert ({heentRedFlags.length})</span>
+                  <span className="px-2 py-0.5 bg-rose-600 text-white text-[10px] rounded-full font-bold">
+                    CRITICAL POSITIVES
+                  </span>
+                </h4>
+                <p className="text-[11px] text-rose-800 font-medium">
+                  Automated clinical emergency warnings detected from selected physical findings.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 self-start sm:self-auto">
+              <button
+                type="button"
+                onClick={handleInsertRedFlagsToNotes}
+                className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+              >
+                <Zap className="w-3.5 h-3.5 text-amber-300" />
+                Feed into SOAP & AI ({heentRedFlags.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsRedFlagsCollapsed(prev => !prev)}
+                className="px-2.5 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-900 rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer border border-rose-200 shrink-0"
+                title={isRedFlagsCollapsed ? "Expand Red Flags" : "Collapse Red Flags"}
+              >
+                {isRedFlagsCollapsed ? (
+                  <>
+                    <span>Expand</span>
+                    <ChevronDown className="w-3.5 h-3.5" />
+                  </>
+                ) : (
+                  <>
+                    <span>Collapse</span>
+                    <ChevronUp className="w-3.5 h-3.5" />
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {!isRedFlagsCollapsed && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 pt-1 animate-in fade-in duration-200">
+              {heentRedFlags.map((flag, idx) => (
+                <div 
+                  key={idx}
+                  className={cn(
+                    "p-3 rounded-lg border text-xs space-y-1 shadow-2xs",
+                    flag.urgency === 'critical' ? "bg-rose-100/90 border-rose-300 text-rose-950" : "bg-amber-50 border-amber-300 text-amber-950"
+                  )}
+                >
+                  <div className="flex items-center justify-between font-bold">
+                    <span className="flex items-center gap-1.5">
+                      <AlertCircle className={cn("w-4 h-4 shrink-0", flag.urgency === 'critical' ? "text-rose-600" : "text-amber-600")} />
+                      <span>{flag.title}</span>
+                    </span>
+                    <span className={cn(
+                      "px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider shrink-0 ml-2",
+                      flag.urgency === 'critical' ? "bg-rose-600 text-white" : "bg-amber-600 text-white"
+                    )}>
+                      {flag.category}
+                    </span>
+                  </div>
+                  <p className="text-[11px] opacity-90 leading-snug pl-5">
+                    {flag.description}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Main HEENT Examination Section Cards */}
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {(heentSections || []).map(section => (
-          <div key={section.key} className="rounded-lg border bg-card p-4 space-y-3">
+          <div key={section.key} id={`heent-sec-${section.key}`} className="rounded-lg border bg-card p-4 space-y-3 transition-all">
             <div className="flex items-center justify-between">
               <h5 className="text-sm font-semibold text-primary">{section.title}</h5>
               <div className="flex gap-1">
                 <Button
                   size="sm" variant="ghost" className="h-6 text-[10px] px-2 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
-                  onClick={() => {
-                    const updates: HeentState = {};
-                    (section.parts || []).forEach(p => { updates[p] = { status: 'normal', findings: {} }; });
-                    onChange('heentState', { ...heentState, ...updates });
-                  }}
+                  onClick={() => handleMarkSectionNormal(section.key)}
                 >
                   <CheckCircle className="h-3 w-3 mr-1" /> All Normal
                 </Button>
                 <Button
                   size="sm" variant="ghost" className="h-6 text-[10px] px-2"
-                  onClick={() => {
-                    const next = { ...heentState };
-                    (section.parts || []).forEach(p => { delete next[p]; });
-                    onChange('heentState', next);
-                  }}
+                  onClick={() => handleClearSection(section.key)}
                 >
                   <Trash2 className="h-3 w-3 mr-1" /> Clear
                 </Button>
@@ -1615,10 +2714,42 @@ export function HeentTab({ findings, onChange, onMarkNormal, onClear }: { findin
                 );
               })}
             </div>
+
             {section.key === "eyes" && (
-              <div className="space-y-1 pt-2 border-t">
-                <Label className="text-xs text-muted-foreground">Pupil Size: {pupilSize[0]}mm</Label>
-                <Slider min={1} max={9} step={1} value={pupilSize} onValueChange={(v) => onChange('pupilSize', v)} className="w-full" />
+              <div className="space-y-2 pt-2 border-t">
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Pupil Size: {pupilSize[0]}mm</Label>
+                  <Slider min={1} max={9} step={1} value={pupilSize} onValueChange={(v) => onChange('pupilSize', v)} className="w-full" />
+                </div>
+                {onNavigateToTab && (
+                  <button
+                    type="button"
+                    onClick={() => onNavigateToTab('sse')}
+                    className="w-full px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 rounded-lg text-xs font-semibold flex items-center justify-between transition-colors border border-indigo-200 dark:border-indigo-800 cursor-pointer"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Eye className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                      <span>Visual Acuity & Fundoscopy in SSE</span>
+                    </span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            )}
+
+            {section.key === "ears" && onNavigateToTab && (
+              <div className="pt-2 border-t">
+                <button
+                  type="button"
+                  onClick={() => onNavigateToTab('sse')}
+                  className="w-full px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 rounded-lg text-xs font-semibold flex items-center justify-between transition-colors border border-indigo-200 dark:border-indigo-800 cursor-pointer"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <Ear className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                    <span>Otoscopy & Weber/Rinne Hearing in SSE</span>
+                  </span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
               </div>
             )}
           </div>
@@ -1687,125 +2818,834 @@ export function HeentTab({ findings, onChange, onMarkNormal, onClear }: { findin
         </DialogContent>
       </Dialog>
 
-      <div className="space-y-2">
-        <Label className="text-sm font-medium">Smart Phrases</Label>
-        <div className="flex flex-wrap gap-2">
-          {(heentSmartPhrases || []).map(phrase => (
-            <Button key={phrase.label} variant="outline" size="sm" className="h-7 text-xs"
-              onClick={() => onChange('notes', notes ? `${notes}\n${phrase.text}` : phrase.text)}>
-              {phrase.label}
-            </Button>
+      {/* Section 7: Specialized High-Yield Triage & Clinical Decision Rules */}
+      <HeentSpecializedCalculators onInsertToNotes={(text) => onChange('notes', notes ? `${notes}\n${text}` : text)} />
+
+      {/* Expanded Smart Phrase Library */}
+      <div className="space-y-2.5 p-4 bg-slate-50 border border-slate-200 rounded-xl">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <Label className="text-sm font-bold text-slate-800 flex items-center gap-2">
+            <FileText className="w-4 h-4 text-indigo-600" />
+            <span>Expanded Smart Phrase Chips (1-Tap Narrative Descriptors)</span>
+          </Label>
+
+          <div className="flex flex-wrap gap-1">
+            {categories.map(cat => (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => setActiveSmartCategory(cat)}
+                className={cn(
+                  "px-2.5 py-1 text-[11px] font-semibold rounded-lg transition-colors cursor-pointer",
+                  activeSmartCategory === cat 
+                    ? "bg-indigo-600 text-white shadow-2xs" 
+                    : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
+                )}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1">
+          {filteredSmartPhrases.map(phrase => (
+            <button 
+              key={phrase.label} 
+              type="button"
+              onClick={() => {
+                onChange('notes', notes ? `${notes}\n${phrase.text}` : phrase.text);
+                toast.success(`Appended: "${phrase.label}" to Notes`);
+              }}
+              className="p-2.5 text-left bg-white hover:bg-indigo-50/60 border border-slate-200 hover:border-indigo-300 rounded-lg transition-all cursor-pointer group shadow-2xs space-y-1"
+            >
+              <div className="flex items-center justify-between text-xs font-bold text-indigo-950 group-hover:text-indigo-700">
+                <span>{phrase.label}</span>
+                <span className="text-[10px] font-semibold text-slate-400 group-hover:text-indigo-600 flex items-center gap-1">
+                  <span>+ Insert</span>
+                  <Plus className="w-3 h-3" />
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-600 line-clamp-2 leading-tight">
+                "{phrase.text}"
+              </p>
+            </button>
           ))}
         </div>
       </div>
 
       <div className="space-y-1.5">
-        <Label className="text-sm">Notes</Label>
-        <Textarea placeholder="Enter detailed notes about HEENT findings..." value={notes || ""} onChange={e => onChange('notes', e.target.value)} className="min-h-[80px]" />
+        <Label className="text-sm font-semibold text-slate-800">HEENT Examination Notes</Label>
+        <Textarea 
+          placeholder="Enter detailed clinical narrative about HEENT findings..." 
+          value={notes || ""} 
+          onChange={e => onChange('notes', e.target.value)} 
+          className="min-h-[90px] border-slate-200 focus:ring-2 focus:ring-indigo-500 text-sm" 
+        />
+      </div>
+    </div>
+  );
+}
+
+function SseSpecializedCalculators({ onInsertToNotes }: { onInsertToNotes: (text: string) => void }) {
+  // Audiology Tuning Fork Interpreter
+  const [tfWeber, setTfWeber] = useState<string>("midline");
+  const [tfRinneR, setTfRinneR] = useState<string>("ac>bc");
+  const [tfRinneL, setTfRinneL] = useState<string>("ac>bc");
+
+  const audiologyInterpretation = useMemo(() => {
+    const rinneR_cond = tfRinneR === "bc>ac";
+    const rinneL_cond = tfRinneL === "bc>ac";
+
+    if (tfWeber === "midline" && !rinneR_cond && !rinneL_cond) {
+      return { dx: "Normal Hearing Bilaterally (or Symmetric Sensorineural Loss)", desc: "Weber is midline and Rinne is positive (AC > BC) bilaterally." };
+    }
+    if (tfWeber === "right") {
+      if (rinneR_cond) {
+        return { dx: "RIGHT Conductive Hearing Loss", desc: "Weber lateralizes to Right AND Rinne Right shows BC > AC (Conductive defect in Right ear, e.g. cerumen, otitis, ET dysfunction)." };
+      }
+      if (!rinneR_cond && !rinneL_cond) {
+        return { dx: "LEFT Sensorineural Hearing Loss", desc: "Weber lateralizes to Right AND Rinne is AC > BC bilaterally (Sensorineural deficit in contralateral Left ear)." };
+      }
+    }
+    if (tfWeber === "left") {
+      if (rinneL_cond) {
+        return { dx: "LEFT Conductive Hearing Loss", desc: "Weber lateralizes to Left AND Rinne Left shows BC > AC (Conductive defect in Left ear, e.g. cerumen, effusion, perforation)." };
+      }
+      if (!rinneR_cond && !rinneL_cond) {
+        return { dx: "RIGHT Sensorineural Hearing Loss", desc: "Weber lateralizes to Left AND Rinne is AC > BC bilaterally (Sensorineural deficit in contralateral Right ear)." };
+      }
+    }
+    if (rinneR_cond && rinneL_cond) {
+      return { dx: "Bilateral Conductive Hearing Loss", desc: "Both Rinne tests show BC > AC, indicating bilateral middle/outer ear conductive impairment." };
+    }
+    return { dx: "Complex / Mixed Hearing Loss Pattern", desc: "Combined sensorineural and conductive components. Formal audiogram recommended." };
+  }, [tfWeber, tfRinneR, tfRinneL]);
+
+  // Acute Angle-Closure Glaucoma Red Flag Triage
+  const [glaucomaPain, setGlaucomaPain] = useState(false);
+  const [glaucomaHalos, setGlaucomaHalos] = useState(false);
+  const [glaucomaHighIOP, setGlaucomaHighIOP] = useState(false);
+  const [glaucomaFixedPupil, setGlaucomaFixedPupil] = useState(false);
+  const [glaucomaHazyCornea, setGlaucomaHazyCornea] = useState(false);
+  const [glaucomaNausea, setGlaucomaNausea] = useState(false);
+
+  const glaucomaRedFlagsCount = [glaucomaPain, glaucomaHalos, glaucomaHighIOP, glaucomaFixedPupil, glaucomaHazyCornea, glaucomaNausea].filter(Boolean).length;
+  const isGlaucomaAlert = glaucomaRedFlagsCount >= 2;
+
+  // SSNHL Red Flag Triage
+  const [ssnhlSuddenDrop, setSsnhlSuddenDrop] = useState(false);
+  const [ssnhlUnilateral, setSsnhlUnilateral] = useState(false);
+  const [ssnhlTinnitus, setSsnhlTinnitus] = useState(false);
+  const [ssnhlFullness, setSsnhlFullness] = useState(false);
+
+  const isSsnhlAlert = ssnhlSuddenDrop && ssnhlUnilateral;
+
+  // BPPV Dix-Hallpike
+  const [bppvEar, setBppvEar] = useState<string>("right");
+  const [bppvNystagmus, setBppvNystagmus] = useState(false);
+  const [bppvLatency, setBppvLatency] = useState(true);
+  const [bppvFatigue, setBppvFatigue] = useState(true);
+
+  return (
+    <div className="space-y-4 p-4 bg-slate-50 border border-slate-200 rounded-xl">
+      <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+        <div className="flex items-center gap-2">
+          <Calculator className="w-5 h-5 text-indigo-600" />
+          <h4 className="text-sm font-bold text-slate-900 uppercase tracking-wide">
+            Specialized Sensory Exam (SSE) Triage & Diagnostic Decision Rules
+          </h4>
+        </div>
+        <span className="text-[11px] font-semibold text-slate-500 bg-white px-2.5 py-0.5 rounded-full border border-slate-200">
+          Sensory Decision Support
+        </span>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* 1. Tuning Fork Audiology Interpreter */}
+        <div className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-3 flex flex-col justify-between shadow-2xs">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
+              <span className="text-xs font-bold text-indigo-950 flex items-center gap-1.5">
+                <Ear className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Weber/Rinne Audiology Logic</span>
+              </span>
+            </div>
+
+            <div className="space-y-1.5 text-xs">
+              <div>
+                <Label className="text-[11px] text-slate-600 font-medium">Weber Test (512Hz):</Label>
+                <select
+                  value={tfWeber}
+                  onChange={e => setTfWeber(e.target.value)}
+                  className="w-full text-xs bg-slate-50 border border-slate-200 rounded px-2 py-1 font-medium mt-0.5"
+                >
+                  <option value="midline">Midline (No Lateralization)</option>
+                  <option value="right">Lateralizes to RIGHT Ear</option>
+                  <option value="left">Lateralizes to LEFT Ear</option>
+                </select>
+              </div>
+
+              <div>
+                <Label className="text-[11px] text-slate-600 font-medium">Rinne RIGHT Ear:</Label>
+                <select
+                  value={tfRinneR}
+                  onChange={e => setTfRinneR(e.target.value)}
+                  className="w-full text-xs bg-slate-50 border border-slate-200 rounded px-2 py-1 font-medium mt-0.5"
+                >
+                  <option value="ac>bc">AC {'>'} BC (Positive / Normal)</option>
+                  <option value="bc>ac">BC {'>'} AC (Negative / Conductive)</option>
+                </select>
+              </div>
+
+              <div>
+                <Label className="text-[11px] text-slate-600 font-medium">Rinne LEFT Ear:</Label>
+                <select
+                  value={tfRinneL}
+                  onChange={e => setTfRinneL(e.target.value)}
+                  className="w-full text-xs bg-slate-50 border border-slate-200 rounded px-2 py-1 font-medium mt-0.5"
+                >
+                  <option value="ac>bc">AC {'>'} BC (Positive / Normal)</option>
+                  <option value="bc>ac">BC {'>'} AC (Negative / Conductive)</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="p-2 bg-indigo-50/70 border border-indigo-200 rounded-lg text-[11px] space-y-0.5">
+              <div className="font-bold text-indigo-950">{audiologyInterpretation.dx}</div>
+              <p className="text-indigo-800 leading-tight text-[10px]">{audiologyInterpretation.desc}</p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              const text = `[Tuning Fork Audiology Assessment]: Weber=${tfWeber}, Rinne R=${tfRinneR}, Rinne L=${tfRinneL}. Impression: ${audiologyInterpretation.dx}. ${audiologyInterpretation.desc}`;
+              onInsertToNotes(text);
+              toast.success("Appended Audiology Assessment to Notes!");
+            }}
+            className="w-full py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-lg transition-colors border border-indigo-200 cursor-pointer"
+          >
+            + Append Result to Notes
+          </button>
+        </div>
+
+        {/* 2. Acute Angle-Closure Glaucoma Red Flag Triage */}
+        <div className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-3 flex flex-col justify-between shadow-2xs">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
+              <span className="text-xs font-bold text-rose-950 flex items-center gap-1.5">
+                <ShieldAlert className="w-3.5 h-3.5 text-rose-600" />
+                <span>Acute Glaucoma Triage</span>
+              </span>
+              {isGlaucomaAlert && (
+                <span className="px-1.5 py-0.5 bg-rose-600 text-white text-[10px] rounded font-bold animate-pulse">
+                  HIGH RISK
+                </span>
+              )}
+            </div>
+
+            <div className="space-y-1 text-xs">
+              <label className="flex items-center justify-between cursor-pointer py-0.5 hover:bg-slate-50 rounded px-1">
+                <span className="text-slate-700 font-medium text-[11px]">Severe Eye Pain / Headache</span>
+                <Checkbox checked={glaucomaPain} onCheckedChange={v => setGlaucomaPain(!!v)} />
+              </label>
+
+              <label className="flex items-center justify-between cursor-pointer py-0.5 hover:bg-slate-50 rounded px-1">
+                <span className="text-slate-700 font-medium text-[11px]">Rainbow Halos Around Lights</span>
+                <Checkbox checked={glaucomaHalos} onCheckedChange={v => setGlaucomaHalos(!!v)} />
+              </label>
+
+              <label className="flex items-center justify-between cursor-pointer py-0.5 hover:bg-slate-50 rounded px-1">
+                <span className="text-slate-700 font-medium text-[11px]">Elevated IOP (&gt;30 mmHg / Firm Globe)</span>
+                <Checkbox checked={glaucomaHighIOP} onCheckedChange={v => setGlaucomaHighIOP(!!v)} />
+              </label>
+
+              <label className="flex items-center justify-between cursor-pointer py-0.5 hover:bg-slate-50 rounded px-1">
+                <span className="text-slate-700 font-medium text-[11px]">Mid-Dilated Fixed Pupil</span>
+                <Checkbox checked={glaucomaFixedPupil} onCheckedChange={v => setGlaucomaFixedPupil(!!v)} />
+              </label>
+
+              <label className="flex items-center justify-between cursor-pointer py-0.5 hover:bg-slate-50 rounded px-1">
+                <span className="text-slate-700 font-medium text-[11px]">Hazy / Steamy Cornea</span>
+                <Checkbox checked={glaucomaHazyCornea} onCheckedChange={v => setGlaucomaHazyCornea(!!v)} />
+              </label>
+
+              <label className="flex items-center justify-between cursor-pointer py-0.5 hover:bg-slate-50 rounded px-1">
+                <span className="text-slate-700 font-medium text-[11px]">Nausea / Vomiting</span>
+                <Checkbox checked={glaucomaNausea} onCheckedChange={v => setGlaucomaNausea(!!v)} />
+              </label>
+            </div>
+
+            {isGlaucomaAlert ? (
+              <div className="p-2 bg-rose-50 border border-rose-300 rounded-lg text-[11px] space-y-1 text-rose-950">
+                <div className="font-extrabold flex items-center gap-1 text-rose-700">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                  <span>EMERGENCY OPHTHALMIC ALERT</span>
+                </div>
+                <p className="leading-tight text-[10px]">
+                  🚨 High suspicion for Acute Angle-Closure Glaucoma. Immediate IOP lowering agents (Timolol 0.5%, Apraclonidine 1%, Acetazolamide IV/oral) & urgent Ophthalmology consult for laser peripheral iridotomy.
+                </p>
+              </div>
+            ) : (
+              <div className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-[11px] text-slate-500">
+                Check symptoms to evaluate acute ocular pressure crisis risk.
+              </div>
+            )}
+          </div>
+
+          {isGlaucomaAlert && (
+            <button
+              type="button"
+              onClick={() => {
+                const text = `[ACUTE ANGLE-CLOSURE GLAUCOMA ALERT]: High clinical concern (${glaucomaRedFlagsCount}/6 criteria). Immediate STAT Ophthalmology consultation & pressure lowering therapy initiated.`;
+                onInsertToNotes(text);
+                toast.success("Appended Glaucoma Alert to Notes!");
+              }}
+              className="w-full py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-lg transition-colors cursor-pointer shadow-2xs"
+            >
+              + Append Glaucoma Alert
+            </button>
+          )}
+        </div>
+
+        {/* 3. Sudden Sensorineural Hearing Loss (SSNHL) Protocol */}
+        <div className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-3 flex flex-col justify-between shadow-2xs">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
+              <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                <Zap className="w-3.5 h-3.5 text-amber-600" />
+                <span>Sudden SSNHL Triage</span>
+              </span>
+              {isSsnhlAlert && (
+                <span className="px-1.5 py-0.5 bg-amber-600 text-white text-[10px] rounded font-bold animate-pulse">
+                  URGENT 72h WINDOW
+                </span>
+              )}
+            </div>
+
+            <div className="space-y-1.5 text-xs">
+              <label className="flex items-center justify-between cursor-pointer py-1 hover:bg-slate-50 rounded px-1">
+                <span className="text-slate-700 font-medium text-[11px]">Sudden Hearing Loss (&lt;72h)</span>
+                <Checkbox checked={ssnhlSuddenDrop} onCheckedChange={v => setSsnhlSuddenDrop(!!v)} />
+              </label>
+
+              <label className="flex items-center justify-between cursor-pointer py-1 hover:bg-slate-50 rounded px-1">
+                <span className="text-slate-700 font-medium text-[11px]">Unilateral Deficit</span>
+                <Checkbox checked={ssnhlUnilateral} onCheckedChange={v => setSsnhlUnilateral(!!v)} />
+              </label>
+
+              <label className="flex items-center justify-between cursor-pointer py-1 hover:bg-slate-50 rounded px-1">
+                <span className="text-slate-700 font-medium text-[11px]">Associated Tinnitus</span>
+                <Checkbox checked={ssnhlTinnitus} onCheckedChange={v => setSsnhlTinnitus(!!v)} />
+              </label>
+
+              <label className="flex items-center justify-between cursor-pointer py-1 hover:bg-slate-50 rounded px-1">
+                <span className="text-slate-700 font-medium text-[11px]">Aural Fullness / Dizziness</span>
+                <Checkbox checked={ssnhlFullness} onCheckedChange={v => setSsnhlFullness(!!v)} />
+              </label>
+            </div>
+
+            {isSsnhlAlert ? (
+              <div className="p-2 bg-amber-50 border border-amber-300 rounded-lg text-[11px] space-y-1 text-amber-950">
+                <div className="font-extrabold flex items-center gap-1 text-amber-800">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>SUDDEN SENSORINEURAL LOSS</span>
+                </div>
+                <p className="leading-tight text-[10px]">
+                  ⚠️ Otologic Emergency: Initiate oral high-dose corticosteroids (Oral Prednisone 1 mg/kg/day x 14 days) or IT Dexamethasone. Schedule urgent audiogram within 24-48 hours.
+                </p>
+              </div>
+            ) : (
+              <div className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-[11px] text-slate-500">
+                Sudden unilateral hearing loss requires rapid steroid administration to prevent permanent inner ear damage.
+              </div>
+            )}
+          </div>
+
+          {isSsnhlAlert && (
+            <button
+              type="button"
+              onClick={() => {
+                const text = `[SUDDEN SENSORINEURAL HEARING LOSS ALERT]: Unilateral sudden hearing loss <72h. High-dose steroid protocol initiated. Urgent ENT & audiogram referral submitted.`;
+                onInsertToNotes(text);
+                toast.success("Appended SSNHL Protocol to Notes!");
+              }}
+              className="w-full py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-lg transition-colors cursor-pointer shadow-2xs"
+            >
+              + Append SSNHL Protocol
+            </button>
+          )}
+        </div>
+
+        {/* 4. Dix-Hallpike & BPPV Management */}
+        <div className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-3 flex flex-col justify-between shadow-2xs">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
+              <span className="text-xs font-bold text-teal-950 flex items-center gap-1.5">
+                <RefreshCw className="w-3.5 h-3.5 text-teal-600" />
+                <span>Dix-Hallpike & BPPV Maneuver</span>
+              </span>
+            </div>
+
+            <div className="space-y-1.5 text-xs">
+              <div>
+                <Label className="text-[11px] text-slate-600 font-medium">Tested Ear:</Label>
+                <select
+                  value={bppvEar}
+                  onChange={e => setBppvEar(e.target.value)}
+                  className="w-full text-xs bg-slate-50 border border-slate-200 rounded px-2 py-1 font-medium mt-0.5"
+                >
+                  <option value="right">Right Ear Down</option>
+                  <option value="left">Left Ear Down</option>
+                </select>
+              </div>
+
+              <label className="flex items-center justify-between cursor-pointer py-1 hover:bg-slate-50 rounded px-1">
+                <span className="text-slate-700 font-medium text-[11px]">Torsional Upbeating Nystagmus</span>
+                <Checkbox checked={bppvNystagmus} onCheckedChange={v => setBppvNystagmus(!!v)} />
+              </label>
+
+              <label className="flex items-center justify-between cursor-pointer py-1 hover:bg-slate-50 rounded px-1">
+                <span className="text-slate-700 font-medium text-[11px]">Latency Period (2 - 15 sec)</span>
+                <Checkbox checked={bppvLatency} onCheckedChange={v => setBppvLatency(!!v)} />
+              </label>
+
+              <label className="flex items-center justify-between cursor-pointer py-1 hover:bg-slate-50 rounded px-1">
+                <span className="text-slate-700 font-medium text-[11px]">Fatiguing with Repetition</span>
+                <Checkbox checked={bppvFatigue} onCheckedChange={v => setBppvFatigue(!!v)} />
+              </label>
+            </div>
+
+            {bppvNystagmus ? (
+              <div className="p-2 bg-teal-50 border border-teal-300 rounded-lg text-[11px] space-y-1 text-teal-950">
+                <div className="font-bold text-teal-900">POSITIVE DIX-HALLPIKE ({bppvEar.toUpperCase()} EAR)</div>
+                <p className="leading-tight text-[10px]">
+                  Diagnosis: Classic Posterior Canal BPPV ({bppvEar.toUpperCase()} Canalithiasis). Recommended Immediate Treatment: Epley Canalith Repositioning Maneuver.
+                </p>
+              </div>
+            ) : (
+              <div className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-[11px] text-slate-500">
+                Perform Dix-Hallpike test to trigger posterior semicircular canal BPPV nystagmus and guide Epley maneuver.
+              </div>
+            )}
+          </div>
+
+          {bppvNystagmus && (
+            <button
+              type="button"
+              onClick={() => {
+                const text = `[DIX-HALLPIKE TEST]: Positive for ${bppvEar.toUpperCase()} posterior canal BPPV (torsional upbeating nystagmus with latency and fatigue). Epley Canalith Repositioning Maneuver performed with resolution of symptoms.`;
+                onInsertToNotes(text);
+                toast.success("Appended BPPV Result to Notes!");
+              }}
+              className="w-full py-1.5 bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs rounded-lg transition-colors cursor-pointer shadow-2xs"
+            >
+              + Append BPPV & Epley Guide
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
 export function SseTab({ findings, onChange, onMarkNormal, onClear }: { findings: any, onChange: (field: string, value: any) => void, onMarkNormal: () => void, onClear: () => void }) {
-  const { visualAcuityR, visualAcuityL, fundoscopy, weber, rinneR, rinneL, otoscopy, notes } = findings;
+  const { 
+    visualAcuityR, visualAcuityL, visualAcuityOU, pinholeAcuity, colorVision, iopOD, iopOS, visualFields, pupilsSse, fundoscopy, 
+    weber, rinneR, rinneL, whisperTest, vestibularExam, otoscopy, 
+    olfactoryExam, gustatoryExam, trigeminalSensory, monofilamentTest, twoPointDiscrimination, notes 
+  } = findings;
+
+  const [normalModalOpen, setNormalModalOpen] = useState(false);
+
+  // SSE Smart Phrase Library
+  const sseSmartPhrases = [
+    { title: "Normal Comprehensive SSE", text: "SPECIALIZED SENSORY EXAM: Visual acuity 20/20 OD, OS, OU uncorrected. Color vision intact (Ishihara 14/14). Visual fields full to confrontation. IOP 14 mmHg OD, 15 mmHg OS. PERRLA, no RAPD. Fundoscopy: Sharp disc margins, normal C/D ratio (0.3), no hemorrhages/exudates. Hearing intact to whisper test bilaterally. Weber midline; Rinne AC > BC bilaterally. Otoscopy: Intact TMs with crisp light reflexes. Olfactory testing: Intact smell discrimination (CN I). Gustatory testing: Intact taste perception (sweet, sour, salty, bitter). Trigeminal touch & pinprick intact across V1-V3. Corneal reflex intact. Monofilament (10g) 10/10 sites felt bilaterally." },
+    { title: "Optic Neuritis / RAPD Pattern", text: "VISION/OPTIC NERVE: Reduced visual acuity OD (20/80). Red cap desaturation present OD (10/10 OS vs 3/10 OD). Positive Right Relative Afferent Pupillary Defect (Marcus Gunn Pupil). Sluggish direct light response OD with intact consensual. Swollen right optic disc with blurred margins on fundoscopy. Compatible with Acute Optic Neuritis." },
+    { title: "Sensorineural Hearing Loss (Presbycusis)", text: "AUDITORY SENSORY: Symmetrical high-frequency hearing loss on whisper test. Weber test midline without lateralization. Rinne test positive bilaterally (Air conduction > Bone conduction). Intact TMs without effusion or cerumen. Clinical pattern consistent with bilateral sensorineural presbycusis." },
+    { title: "Diabetic Sensory Polyneuropathy", text: "SOMATOSENSORY: Symmetric distal length-dependent sensory loss. Semmes-Weinstein 10g monofilament impaired (felt only 3/10 sites on right plantar foot, 2/10 on left). Impaired vibration perception (128 Hz tuning fork < 4 seconds at hallux). Impaired 2-point discrimination (>12 mm at fingertips). Proprioception intact at ankles." },
+    { title: "Anosmia & Ageusia Screen", text: "OLFACTORY & GUSTATORY: Complete anosmia on smell identification testing (CN I). Associated hypogeusia with intact basic taste detection (salty/sour) but loss of complex flavor perception. Nasal mucosal exam without polyps or acute obstruction." }
+  ];
 
   return (
     <div className="space-y-6">
       <SectionHeader 
         title="Specialized Sensory Exam (SSE)" 
-        onMarkNormal={onMarkNormal} 
+        onMarkNormal={() => setNormalModalOpen(true)} 
         onClear={onClear} 
       />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label className="text-sm font-medium">Visual Acuity (Snellen)</Label>
-            <div className="flex gap-4">
-              <div className="flex-1 space-y-1">
-                <Label className="text-xs">Right Eye (OD)</Label>
-                <Input value={visualAcuityR} onChange={e => onChange('visualAcuityR', e.target.value)} className="h-8 text-xs" />
-              </div>
-              <div className="flex-1 space-y-1">
-                <Label className="text-xs">Left Eye (OS)</Label>
-                <Input value={visualAcuityL} onChange={e => onChange('visualAcuityL', e.target.value)} className="h-8 text-xs" />
-              </div>
-            </div>
+      {/* Confirmation Modal for Mark All Normal */}
+      <Dialog open={normalModalOpen} onOpenChange={setNormalModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-indigo-950">
+              <CheckCircle className="w-5 h-5 text-emerald-600" />
+              <span>Mark All SSE Findings Normal?</span>
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-slate-600 leading-relaxed">
+            This will set Visual Acuity (20/20 OD/OS/OU), Color Vision (14/14), IOP (14/15 mmHg), Visual Fields (Full), PERRLA (Intact), Fundoscopy (Sharp Discs), Hearing (Intact), Weber (Midline), Rinne (AC &gt; BC bilaterally), Otoscopy (Normal TMs), Olfaction (Intact CN I), Gustation (Intact), Trigeminal (Intact V1-V3), and Monofilament (10/10 sites).
+          </p>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" size="sm" onClick={() => setNormalModalOpen(false)}>Cancel</Button>
+            <Button 
+              size="sm" 
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+              onClick={() => {
+                onMarkNormal();
+                onChange('visualAcuityR', '20/20');
+                onChange('visualAcuityL', '20/20');
+                onChange('visualAcuityOU', '20/20');
+                onChange('colorVision', '14/14 Ishihara');
+                onChange('iopOD', '14');
+                onChange('iopOS', '15');
+                onChange('weber', 'midline');
+                onChange('rinneR', 'ac>bc');
+                onChange('rinneL', 'ac>bc');
+                onChange('fundoscopy', ['normal-fundus']);
+                onChange('otoscopy', ['normal-tm']);
+                onChange('olfactoryExam', ['normosmia']);
+                onChange('gustatoryExam', ['normal-taste']);
+                onChange('trigeminalSensory', ['v1-intact', 'v2-intact', 'v3-intact', 'corneal-intact']);
+                onChange('monofilamentTest', '10/10 Sites Intact Bilaterally');
+                toast.success("Marked All SSE Findings as Normal!");
+                setNormalModalOpen(false);
+              }}
+            >
+              Confirm Mark Normal
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 5-Domain Specialized Sensory Exam Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        {/* DOMAIN 1: Visual Sensory System */}
+        <div className="p-4 bg-white border border-slate-200 rounded-xl space-y-4 shadow-2xs">
+          <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
+            <Eye className="w-5 h-5 text-indigo-600" />
+            <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">
+              1. Vision & Ocular Sensory System (CN II, III, IV, VI)
+            </h3>
           </div>
 
-          <CheckboxFindings
-            label="Fundoscopy"
-            options={[
-              { id: "normal-fundus", label: "Normal Fundus / Sharp Discs" },
-              { id: "papilledema", label: "Papilledema" },
-              { id: "av-nicking", label: "AV Nicking" },
-              { id: "hemorrhages", label: "Retinal Hemorrhages" },
-              { id: "exudates", label: "Cotton Wool Spots / Exudates" },
-            ]}
-            selected={fundoscopy}
-            onChange={(v) => onChange('fundoscopy', v)}
-          />
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs font-bold text-slate-800">Visual Acuity (Snellen Chart)</Label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1">
+                <div>
+                  <Label className="text-[11px] text-slate-500">Right (OD)</Label>
+                  <Input value={visualAcuityR || ""} onChange={e => onChange('visualAcuityR', e.target.value)} placeholder="20/20" className="h-8 text-xs mt-0.5" />
+                </div>
+                <div>
+                  <Label className="text-[11px] text-slate-500">Left (OS)</Label>
+                  <Input value={visualAcuityL || ""} onChange={e => onChange('visualAcuityL', e.target.value)} placeholder="20/20" className="h-8 text-xs mt-0.5" />
+                </div>
+                <div>
+                  <Label className="text-[11px] text-slate-500">Both (OU)</Label>
+                  <Input value={visualAcuityOU || ""} onChange={e => onChange('visualAcuityOU', e.target.value)} placeholder="20/20" className="h-8 text-xs mt-0.5" />
+                </div>
+                <div>
+                  <Label className="text-[11px] text-slate-500">Pinhole / Near</Label>
+                  <Input value={pinholeAcuity || ""} onChange={e => onChange('pinholeAcuity', e.target.value)} placeholder="Jaeger J1" className="h-8 text-xs mt-0.5" />
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs font-bold text-slate-800">Color Vision & Red Cap Test</Label>
+                <Input value={colorVision || ""} onChange={e => onChange('colorVision', e.target.value)} placeholder="14/14 Ishihara (Red cap symmetric)" className="h-8 text-xs mt-1" />
+              </div>
+              <div>
+                <Label className="text-xs font-bold text-slate-800">Intraocular Pressure (IOP mm Hg)</Label>
+                <div className="flex gap-2 mt-1">
+                  <Input value={iopOD || ""} onChange={e => onChange('iopOD', e.target.value)} placeholder="OD: 14" className="h-8 text-xs flex-1" />
+                  <Input value={iopOS || ""} onChange={e => onChange('iopOS', e.target.value)} placeholder="OS: 15" className="h-8 text-xs flex-1" />
+                </div>
+              </div>
+            </div>
+
+            <CheckboxFindings
+              label="Pupils & RAPD (Marcus Gunn)"
+              options={[
+                { id: "perrla-intact", label: "PERRLA (Pupils Equal, Round, Reactive)" },
+                { id: "rapd-right", label: "Right RAPD (Marcus Gunn Pupil)" },
+                { id: "rapd-left", label: "Left RAPD (Marcus Gunn Pupil)" },
+                { id: "light-near-dissociation", label: "Light-Near Dissociation (Argyll Robertson / Adie's)" },
+              ]}
+              selected={pupilsSse || []}
+              onChange={(v) => onChange('pupilsSse', v)}
+            />
+
+            <CheckboxFindings
+              label="Visual Fields by Confrontation"
+              options={[
+                { id: "vf-full", label: "Full to Confrontation Bilaterally" },
+                { id: "bitemporal-hemianopia", label: "Bitemporal Hemianopia (Pituitary Adenoma)" },
+                { id: "homonymous-left", label: "Left Homonymous Hemianopia" },
+                { id: "homonymous-right", label: "Right Homonymous Hemianopia" },
+              ]}
+              selected={visualFields || []}
+              onChange={(v) => onChange('visualFields', v)}
+            />
+
+            <CheckboxFindings
+              label="Fundoscopy & Ophthalmoscopy"
+              options={[
+                { id: "normal-fundus", label: "Normal Fundus / Sharp Optic Discs" },
+                { id: "papilledema", label: "Papilledema (Raised ICP)" },
+                { id: "av-nicking", label: "AV Nicking / Hypertensive Retinopathy" },
+                { id: "hemorrhages", label: "Retinal Flame Hemorrhages / Microaneurysms" },
+                { id: "exudates", label: "Cotton Wool Spots / Hard Exudates" },
+                { id: "cupping", label: "Increased Cup-to-Disc Ratio (>0.5 / Glaucoma)" },
+              ]}
+              selected={fundoscopy || []}
+              onChange={(v) => onChange('fundoscopy', v)}
+            />
+          </div>
         </div>
 
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label className="text-sm font-medium">Hearing Tests (Tuning Fork)</Label>
-            <div className="space-y-3">
-              <div className="space-y-1">
-                <Label className="text-xs">Weber Test</Label>
-                <Select value={weber} onValueChange={(v) => onChange('weber', v)}>
-                  <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="midline">Midline (Normal)</SelectItem>
-                    <SelectItem value="lateral-right">Lateralizes to Right</SelectItem>
-                    <SelectItem value="lateral-left">Lateralizes to Left</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex gap-4">
-                <div className="flex-1 space-y-1">
-                  <Label className="text-xs">Rinne (Right)</Label>
-                  <Select value={rinneR} onValueChange={(v) => onChange('rinneR', v)}>
-                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+        {/* DOMAIN 2: Auditory & Vestibular System */}
+        <div className="p-4 bg-white border border-slate-200 rounded-xl space-y-4 shadow-2xs">
+          <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
+            <Ear className="w-5 h-5 text-indigo-600" />
+            <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">
+              2. Auditory & Vestibular Sensory System (CN VIII)
+            </h3>
+          </div>
+
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label className="text-xs font-bold text-slate-800">Tuning Fork Tests (512 Hz)</Label>
+              <div className="space-y-2">
+                <div>
+                  <Label className="text-[11px] text-slate-500">Weber Test</Label>
+                  <Select value={weber || "midline"} onValueChange={(v) => onChange('weber', v)}>
+                    <SelectTrigger className="h-8 text-xs mt-0.5"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="ac>bc">AC {'>'} BC (Normal/Sensorineural)</SelectItem>
-                      <SelectItem value="bc>ac">BC {'>'} AC (Conductive Loss)</SelectItem>
+                      <SelectItem value="midline">Midline (Normal / Symmetric)</SelectItem>
+                      <SelectItem value="right">Lateralizes to Right Ear</SelectItem>
+                      <SelectItem value="left">Lateralizes to Left Ear</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="flex-1 space-y-1">
-                  <Label className="text-xs">Rinne (Left)</Label>
-                  <Select value={rinneL} onValueChange={(v) => onChange('rinneL', v)}>
-                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ac>bc">AC {'>'} BC (Normal/Sensorineural)</SelectItem>
-                      <SelectItem value="bc>ac">BC {'>'} AC (Conductive Loss)</SelectItem>
-                    </SelectContent>
-                  </Select>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label className="text-[11px] text-slate-500">Rinne (Right Ear)</Label>
+                    <Select value={rinneR || "ac>bc"} onValueChange={(v) => onChange('rinneR', v)}>
+                      <SelectTrigger className="h-8 text-xs mt-0.5"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ac>bc">AC {'>'} BC (Normal / Sensorineural)</SelectItem>
+                        <SelectItem value="bc>ac">BC {'>'} AC (Conductive Deficit)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-[11px] text-slate-500">Rinne (Left Ear)</Label>
+                    <Select value={rinneL || "ac>bc"} onValueChange={(v) => onChange('rinneL', v)}>
+                      <SelectTrigger className="h-8 text-xs mt-0.5"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ac>bc">AC {'>'} BC (Normal / Sensorineural)</SelectItem>
+                        <SelectItem value="bc>ac">BC {'>'} AC (Conductive Deficit)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
               </div>
             </div>
+
+            <CheckboxFindings
+              label="Whisper Voice & Audiometry Screen"
+              options={[
+                { id: "whisper-intact", label: "Whisper Test Intact Bilaterally" },
+                { id: "whisper-impaired-r", label: "Impaired Hearing Right Ear" },
+                { id: "whisper-impaired-l", label: "Impaired Hearing Left Ear" },
+              ]}
+              selected={whisperTest || []}
+              onChange={(v) => onChange('whisperTest', v)}
+            />
+
+            <CheckboxFindings
+              label="Vestibular, Balance & Dix-Hallpike"
+              options={[
+                { id: "romberg-negative", label: "Romberg Test Negative (Stable balance)" },
+                { id: "romberg-positive", label: "Romberg Test Positive (Sensory Ataxia)" },
+                { id: "fukuda-intact", label: "Fukuda Stepping Test Normal (<30° rotation)" },
+                { id: "dix-hallpike-pos-r", label: "Dix-Hallpike Positive Right (Posterior BPPV)" },
+                { id: "dix-hallpike-pos-l", label: "Dix-Hallpike Positive Left (Posterior BPPV)" },
+              ]}
+              selected={vestibularExam || []}
+              onChange={(v) => onChange('vestibularExam', v)}
+            />
+
+            <CheckboxFindings
+              label="Otoscopy & Tympanic Membranes"
+              options={[
+                { id: "normal-tm", label: "Normal TMs / Crisp Light Reflex" },
+                { id: "erythema", label: "TM Erythema / Bulging (AOM)" },
+                { id: "effusion", label: "Middle Ear Effusion (Serous OM)" },
+                { id: "perforation", label: "TM Perforation" },
+                { id: "cerumen", label: "Impacted Cerumen" },
+              ]}
+              selected={otoscopy || []}
+              onChange={(v) => onChange('otoscopy', v)}
+            />
+          </div>
+        </div>
+
+        {/* DOMAIN 3: Olfactory System */}
+        <div className="p-4 bg-white border border-slate-200 rounded-xl space-y-4 shadow-2xs">
+          <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
+            <Wind className="w-5 h-5 text-indigo-600" />
+            <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">
+              3. Olfactory Sensory System (CN I)
+            </h3>
           </div>
 
-          <CheckboxFindings
-            label="Otoscopy"
-            options={[
-              { id: "normal-tm", label: "Normal TMs / Light Reflex Intact" },
-              { id: "erythema", label: "Erythema / Bulging" },
-              { id: "effusion", label: "Middle Ear Effusion" },
-              { id: "perforation", label: "Perforation" },
-              { id: "cerumen", label: "Impacted Cerumen" },
-            ]}
-            selected={otoscopy}
-            onChange={(v) => onChange('otoscopy', v)}
-          />
+          <div className="space-y-3">
+            <CheckboxFindings
+              label="Smell Identification & Olfactory Status"
+              options={[
+                { id: "normosmia", label: "Normosmia (Intact smell discrimination bilaterally)" },
+                { id: "anosmia-bilateral", label: "Bilateral Anosmia (Complete loss of smell)" },
+                { id: "anosmia-right", label: "Unilateral Anosmia (Right Nare)" },
+                { id: "anosmia-left", label: "Unilateral Anosmia (Left Nare)" },
+                { id: "hyposmia", label: "Hyposmia (Reduced smell perception)" },
+                { id: "parosmia", label: "Parosmia / Dysosmia (Distorted smell perception)" },
+                { id: "phantosmia", label: "Phantosmia (Olfactory Hallucinations)" },
+              ]}
+              selected={olfactoryExam || []}
+              onChange={(v) => onChange('olfactoryExam', v)}
+            />
+
+            <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-[11px] text-slate-600 space-y-1">
+              <span className="font-bold text-slate-800">Clinical High-Yield Note (CN I):</span>
+              <p>
+                Unilateral anosmia suggests anterior cranial fossa tumor (e.g. Olfactory Groove Meningioma - Foster Kennedy Syndrome). Bilateral anosmia warrants screening for Parkinson's disease, post-viral neuropathy (COVID-19), or cribriform trauma.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* DOMAIN 4: Gustatory System */}
+        <div className="p-4 bg-white border border-slate-200 rounded-xl space-y-4 shadow-2xs">
+          <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
+            <Sparkles className="w-5 h-5 text-indigo-600" />
+            <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">
+              4. Gustatory System (CN VII, IX, X)
+            </h3>
+          </div>
+
+          <div className="space-y-3">
+            <CheckboxFindings
+              label="Taste Perception & Discrimination"
+              options={[
+                { id: "normal-taste", label: "Normogeusia (Intact Sweet, Sour, Salty, Bitter)" },
+                { id: "ageusia", label: "Ageusia (Complete loss of taste)" },
+                { id: "hypogeusia", label: "Hypogeusia (Diminished taste acuity)" },
+                { id: "dysgeusia-metallic", label: "Dysgeusia / Metallic Taste (Drug-Induced)" },
+                { id: "cn7-anterior-taste-loss", label: "Anterior 2/3 Tongue Taste Loss (Chorda Tympani / CN VII)" },
+                { id: "cn9-posterior-taste-loss", label: "Posterior 1/3 Tongue Taste Loss (CN IX)" },
+              ]}
+              selected={gustatoryExam || []}
+              onChange={(v) => onChange('gustatoryExam', v)}
+            />
+
+            <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-[11px] text-slate-600 space-y-1">
+              <span className="font-bold text-slate-800">Anatomical Innervation:</span>
+              <p>
+                Anterior 2/3 of tongue taste is mediated by CN VII (Chorda Tympani). Posterior 1/3 is mediated by CN IX (Glossopharyngeal). Epiglottis/Pharynx taste is CN X. Dysgeusia is common with Zinc deficiency, Metronidazole, Terbinafine, or ACE inhibitors.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* DOMAIN 5: Somatosensory & Trigeminal System */}
+        <div className="p-4 bg-white border border-slate-200 rounded-xl space-y-4 shadow-2xs lg:col-span-2">
+          <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
+            <Hand className="w-5 h-5 text-indigo-600" />
+            <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">
+              5. Trigeminal Facial & Peripheral Somatosensory System (CN V & Peripheral Tracks)
+            </h3>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <CheckboxFindings
+              label="Trigeminal Cranial Divisions (CN V)"
+              options={[
+                { id: "v1-intact", label: "CN V1 Ophthalmic Division Intact (Forehead / Corneal)" },
+                { id: "v2-intact", label: "CN V2 Maxillary Division Intact (Cheek / Upper Lip)" },
+                { id: "v3-intact", label: "CN V3 Mandibular Division Intact (Jaw / Lower Lip)" },
+                { id: "corneal-intact", label: "Corneal Reflex Intact Bilaterally (CN V1 / VII)" },
+                { id: "trigeminal-neuralgia", label: "Trigeminal Trigger Point Pain (Tic Douloureux)" },
+              ]}
+              selected={trigeminalSensory || []}
+              onChange={(v) => onChange('trigeminalSensory', v)}
+            />
+
+            <div className="space-y-3">
+              <div>
+                <Label className="text-xs font-bold text-slate-800">Semmes-Weinstein 10g Monofilament (Diabetic Neuropathy)</Label>
+                <Input value={monofilamentTest || ""} onChange={e => onChange('monofilamentTest', e.target.value)} placeholder="10/10 Sites Intact Bilaterally" className="h-8 text-xs mt-1" />
+              </div>
+
+              <div>
+                <Label className="text-xs font-bold text-slate-800">2-Point Discrimination & Vibration (128 Hz)</Label>
+                <Input value={twoPointDiscrimination || ""} onChange={e => onChange('twoPointDiscrimination', e.target.value)} placeholder="2-Point < 5mm at fingertips; Vibration >10s at hallux" className="h-8 text-xs mt-1" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      {/* Triage & Clinical Decision Rules Component */}
+      <SseSpecializedCalculators onInsertToNotes={(text) => onChange('notes', notes ? `${notes}\n${text}` : text)} />
+
+      {/* Expanded Smart Phrase Library */}
+      <div className="space-y-2.5 p-4 bg-slate-50 border border-slate-200 rounded-xl">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-indigo-600" />
+            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+              Expanded Smart Phrase Library for SSE
+            </h4>
+          </div>
+          <span className="text-[11px] text-slate-500 font-medium">Click any chip to append phrase to Clinical Notes</span>
+        </div>
+
+        <div className="flex flex-wrap gap-2 pt-1">
+          {sseSmartPhrases.map((phrase, idx) => (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => {
+                const updated = notes ? `${notes}\n\n${phrase.text}` : phrase.text;
+                onChange('notes', updated);
+                toast.success(`Inserted "${phrase.title}" into notes!`);
+              }}
+              className="px-3 py-1.5 bg-white hover:bg-indigo-50 hover:border-indigo-300 text-slate-700 hover:text-indigo-900 border border-slate-200 rounded-lg text-xs font-semibold shadow-2xs transition-all cursor-pointer flex items-center gap-1.5"
+            >
+              <Plus className="w-3 h-3 text-indigo-500 shrink-0" />
+              <span>{phrase.title}</span>
+            </button>
+          ))}
         </div>
       </div>
 
       <div className="space-y-1.5">
-        <Label className="text-sm">Notes</Label>
-        <Textarea placeholder="Enter detailed SSE findings..." value={notes || ""} onChange={e => onChange('notes', e.target.value)} />
+        <Label className="text-sm font-semibold text-slate-800">Specialized Sensory Exam Clinical Narrative Notes</Label>
+        <Textarea 
+          placeholder="Enter detailed clinical narrative about SSE findings..." 
+          value={notes || ""} 
+          onChange={e => onChange('notes', e.target.value)} 
+          className="min-h-[100px] border-slate-200 focus:ring-2 focus:ring-indigo-500 text-sm" 
+        />
       </div>
     </div>
   );
@@ -4018,6 +5858,26 @@ export function PhysicalExam() {
     status: 'untouched'
   });
 
+  const [bodyPins, setBodyPins] = useState<BodyPin[]>([]);
+
+  const handleMarkAllSystemsWNL = () => {
+    setGeneralFindings(prev => ({ ...prev, appearance: 'normal', status: 'normal', notes: 'Well-developed, well-nourished, in no acute distress.' }));
+    setHeentFindings(prev => ({ ...prev, status: 'normal', notes: 'Normocephalic, atraumatic. Pupils equal, round, reactive to light. EOMI. Oropharynx clear. TMs clear bilaterally. Neck supple, no lymphadenopathy.' }));
+    setSseFindings(prev => ({ ...prev, status: 'normal', notes: 'Visual acuity 20/20 OU. TMs clear with normal light reflex bilaterally. Hearing intact.' }));
+    setRespiratoryFindings(prev => ({ ...prev, status: 'normal', notes: 'Clear to auscultation bilaterally. No wheezes, rales, or rhonchi. Good symmetric air entry.' }));
+    setCardiovascularFindings(prev => ({ ...prev, status: 'normal', notes: 'Regular rate and rhythm. Normal S1 and S2. No murmurs, gallops, or rubs. Peripheral pulses intact, no edema.' }));
+    setGastrointestinalFindings(prev => ({ ...prev, status: 'normal', notes: 'Soft, non-tender, non-distended. Normal active bowel sounds. No organomegaly or peritoneal signs.' }));
+    setMusculoskeletalFindings(prev => ({ ...prev, status: 'normal', notes: 'Normal active range of motion in all joints. No joint swelling, erythema, or tenderness. Muscle strength 5/5 throughout.' }));
+    setNeurologicalFindings(prev => ({ ...prev, status: 'normal', notes: 'Alert and oriented x 4. Cranial nerves II-XII intact. Sensation and reflexes normal throughout. Gait steady.' }));
+    setSkinFindings(prev => ({ ...prev, status: 'normal', notes: 'Warm, dry, intact. Normal skin turgor. No suspicious rash or lesions.' }));
+    setPsychiatricFindings(prev => ({ ...prev, status: 'normal', notes: 'Normal affect, appropriate mood, pleasant and cooperative. Coherent thought process.' }));
+    setGeriatricFindings(prev => ({ ...prev, status: 'normal', notes: 'Unimpaired mobility, normal Mini-Cog cognition screen.' }));
+
+    toast.success("Complete WNL Baseline Applied!", {
+      description: "Marked all 10 organ systems as Within Normal Limits (WNL)."
+    });
+  };
+
   const handleGeneralChange = (field: string, value: any, status: string = 'abnormal') => {
     setGeneralFindings(prev => ({ ...prev, [field]: value, status }));
   };
@@ -4175,20 +6035,54 @@ Format the output as a professional medical note under the heading "Physical Exa
           <h2 className="text-2xl font-bold text-slate-900">Physical Examination</h2>
           <p className="text-slate-500">Conduct and document comprehensive physical examinations</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-2.5 items-center">
+          {/* One-Click WNL Macro Button */}
+          <button
+            type="button"
+            onClick={handleMarkAllSystemsWNL}
+            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all"
+          >
+            <CheckCircle2 className="w-4 h-4 text-emerald-200" />
+            Mark All Normal (WNL)
+          </button>
+
+          {/* AI Differential Generator Modal Trigger */}
+          <AIDifferentialGenerator
+            abnormalFindings={{
+              general: generalFindings,
+              heent: heentFindings,
+              sse: sseFindings,
+              respiratory: respiratoryFindings,
+              cardiovascular: cardiovascularFindings,
+              gastrointestinal: gastrointestinalFindings,
+              musculoskeletal: musculoskeletalFindings,
+              neurological: neurologicalFindings,
+              skin: skinFindings,
+              psychiatric: psychiatricFindings,
+              geriatric: geriatricFindings
+            }}
+            vitals={vitals}
+            patientId={selectedPatient?.id}
+            patientName={selectedPatient ? `${selectedPatient.firstName} ${selectedPatient.lastName}` : undefined}
+            onExportToSoap={(text) => {
+              setExamSummary((prev) => (prev ? `${prev}\n\n[AI Assessment Differential]\n${text}` : text));
+            }}
+          />
+
           <button 
             onClick={generateExamSummary}
             disabled={isGenerating}
-            className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors"
+            className="px-3.5 py-2 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 transition-colors shadow-sm"
           >
-            {isGenerating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />} 
-            {isGenerating ? 'Generating...' : 'Generate Summary'}
+            {isGenerating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4 text-amber-500" />} 
+            {isGenerating ? 'Generating...' : 'Summary'}
           </button>
+
           <button 
             onClick={handleFinalize}
-            className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center gap-2 transition-colors"
+            className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-xs font-semibold hover:bg-indigo-700 flex items-center gap-1.5 transition-colors shadow-sm"
           >
-            <Check className="w-4 h-4" /> Finalize Examination
+            <Check className="w-4 h-4" /> Finalize
           </button>
         </div>
       </div>
@@ -4470,6 +6364,7 @@ Format the output as a professional medical note under the heading "Physical Exa
                 listeningField={listeningField}
                 onMarkNormal={() => handleMarkAllNormal('general')}
                 onClear={() => handleClearTab('general')}
+                vitals={vitals}
               />
             </div>
           )}
@@ -4481,6 +6376,11 @@ Format the output as a professional medical note under the heading "Physical Exa
                 onChange={(field, value) => setHeentFindings(prev => ({ ...prev, [field]: value, status: 'abnormal' }))} 
                 onMarkNormal={() => handleMarkAllNormal('heent')}
                 onClear={() => handleClearTab('heent')}
+                onNavigateToTab={(tabId) => setActiveTab(tabId)}
+                onSyncToSse={() => {
+                  setActiveTab('sse');
+                  toast.success("HEENT exam findings synced & navigated to Specialized Sensory Exam (SSE)!");
+                }}
               />
             </div>
           )}
@@ -4583,6 +6483,43 @@ Format the output as a professional medical note under the heading "Physical Exa
               />
             </div>
           )}
+
+          {activeTab === 'body-map' && (
+            <div className="animate-in fade-in duration-300">
+              <AnatomicalBodyMap
+                pins={bodyPins}
+                onPinsChange={setBodyPins}
+                onSummaryGenerate={(sum) => setExamSummary(prev => prev ? `${prev}\n\n[Anatomical Annotations]\n${sum}` : `[Anatomical Annotations]\n${sum}`)}
+              />
+            </div>
+          )}
+
+          {activeTab === 'longitudinal' && (
+            <div className="animate-in fade-in duration-300">
+              <LongitudinalMatrix
+                patientId={selectedPatient?.id}
+                currentExamData={{
+                  general: generalFindings,
+                  respiratory: respiratoryFindings,
+                  cardiovascular: cardiovascularFindings,
+                  gastrointestinal: gastrointestinalFindings,
+                  neurological: neurologicalFindings
+                }}
+                currentVitals={vitals}
+              />
+            </div>
+          )}
+
+          {activeTab === 'adaptive-demo' && (
+            <div className="animate-in fade-in duration-300">
+              <DemographicExamAdaptive
+                patient={{
+                  age: selectedPatient?.age ? Number(selectedPatient.age) : undefined,
+                  name: selectedPatient ? `${selectedPatient.firstName} ${selectedPatient.lastName}` : undefined
+                }}
+              />
+            </div>
+          )}
         </div>
         </div>
 
@@ -4642,16 +6579,195 @@ interface GeneralTabProps {
   listeningField: string | null;
   onMarkNormal: () => void;
   onClear: () => void;
+  vitals?: Record<string, any>;
 }
 
-function GeneralTab({ findings, onChange, onDictation, listeningField, onMarkNormal, onClear }: GeneralTabProps) {
+function GeneralTab({ findings, onChange, onDictation, listeningField, onMarkNormal, onClear, vitals = {} }: GeneralTabProps) {
   const [activeCategories, setActiveCategories] = useState<string[]>([]);
+  const [isRedFlagsCollapsed, setIsRedFlagsCollapsed] = useState(true);
 
   // Sync active categories with findings on mount
   useEffect(() => {
     const active = Object.keys(findings?.detailed || {}).filter(key => (findings?.detailed || {})[key] && (findings?.detailed || {})[key].length > 0);
     setActiveCategories(prev => Array.from(new Set([...prev, ...active])));
   }, [findings.detailed]);
+
+  // Compute Vitals & BMI Auto-Sync Suggestions
+  const vitalsSuggestions = useMemo(() => {
+    const suggestions: { id: string; category: string; option: string; reason: string; badge: string }[] = [];
+
+    // BMI Calculation & Build Sync
+    const bmiNum = Number(vitals.bmi);
+    let derivedBmi = bmiNum;
+    if ((!derivedBmi || isNaN(derivedBmi)) && vitals.weight && vitals.height) {
+      const wKg = Number(vitals.weight);
+      const hM = Number(vitals.height) / 100;
+      if (wKg > 0 && hM > 0) derivedBmi = Number((wKg / (hM * hM)).toFixed(1));
+    }
+
+    if (derivedBmi > 0) {
+      if (derivedBmi < 18.5) {
+        suggestions.push({
+          id: 'bmi-underweight',
+          category: 'build',
+          option: 'Underweight',
+          reason: `Calculated BMI ${derivedBmi} (< 18.5)`,
+          badge: 'bg-amber-100 text-amber-800 border-amber-300'
+        });
+      } else if (derivedBmi >= 18.5 && derivedBmi <= 24.9) {
+        suggestions.push({
+          id: 'bmi-normal',
+          category: 'build',
+          option: 'Normal',
+          reason: `Calculated BMI ${derivedBmi} (18.5–24.9)`,
+          badge: 'bg-emerald-100 text-emerald-800 border-emerald-300'
+        });
+      } else if (derivedBmi >= 25.0 && derivedBmi <= 29.9) {
+        suggestions.push({
+          id: 'bmi-overweight',
+          category: 'build',
+          option: 'Overweight',
+          reason: `Calculated BMI ${derivedBmi} (25.0–29.9)`,
+          badge: 'bg-amber-100 text-amber-800 border-amber-300'
+        });
+      } else if (derivedBmi >= 30.0 && derivedBmi <= 39.9) {
+        suggestions.push({
+          id: 'bmi-obese',
+          category: 'build',
+          option: 'Obese',
+          reason: `Calculated BMI ${derivedBmi} (30.0–39.9)`,
+          badge: 'bg-rose-100 text-rose-800 border-rose-300'
+        });
+      } else if (derivedBmi >= 40.0) {
+        suggestions.push({
+          id: 'bmi-morbid',
+          category: 'build',
+          option: 'Morbidly Obese',
+          reason: `Calculated BMI ${derivedBmi} (>= 40.0)`,
+          badge: 'bg-purple-100 text-purple-800 border-purple-300'
+        });
+      }
+    }
+
+    // Oxygen Saturation < 92% -> Cyanosis & Distress
+    const spo2 = Number(vitals.oxygenSaturation);
+    if (spo2 > 0 && spo2 < 92) {
+      suggestions.push({
+        id: 'spo2-cyanosis-skin',
+        category: 'skinSigns',
+        option: 'Cyanosis',
+        reason: `Hypoxia SpO2 ${spo2}% (< 92%)`,
+        badge: 'bg-sky-100 text-sky-800 border-sky-300'
+      });
+      suggestions.push({
+        id: 'spo2-cyanosis-ext',
+        category: 'extremities',
+        option: 'Cyanosis',
+        reason: `Peripheral hypoxia SpO2 ${spo2}%`,
+        badge: 'bg-sky-100 text-sky-800 border-sky-300'
+      });
+      suggestions.push({
+        id: 'spo2-distressed',
+        category: 'generalLook',
+        option: 'Distressed',
+        reason: `Respiratory distress from SpO2 ${spo2}%`,
+        badge: 'bg-rose-100 text-rose-800 border-rose-300'
+      });
+    }
+
+    // BP Hypo / Hypertensive Crisis
+    const sys = Number(vitals.bpSystolic);
+    const dia = Number(vitals.bpDiastolic);
+    if (sys > 0 && sys < 90) {
+      suggestions.push({
+        id: 'bp-pallor',
+        category: 'skinSigns',
+        option: 'Pallor',
+        reason: `Hypotension BP ${sys}/${dia || 60} mmHg`,
+        badge: 'bg-amber-100 text-amber-800 border-amber-300'
+      });
+      suggestions.push({
+        id: 'bp-cold-ext',
+        category: 'extremities',
+        option: 'Cold extremities',
+        reason: `Hypoperfusion BP ${sys}/${dia || 60} mmHg`,
+        badge: 'bg-amber-100 text-amber-800 border-amber-300'
+      });
+    } else if (sys >= 180 || dia >= 120) {
+      suggestions.push({
+        id: 'bp-distress',
+        category: 'generalLook',
+        option: 'Distressed',
+        reason: `Hypertensive urgency/crisis ${sys}/${dia} mmHg`,
+        badge: 'bg-rose-100 text-rose-800 border-rose-300'
+      });
+    }
+
+    // Temperature > 38.0°C / 100.4°F
+    const temp = Number(vitals.temperature);
+    if (temp >= 38.0 || temp >= 100.4) {
+      suggestions.push({
+        id: 'fever-ill',
+        category: 'generalLook',
+        option: 'Ill-appearing',
+        reason: `Febrile temperature ${temp}°`,
+        badge: 'bg-rose-100 text-rose-800 border-rose-300'
+      });
+      suggestions.push({
+        id: 'fever-dehydration',
+        category: 'skinSigns',
+        option: 'Dehydration',
+        reason: `Febrile losses (${temp}°)`,
+        badge: 'bg-amber-100 text-amber-800 border-amber-300'
+      });
+    }
+
+    // Pain Scale >= 7
+    const pain = Number(vitals.painScale);
+    if (pain >= 7) {
+      suggestions.push({
+        id: 'pain-grimace',
+        category: 'facialExpression',
+        option: 'Grimace',
+        reason: `Severe Pain Scale ${pain}/10`,
+        badge: 'bg-rose-100 text-rose-800 border-rose-300'
+      });
+      suggestions.push({
+        id: 'pain-distress',
+        category: 'generalLook',
+        option: 'Distressed',
+        reason: `Severe Pain Scale ${pain}/10`,
+        badge: 'bg-amber-100 text-amber-800 border-amber-300'
+      });
+    }
+
+    return suggestions;
+  }, [vitals]);
+
+  const handleApplySingleSuggestion = (s: { category: string; option: string; reason: string }) => {
+    const currentDetailed = findings.detailed || {};
+    const currentOptions = currentDetailed[s.category] || [];
+    if (!currentOptions.includes(s.option)) {
+      const updated = { ...currentDetailed, [s.category]: [...currentOptions, s.option] };
+      onChange('detailed', updated, 'abnormal');
+      toast.success(`Applied ${s.option}`, { description: s.reason });
+    }
+  };
+
+  const handleApplyAllVitalsSuggestions = () => {
+    if (vitalsSuggestions.length === 0) return;
+    const updatedDetailed = { ...(findings.detailed || {}) };
+    vitalsSuggestions.forEach(s => {
+      const existing = updatedDetailed[s.category] || [];
+      if (!existing.includes(s.option)) {
+        updatedDetailed[s.category] = [...existing, s.option];
+      }
+    });
+    onChange('detailed', updatedDetailed, 'abnormal');
+    toast.success('Synced All Vitals Indications', {
+      description: `Applied ${vitalsSuggestions.length} vital sign / BMI cross-referenced findings.`
+    });
+  };
 
   const toggleCategory = (category: string, checked: boolean) => {
     if (checked) {
@@ -4733,6 +6849,67 @@ function GeneralTab({ findings, onChange, onDictation, listeningField, onMarkNor
     }
   ];
 
+  // Compute High-Risk Red Flag Alerts
+  const redFlags = useMemo(() => {
+    const flags: { title: string; category: string; description: string; urgency: 'critical' | 'high' }[] = [];
+    const detailed = findings.detailed || {};
+
+    // Consciousness
+    if (detailed.consciousLevel?.includes('Comatose')) {
+      flags.push({ title: 'Comatose State', category: 'Consciousness', description: 'Immediate airway protection & GCS evaluation required.', urgency: 'critical' });
+    } else if (detailed.consciousLevel?.includes('Stuporous') || detailed.consciousLevel?.includes('Obtunded')) {
+      flags.push({ title: 'Obtunded / Stuporous Sensorium', category: 'Consciousness', description: 'Depressed level of consciousness; evaluate for encephalopathy, acute stroke, or metabolic collapse.', urgency: 'critical' });
+    }
+
+    // Posture
+    if (detailed.posture?.includes('Decerebrate') || detailed.posture?.includes('Decorticate')) {
+      flags.push({ title: 'Pathologic Posturing (Decerebrate/Decorticate)', category: 'Neurologic', description: 'Severe brainstem/corticospinal dysfunction; urgent neurosurgical evaluation.', urgency: 'critical' });
+    }
+    if (detailed.posture?.includes('Stooped') && detailed.generalLook?.includes('Ill-appearing')) {
+      flags.push({ title: 'Severe Antalgic / Guarding Posture', category: 'Physical Distress', description: 'Significant pain or acute abdominal/musculoskeletal pathology.', urgency: 'high' });
+    }
+
+    // Skin & Perfusion
+    if (detailed.skinSigns?.includes('Cyanosis') || detailed.skinSigns?.includes('Dehydration') && detailed.skinSigns?.includes('Pallor')) {
+      flags.push({ title: 'Central Cyanosis / Severe Hypoperfusion', category: 'Oxygenation & Perfusion', description: 'Inadequate tissue oxygenation or acute blood loss/shock state.', urgency: 'critical' });
+    }
+    if (detailed.extremities?.includes('Cold extremities') && detailed.extremities?.includes('Capillary refill > 2s')) {
+      flags.push({ title: 'Poor Peripheral Perfusion / Shock Signs', category: 'Hemodynamics', description: 'Delayed capillary refill and cold extremities indicate systemic hypoperfusion.', urgency: 'critical' });
+    }
+
+    // Build & General Look
+    if (detailed.generalLook?.includes('Cachectic') || detailed.build?.includes('Cachexia')) {
+      flags.push({ title: 'Severe Cachexia / Metabolic Wasting', category: 'Nutritional / Malignancy', description: 'Severe catabolic state; screen for underlying malignancy, severe heart failure, or end-stage illness.', urgency: 'high' });
+    }
+
+    // Distress Tier & Pain
+    if (findings.distressTier === 'unstable') {
+      flags.push({ title: 'Hemodynamically Unstable Appearance', category: 'Triage Tier', description: 'Critical status requiring immediate resuscitation protocol & continuous monitoring.', urgency: 'critical' });
+    } else if (findings.distressTier === 'severe') {
+      flags.push({ title: 'Severe Clinical Distress', category: 'Triage Tier', description: 'Acute physiologic distress or severe acute pain presentation.', urgency: 'high' });
+    }
+
+    if ((findings.painScale ?? vitals.painScale ?? 0) >= 9) {
+      flags.push({ title: `Extreme Pain (Score: ${findings.painScale ?? vitals.painScale}/10)`, category: 'Analgesia', description: 'Requires rapid parenteral analgesia and targeted diagnostic workup.', urgency: 'high' });
+    }
+
+    return flags;
+  }, [findings, vitals]);
+
+  const handleInsertRedFlagsToNotes = () => {
+    if (redFlags.length === 0) return;
+    const text = `[RED FLAG CRITICAL FINDINGS]:\n` + redFlags.map(f => `• ${f.title} (${f.category}): ${f.description}`).join('\n');
+    const currentNote = findings.notes || "";
+    if (!currentNote.trim()) {
+      onChange('notes', text);
+    } else if (!currentNote.includes('[RED FLAG CRITICAL FINDINGS]')) {
+      onChange('notes', `${currentNote}\n\n${text}`);
+    }
+    toast.success('Inserted Red Flags into Notes', {
+      description: 'Critical findings are now embedded in the exam summary and AI differential.'
+    });
+  };
+
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
       <SectionHeader 
@@ -4740,7 +6917,281 @@ function GeneralTab({ findings, onChange, onDictation, listeningField, onMarkNor
         onMarkNormal={onMarkNormal} 
         onClear={onClear} 
       />
-        
+
+      {/* Triage & Distress Assessment Scale (Pain & Instability) */}
+      <div className="bg-slate-50/90 border border-slate-200 rounded-xl p-4 space-y-4 shadow-xs">
+        <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
+          <div className="flex items-center gap-2">
+            <Activity className="w-4 h-4 text-indigo-600" />
+            <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+              Triage & Distress Scale (Pain & Clinical Instability)
+            </span>
+          </div>
+          <span className="text-[11px] font-medium text-slate-500">Standardized Triage Assessment</span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* 0-10 Pain Scale Slider */}
+          <div className="space-y-2.5 bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                <Thermometer className="w-3.5 h-3.5 text-amber-500" />
+                Pain Scale (NRS 0–10)
+              </label>
+              <div className={cn(
+                "px-2.5 py-0.5 rounded-full text-xs font-bold border",
+                (findings.painScale ?? vitals.painScale ?? 0) == 0 && "bg-emerald-50 text-emerald-700 border-emerald-200",
+                (findings.painScale ?? vitals.painScale ?? 0) >= 1 && (findings.painScale ?? vitals.painScale ?? 0) <= 3 && "bg-emerald-100 text-emerald-800 border-emerald-300",
+                (findings.painScale ?? vitals.painScale ?? 0) >= 4 && (findings.painScale ?? vitals.painScale ?? 0) <= 6 && "bg-amber-100 text-amber-800 border-amber-300",
+                (findings.painScale ?? vitals.painScale ?? 0) >= 7 && (findings.painScale ?? vitals.painScale ?? 0) <= 9 && "bg-rose-100 text-rose-800 border-rose-300",
+                (findings.painScale ?? vitals.painScale ?? 0) == 10 && "bg-purple-100 text-purple-900 border-purple-300"
+              )}>
+                Score: {findings.painScale ?? vitals.painScale ?? 0} / 10
+                {" "}
+                {(findings.painScale ?? vitals.painScale ?? 0) == 0 ? "😀 (No Pain)" :
+                 (findings.painScale ?? vitals.painScale ?? 0) <= 3 ? "🙂 (Mild)" :
+                 (findings.painScale ?? vitals.painScale ?? 0) <= 6 ? "😐 (Moderate)" :
+                 (findings.painScale ?? vitals.painScale ?? 0) <= 9 ? "😣 (Severe)" : "😫 (Unbearable)"}
+              </div>
+            </div>
+
+            <input
+              type="range"
+              min="0"
+              max="10"
+              step="1"
+              value={findings.painScale ?? vitals.painScale ?? 0}
+              onChange={(e) => {
+                const pVal = Number(e.target.value);
+                onChange('painScale', pVal);
+                // Auto sync distress tier if set to severe pain
+                if (pVal >= 7 && (!findings.distressTier || findings.distressTier === 'none' || findings.distressTier === 'mild')) {
+                  onChange('distressTier', 'severe');
+                }
+              }}
+              className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+            />
+
+            <div className="flex justify-between items-center text-[10px] text-slate-400 font-medium px-0.5">
+              <span>0 (None)</span>
+              <span>2</span>
+              <span>4</span>
+              <span>6</span>
+              <span>8</span>
+              <span>10 (Worst)</span>
+            </div>
+
+            <div className="flex gap-1.5 pt-1">
+              {[0, 2, 5, 8, 10].map(p => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => {
+                    onChange('painScale', p);
+                    if (p >= 7) onChange('distressTier', 'severe');
+                  }}
+                  className={cn(
+                    "flex-1 py-1 text-[11px] rounded-lg border font-medium transition-all cursor-pointer",
+                    (findings.painScale ?? vitals.painScale ?? 0) === p
+                      ? "bg-indigo-600 text-white border-indigo-600 font-bold shadow-xs"
+                      : "bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200"
+                  )}
+                >
+                  {p === 0 ? "0 Pain" : p === 10 ? "10 Max" : `${p}`}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Distress Tier Indicator */}
+          <div className="space-y-2.5 bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+            <label className="text-xs font-semibold text-slate-700 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 text-rose-500" />
+                Visual Distress Tier Indicator
+              </span>
+              <span className="text-[10px] text-slate-400 font-normal">Select clinical tier</span>
+            </label>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {[
+                { id: 'none', label: '🟢 None (NAD)', sub: 'Comfortable, no acute distress', color: 'border-emerald-200 bg-emerald-50 text-emerald-900', ring: 'ring-emerald-500' },
+                { id: 'mild', label: '🟡 Mild Distress', sub: 'Mild pain/discomfort', color: 'border-amber-200 bg-amber-50 text-amber-900', ring: 'ring-amber-500' },
+                { id: 'moderate', label: '🟠 Moderate Distress', sub: 'Tachypneic, grimacing', color: 'border-orange-200 bg-orange-50 text-orange-900', ring: 'ring-orange-500' },
+                { id: 'severe', label: '🔴 Severe Distress', sub: 'Tripoding, accessory muscle use', color: 'border-rose-200 bg-rose-50 text-rose-900', ring: 'ring-rose-500' },
+                { id: 'unstable', label: '🟣 Hemodynamically Unstable', sub: 'Hypoperfused, altered, critically ill', color: 'border-purple-200 bg-purple-50 text-purple-950', ring: 'ring-purple-500' }
+              ].map(tier => {
+                const isSelected = (findings.distressTier || 'none') === tier.id;
+                return (
+                  <button
+                    key={tier.id}
+                    type="button"
+                    onClick={() => {
+                      onChange('distressTier', tier.id);
+                      if (tier.id !== 'none') {
+                        onChange('appearance', 'abnormal', 'abnormal');
+                      }
+                      toast.info(`Set Distress Tier: ${tier.label.split(' ')[1] || tier.label}`);
+                    }}
+                    className={cn(
+                      "p-2 rounded-lg border text-left transition-all cursor-pointer text-xs flex flex-col justify-between",
+                      tier.color,
+                      tier.id === 'unstable' && 'sm:col-span-2',
+                      isSelected && `ring-2 ${tier.ring} font-bold shadow-xs bg-white`
+                    )}
+                  >
+                    <div className="flex items-center justify-between font-semibold">
+                      <span>{tier.label}</span>
+                      {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-indigo-600 shrink-0" />}
+                    </div>
+                    <span className="text-[10px] text-slate-500 font-normal mt-0.5 leading-tight">{tier.sub}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Vitals & BMI Auto-Sync Suggestions Panel */}
+      {vitalsSuggestions.length > 0 && (
+        <div className="bg-indigo-50/70 border border-indigo-200 rounded-xl p-4 space-y-3 shadow-2xs animate-in fade-in duration-200">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Activity className="w-4 h-4 text-indigo-600 animate-pulse" />
+              <span className="text-xs font-bold text-indigo-950 uppercase tracking-wider">
+                Vitals & BMI Cross-Reference Suggestions ({vitalsSuggestions.length})
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={handleApplyAllVitalsSuggestions}
+              className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs self-start sm:self-auto cursor-pointer"
+            >
+              <Zap className="w-3.5 h-3.5 text-amber-300" />
+              Sync All ({vitalsSuggestions.length})
+            </button>
+          </div>
+
+          <p className="text-xs text-indigo-800/80">
+            Detected clinical indications from recorded vitals & BMI. Click any badge to apply:
+          </p>
+
+          <div className="flex flex-wrap gap-2 pt-1">
+            {vitalsSuggestions.map((s) => {
+              const isAlreadyAdded = (findings.detailed?.[s.category] || []).includes(s.option);
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => handleApplySingleSuggestion(s)}
+                  disabled={isAlreadyAdded}
+                  className={cn(
+                    "px-3 py-1.5 rounded-lg border text-xs font-medium flex items-center gap-2 transition-all cursor-pointer shadow-2xs",
+                    s.badge,
+                    isAlreadyAdded && "opacity-50 cursor-not-allowed bg-slate-100 text-slate-500 border-slate-200"
+                  )}
+                >
+                  <span className="font-bold">{s.option}</span>
+                  <span className="text-[10px] opacity-80 font-mono">({s.reason})</span>
+                  {isAlreadyAdded ? (
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  ) : (
+                    <Plus className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* High-Risk Red Flag Alerts Banner */}
+      {redFlags.length > 0 && (
+        <div className="bg-rose-50 border-2 border-rose-400/80 rounded-xl p-4 space-y-3 shadow-md animate-in slide-in-from-top-2 duration-300">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-rose-200 pb-2.5">
+            <div 
+              className="flex items-center gap-2.5 cursor-pointer select-none group"
+              onClick={() => setIsRedFlagsCollapsed(prev => !prev)}
+            >
+              <div className="p-1.5 bg-rose-600 text-white rounded-lg animate-pulse shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-xs font-extrabold text-rose-950 uppercase tracking-wider flex items-center gap-2">
+                  <span>High-Risk Red Flag Alert ({redFlags.length})</span>
+                  <span className="px-2 py-0.5 bg-rose-600 text-white text-[10px] rounded-full font-bold">
+                    CRITICAL POSITIVES
+                  </span>
+                </h4>
+                <p className="text-[11px] text-rose-800 font-medium">
+                  High-priority clinical warnings requiring immediate attention and targeted workup.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 self-start sm:self-auto">
+              <button
+                type="button"
+                onClick={handleInsertRedFlagsToNotes}
+                className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+              >
+                <Zap className="w-3.5 h-3.5 text-amber-300" />
+                Feed into SOAP & AI ({redFlags.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsRedFlagsCollapsed(prev => !prev)}
+                className="px-2.5 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-900 rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer border border-rose-200 shrink-0"
+                title={isRedFlagsCollapsed ? "Expand Red Flags" : "Collapse Red Flags"}
+              >
+                {isRedFlagsCollapsed ? (
+                  <>
+                    <span>Expand</span>
+                    <ChevronDown className="w-3.5 h-3.5" />
+                  </>
+                ) : (
+                  <>
+                    <span>Collapse</span>
+                    <ChevronUp className="w-3.5 h-3.5" />
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {!isRedFlagsCollapsed && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 pt-1 animate-in fade-in duration-200">
+              {redFlags.map((flag, idx) => (
+                <div 
+                  key={idx}
+                  className={cn(
+                    "p-3 rounded-lg border text-xs space-y-1 shadow-2xs",
+                    flag.urgency === 'critical' ? "bg-rose-100/90 border-rose-300 text-rose-950" : "bg-amber-50 border-amber-300 text-amber-950"
+                  )}
+                >
+                  <div className="flex items-center justify-between font-bold">
+                    <span className="flex items-center gap-1.5">
+                      <AlertCircle className={cn("w-4 h-4 shrink-0", flag.urgency === 'critical' ? "text-rose-600" : "text-amber-600")} />
+                      <span>{flag.title}</span>
+                    </span>
+                    <span className={cn(
+                      "px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider",
+                      flag.urgency === 'critical' ? "bg-rose-600 text-white" : "bg-amber-600 text-white"
+                    )}>
+                      {flag.category}
+                    </span>
+                  </div>
+                  <p className="text-[11px] opacity-90 leading-snug pl-5">
+                    {flag.description}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="space-y-6">
         <div className="flex items-center gap-6">
           <label className="text-sm font-medium text-slate-700">Appearance:</label>
@@ -4808,6 +7259,55 @@ function GeneralTab({ findings, onChange, onDictation, listeningField, onMarkNor
             value={findings.notes || ""}
             onChange={(e) => onChange('notes', e.target.value)}
           />
+
+          {/* Smart Phrase Library for General Narrative */}
+          <div className="pt-2 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5 text-indigo-600" />
+                Smart Phrase Library (1-Tap Narrative Chips)
+              </span>
+              <span className="text-[10px] text-slate-400">Click chip to append to notes</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {[
+                "Sits comfortably on exam table, in no acute distress.",
+                "Appears stated age, clean and appropriately dressed.",
+                "Presents in wheelchair, unkempt appearance, slow response to commands.",
+                "Alert, oriented x4, cooperative with physical examination.",
+                "Mild distress secondary to acute pain, protective posture.",
+                "Well-nourished, well-developed, interactive and articulate.",
+                "Frail appearance, reduced body mass, slurred speech."
+              ].map((phrase, idx) => {
+                const isIncluded = (findings.notes || "").includes(phrase);
+                return (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => {
+                      const currentNote = findings.notes || "";
+                      if (!currentNote.trim()) {
+                        onChange('notes', phrase);
+                      } else if (!currentNote.includes(phrase)) {
+                        const separator = currentNote.endsWith('.') || currentNote.endsWith('\n') ? ' ' : '. ';
+                        onChange('notes', currentNote + separator + phrase);
+                      }
+                      toast.success('Inserted Smart Phrase', { description: `"${phrase}"` });
+                    }}
+                    className={cn(
+                      "px-2.5 py-1.5 rounded-lg border text-xs text-left transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs hover:shadow-xs",
+                      isIncluded 
+                        ? "bg-indigo-50 text-indigo-900 border-indigo-300 font-medium" 
+                        : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:border-slate-300"
+                    )}
+                  >
+                    <Plus className="w-3 h-3 text-indigo-600 shrink-0" />
+                    <span>"{phrase}"</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
       </div>
     </div>

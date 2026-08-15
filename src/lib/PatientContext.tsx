@@ -28,10 +28,18 @@ export function PatientProvider({ children }: { children: ReactNode }) {
   ) || [];
 
   useEffect(() => {
-    const storedId = localStorage.getItem('selectedPatientId');
-    if (storedId && patients.length > 0) {
-      const patient = patients.find(p => p.id === storedId) || null;
-      setSelectedPatient(patient);
+    if (patients.length > 0) {
+      const storedId = localStorage.getItem('selectedPatientId');
+      if (storedId) {
+        const patient = patients.find(p => p.id === storedId);
+        if (patient) {
+          setSelectedPatient(patient);
+          return;
+        }
+      }
+      if (!selectedPatient) {
+        setSelectedPatient(patients[0]);
+      }
     }
   }, [patients]);
 

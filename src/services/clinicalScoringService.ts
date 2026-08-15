@@ -1,4 +1,5 @@
 import { Symptom } from "@/lib/SymptomContext";
+import { isSymptomMatch } from "@/services/clinicalAI/differentialEngine";
 
 export interface ScoringResult {
   name: string;
@@ -117,7 +118,7 @@ export const clinicalScoringService = {
     if (!symptoms.some(s => s.id === 'shortness_of_breath' || s.id === 'chest_pain')) return null;
     const hr = vitals?.hr || vitals?.heartRate || 0;
     return buildScore('Wells Score (PE)', [
-      { label: 'Clinical signs of DVT', points: 3, met: symptoms.some(s => s.id === 'msk_leg_swelling_pain') },
+      { label: 'Clinical signs of DVT', points: 3, met: symptoms.some(s => s.id === 'msk_limb_swelling' || s.id === 'msk_limb_pain' || s.id === 'msk_leg_swelling_pain') },
       { label: 'PE is #1 diagnosis', points: 3, met: true },
       { label: 'HR > 100', points: 1.5, met: hr > 100 },
       { label: 'Immobilization/Surgery', points: 1.5, met: false },
@@ -127,7 +128,26 @@ export const clinicalScoringService = {
     ], s => ({ interpretation: 'PE Probability', riskLevel: s > 6 ? 'High' : s >= 2 ? 'Moderate' : 'Low' }));
   },
   calculateRevisedGeneva(): ScoringResult | null { return null; },
-  calculatePERC(): ScoringResult | null { return null; },
+  calculatePERC(symptoms: Symptom[], h: any, vitals: any): ScoringResult | null {
+    if (!symptoms.some(s => s.id === 'shortness_of_breath' || s.id === 'chest_pain' || s.id === 'lungs_dyspnea')) return null;
+    const age = h?.age || 35;
+    const hr = vitals?.hr || 75;
+    const spo2 = vitals?.spo2 || 98;
+
+    return buildScore('PERC Rule (PE Rule-Out)', [
+      { label: 'Age >= 50 years', points: 1, met: age >= 50 },
+      { label: 'Heart Rate >= 100 bpm', points: 1, met: hr >= 100 },
+      { label: 'SpO2 < 95% on room air', points: 1, met: spo2 < 95 },
+      { label: 'Unilateral leg swelling', points: 1, met: symptoms.some(s => s.id === 'msk_limb_swelling' || s.id === 'msk_limb_pain' || s.id === 'msk_leg_swelling_pain') },
+      { label: 'Hemoptysis (Coughing blood)', points: 1, met: symptoms.some(s => s.id === 'hemoptysis') },
+      { label: 'Recent trauma or surgery (<4 wks)', points: 1, met: false },
+      { label: 'Prior PE or DVT', points: 1, met: hasCondition(h, ['PE', 'DVT']) },
+      { label: 'Estrogen use (OCPs or HRT)', points: 1, met: h?.medications?.some((m: string) => m.toLowerCase().includes('estrogen') || m.toLowerCase().includes('contraceptive')) }
+    ], s => ({
+      interpretation: s === 0 ? 'PERC Negative: Low-risk PE safely ruled out without D-dimer testing (< 1.5% PE risk)' : 'PERC Positive (>= 1 criteria met): Cannot rule out PE without D-dimer testing',
+      riskLevel: s === 0 ? 'Low' : 'Moderate'
+    }));
+  },
   calculateCURB65(symptoms: Symptom[], h: any, vitals: any): ScoringResult | null {
     if (!symptoms.some(s => s.id === 'cough' || s.id === 'fever')) return null;
     const rr = vitals?.rr || vitals?.respRate || 0;
@@ -145,7 +165,24 @@ export const clinicalScoringService = {
   calculatePSI(): ScoringResult | null { return null; },
   calculateBODE(): ScoringResult | null { return null; },
   calculatemMRC(): ScoringResult | null { return null; },
-  calculateSTOPBANG(): ScoringResult | null { return null; },
+  calculateSTOPBANG(symptoms: Symptom[], h: any, vitals: any): ScoringResult | null {
+    const age = h?.age || 45;
+    const isMale = h?.gender === 'male';
+
+    return buildScore('STOP-BANG (Sleep Apnea Screening)', [
+      { label: 'Snoring loudly', points: 1, met: symptoms.some(s => s.id === 'snoring') },
+      { label: 'Tired / Sleepy during day', points: 1, met: symptoms.some(s => s.id === 'fatigue' || s.id === 'daytime_somnolence') },
+      { label: 'Observed stopping breathing during sleep', points: 1, met: false },
+      { label: 'High Blood Pressure', points: 1, met: hasCondition(h, 'Hypertension') || (vitals?.sbp >= 140) },
+      { label: 'BMI > 35 kg/m2', points: 1, met: false },
+      { label: 'Age > 50 years', points: 1, met: age > 50 },
+      { label: 'Neck circumference > 40 cm', points: 1, met: false },
+      { label: 'Gender: Male', points: 1, met: isMale }
+    ], s => ({
+      interpretation: s >= 5 ? 'High risk for Moderate-to-Severe Obstructive Sleep Apnea' : s >= 3 ? 'Intermediate risk for OSA' : 'Low risk for OSA',
+      riskLevel: s >= 5 ? 'High' : s >= 3 ? 'Moderate' : 'Low'
+    }));
+  },
   calculateROX(): ScoringResult | null { return null; },
   calculateARDSBerlin(): ScoringResult | null { return null; },
 
@@ -170,7 +207,7 @@ export const clinicalScoringService = {
   calculateFOUR(): ScoringResult | null { return null; },
   calculateqSOFA(symptoms: Symptom[], h: any, vitals: any): ScoringResult | null {
     if (!vitals) return null;
-    const hasConfusion = symptoms.some(s => s.id === 'neurology_confusion' || s.id === 'neurology_altered_consciousness');
+    const hasConfusion = symptoms.some(s => isSymptomMatch('neurology_confusion', s));
     
     return buildScore('qSOFA Score', [
       { label: 'Altered mental status (GCS < 15)', points: 1, met: hasConfusion },
@@ -188,7 +225,7 @@ export const clinicalScoringService = {
       { label: 'Coagulation (Platelets)', points: 1, met: false },
       { label: 'Liver (Bilirubin)', points: 1, met: false },
       { label: 'Cardiovascular (MAP < 70)', points: 1, met: ((vitals.sbp || vitals.bpSys || 120) + 2 * (vitals.dbp || vitals.bpDia || 80)) / 3 < 70 },
-      { label: 'CNS (GCS < 15)', points: 1, met: symptoms.some(s => s.id === 'neurology_confusion') },
+      { label: 'CNS (GCS < 15)', points: 1, met: symptoms.some(s => isSymptomMatch('neurology_confusion', s)) },
       { label: 'Renal (Creatinine)', points: 1, met: false }
     ], s => ({ interpretation: 'Sequential Organ Failure Assessment', riskLevel: s >= 3 ? 'High' : s >= 1 ? 'Moderate' : 'Low' }));
   },
@@ -200,7 +237,7 @@ export const clinicalScoringService = {
     const sbp = vitals.sbp || vitals.bpSys || 120;
     const hr = vitals.hr || vitals.heartRate || 72;
     const temp = vitals.temp || vitals.temperature || 37;
-    const hasConfusion = symptoms.some(s => s.id === 'neurology_confusion' || s.id === 'neurology_altered_consciousness');
+    const hasConfusion = symptoms.some(s => isSymptomMatch('neurology_confusion', s));
 
     return buildScore('NEWS2 Score', [
       { label: 'Respiration Rate (abnormal)', points: (rr <= 8 || rr >= 25) ? 3 : (rr >= 21) ? 2 : (rr <= 11) ? 1 : 0, met: rr <= 11 || rr >= 21 },
@@ -215,12 +252,55 @@ export const clinicalScoringService = {
       riskLevel: s >= 7 ? 'High' : s >= 5 ? 'Moderate' : 'Low'
     }));
   },
-  calculateMEWS(): ScoringResult | null { return null; },
-  calculateREMS(): ScoringResult | null { return null; },
-  calculateMEDS(): ScoringResult | null { return null; },
-  calculateShockIndex(): ScoringResult | null { return null; },
+  calculateMEWS(symptoms: Symptom[], h: any, vitals: any): ScoringResult | null {
+    if (!vitals) return null;
+    const sbp = vitals.sbp || vitals.bpSys || 120;
+    const hr = vitals.hr || vitals.heartRate || 72;
+    const rr = vitals.rr || vitals.respRate || 16;
+    const temp = vitals.temp || vitals.temperature || 37;
+
+    return buildScore('MEWS (Modified Early Warning Score)', [
+      { label: 'Systolic BP <= 70 or >= 200', points: 3, met: sbp <= 70 || sbp >= 200 },
+      { label: 'Heart Rate <= 40 or >= 130', points: 3, met: hr <= 40 || hr >= 130 },
+      { label: 'Respiratory Rate <= 8 or >= 30', points: 3, met: rr <= 8 || rr >= 30 },
+      { label: 'Temperature <= 35°C or >= 38.5°C', points: 2, met: temp <= 35 || temp >= 38.5 }
+    ], s => ({
+      interpretation: s >= 5 ? 'High risk of ICU admission / cardiac arrest' : s >= 3 ? 'Moderate risk - Increase monitoring' : 'Low risk',
+      riskLevel: s >= 5 ? 'High' : s >= 3 ? 'Moderate' : 'Low'
+    }));
+  },
+  calculateShockIndex(symptoms: Symptom[], h: any, vitals: any): ScoringResult | null {
+    if (!vitals?.hr || !vitals?.sbp) return null;
+    const hr = vitals.hr || vitals.heartRate;
+    const sbp = vitals.sbp || vitals.bpSys;
+    const ratio = Math.round((hr / sbp) * 100) / 100;
+    const isElevated = ratio > 0.9;
+
+    return buildScore(`Shock Index (${ratio})`, [
+      { label: 'HR / SBP Ratio > 0.9 (Occult Shock/Hemorrhage)', points: 1, met: isElevated }
+    ], s => ({
+      interpretation: isElevated ? `Shock Index ${ratio} > 0.9: High suspicion for occult shock, internal bleeding, or left ventricular dysfunction.` : `Shock Index ${ratio}: Normal hemodynamics (< 0.9).`,
+      riskLevel: isElevated ? 'High' : 'Low'
+    }));
+  },
   calculateRanson(): ScoringResult | null { return null; },
-  calculateBISAP(): ScoringResult | null { return null; },
+  calculateBISAP(symptoms: Symptom[], h: any, vitals: any): ScoringResult | null {
+    if (!symptoms.some(s => isSymptomMatch('abdominal_pain', s))) return null;
+    const hasConfusion = symptoms.some(s => isSymptomMatch('neurology_confusion', s));
+    const rr = vitals?.rr || 16;
+    const age = h?.age || 50;
+
+    return buildScore('BISAP Score (Acute Pancreatitis)', [
+      { label: 'BUN > 25 mg/dL', points: 1, met: false },
+      { label: 'Impaired Mental Status', points: 1, met: hasConfusion },
+      { label: 'SIRS Criteria Met', points: 1, met: rr >= 20 || (vitals?.hr || 0) > 90 },
+      { label: 'Age > 60 years', points: 1, met: age > 60 },
+      { label: 'Pleural Effusion', points: 1, met: false }
+    ], s => ({
+      interpretation: s >= 3 ? 'High mortality risk in acute pancreatitis' : 'Low mortality risk (< 2%)',
+      riskLevel: s >= 3 ? 'High' : s >= 1 ? 'Moderate' : 'Low'
+    }));
+  },
   calculateMarshall(): ScoringResult | null { return null; },
 
   // ==========================================
@@ -229,7 +309,23 @@ export const clinicalScoringService = {
   calculateChildPugh(): ScoringResult | null { return null; },
   calculateMELD(): ScoringResult | null { return null; },
   calculateMELDNa(): ScoringResult | null { return null; },
-  calculateGlasgowBlatchford(): ScoringResult | null { return null; },
+  calculateGlasgowBlatchford(symptoms: Symptom[], h: any, vitals: any): ScoringResult | null {
+    if (!symptoms.some(s => isSymptomMatch('nausea', s) || isSymptomMatch('abdominal_pain', s) || isSymptomMatch('vomiting_blood', s))) return null;
+    const sbp = vitals?.sbp || 120;
+    const hr = vitals?.hr || 80;
+
+    return buildScore('Glasgow-Blatchford Score (UGIB)', [
+      { label: 'Systolic BP < 100 mmHg', points: 2, met: sbp < 100 },
+      { label: 'Pulse >= 100 bpm', points: 1, met: hr >= 100 },
+      { label: 'Melena Present', points: 1, met: symptoms.some(s => isSymptomMatch('melena', s)) },
+      { label: 'Syncope Presentation', points: 2, met: symptoms.some(s => isSymptomMatch('syncope', s)) },
+      { label: 'Hepatic Disease History', points: 2, met: hasCondition(h, ['Cirrhosis', 'Liver', 'Hepatitis']) },
+      { label: 'Heart Failure History', points: 2, met: hasCondition(h, ['CHF', 'Heart Failure']) }
+    ], s => ({
+      interpretation: s === 0 ? 'Low risk - Outpatient management suitable' : 'High risk Upper GI Bleed - Requires urgent endoscopy',
+      riskLevel: s > 1 ? 'High' : s === 1 ? 'Moderate' : 'Low'
+    }));
+  },
   calculateRockall(): ScoringResult | null { return null; },
   calculateAIMS65(): ScoringResult | null { return null; },
   calculateHAPS(): ScoringResult | null { return null; },
@@ -241,10 +337,23 @@ export const clinicalScoringService = {
   // 🩸 Hematology (51–60)
   // ==========================================
   calculate4T(): ScoringResult | null { return null; },
-  calculatePadua(): ScoringResult | null { return null; },
+  calculatePadua(symptoms: Symptom[], h: any): ScoringResult | null {
+    return buildScore('Padua Prediction Score (VTE)', [
+      { label: 'Active Cancer', points: 3, met: hasCondition(h, ['Cancer', 'Malignancy']) },
+      { label: 'Previous VTE', points: 3, met: hasCondition(h, ['DVT', 'PE', 'Thrombosis']) },
+      { label: 'Reduced Mobility', points: 3, met: false },
+      { label: 'Known Thrombophilia', points: 3, met: false },
+      { label: 'Recent Trauma/Surgery (<1 mo)', points: 2, met: false },
+      { label: 'Age >= 70 years', points: 1, met: (h?.age || 0) >= 70 },
+      { label: 'Obesity (BMI >= 30)', points: 1, met: false }
+    ], s => ({
+      interpretation: s >= 4 ? 'High risk for VTE - Pharmacological prophylaxis indicated' : 'Low VTE risk',
+      riskLevel: s >= 4 ? 'High' : 'Low'
+    }));
+  },
   calculateCaprini(): ScoringResult | null { return null; },
   calculateWellsDVT(symptoms: Symptom[]): ScoringResult | null {
-    if (!symptoms.some(s => s.id === 'msk_leg_swelling_pain')) return null;
+    if (!symptoms.some(s => s.id === 'msk_limb_swelling' || s.id === 'msk_limb_pain' || s.id === 'msk_leg_swelling_pain')) return null;
     return buildScore('Wells Score (DVT)', [
       { label: 'Active cancer', points: 1, met: false },
       { label: 'Calf swelling >3cm', points: 1, met: true },
@@ -296,7 +405,20 @@ export const clinicalScoringService = {
   // ==========================================
   // 🧠 Neurology (81–90)
   // ==========================================
-  calculateNIHSS(): ScoringResult | null { return null; },
+  calculateNIHSS(symptoms: Symptom[]): ScoringResult | null {
+    const hasNeuro = symptoms.some(s => s.category === 'neurological' || s.id.startsWith('neuro_'));
+    if (!hasNeuro) return null;
+
+    return buildScore('NIH Stroke Scale (NIHSS)', [
+      { label: 'Level of Consciousness', points: 1, met: symptoms.some(s => s.id === 'neuro_confusion') },
+      { label: 'Facial Palsy', points: 2, met: symptoms.some(s => s.id === 'neuro_facial_droop') },
+      { label: 'Motor Arm / Leg Weakness', points: 3, met: symptoms.some(s => s.id === 'neuro_weakness') },
+      { label: 'Dysarthria / Dysphasia', points: 2, met: symptoms.some(s => s.id === 'neuro_speech_difficulty') }
+    ], s => ({
+      interpretation: s >= 21 ? 'Severe stroke presentation - STAT Thrombolysis/Thrombectomy consult' : s >= 5 ? 'Moderate stroke' : 'Minor stroke / TIA presentation',
+      riskLevel: s >= 15 ? 'High' : s >= 5 ? 'Moderate' : 'Low'
+    }));
+  },
   calculateABCD2(symptoms: Symptom[], h: any, vitals: any): ScoringResult | null {
     if (!h?.conditions?.some((c: string) => ['TIA', 'Stroke'].includes(c))) return null;
     return buildScore('ABCD2 Score', [
@@ -322,30 +444,52 @@ export const clinicalScoringService = {
   // 🦴 General / Surgery / Others (91–100)
   // ==========================================
   calculateAlvarado(symptoms: Symptom[]): ScoringResult | null {
-    if (!symptoms.some(s => s.id === 'abdominal_pain')) return null;
-    return buildScore('Alvarado Score', [
-      { label: 'Migration to RLQ', points: 1, met: true },
-      { label: 'Anorexia', points: 1, met: false },
-      { label: 'Nausea/Vomiting', points: 1, met: false },
+    if (!symptoms.some(s => isSymptomMatch('abdominal_pain', s))) return null;
+    return buildScore('Alvarado Score (Appendicitis)', [
+      { label: 'Migration of pain to RLQ', points: 1, met: true },
+      { label: 'Anorexia', points: 1, met: symptoms.some(s => isSymptomMatch('anorexia', s)) },
+      { label: 'Nausea / Vomiting', points: 1, met: symptoms.some(s => isSymptomMatch('nausea', s)) },
       { label: 'RLQ Tenderness', points: 2, met: true },
-      { label: 'Rebound tenderness', points: 1, met: false },
-      { label: 'Fever', points: 1, met: false },
+      { label: 'Rebound Tenderness', points: 1, met: false },
+      { label: 'Fever (>= 37.3°C)', points: 1, met: symptoms.some(s => isSymptomMatch('gen_fever', s)) },
       { label: 'Leukocytosis', points: 2, met: false },
-      { label: 'Shift to left', points: 1, met: false }
-    ], s => ({ interpretation: 'Appendicitis risk', riskLevel: s >= 7 ? 'High' : s >= 5 ? 'Moderate' : 'Low' }));
+      { label: 'Shift to Left', points: 1, met: false }
+    ], s => ({ interpretation: s >= 7 ? 'High probability of Acute Appendicitis - Surgical consult recommended' : s >= 5 ? 'Equivocal - Abdominal CT recommended' : 'Low probability of appendicitis', riskLevel: s >= 7 ? 'High' : s >= 5 ? 'Moderate' : 'Low' }));
   },
   calculateAIR(): ScoringResult | null { return null; },
   calculateBishop(): ScoringResult | null { return null; },
   calculateApgar(): ScoringResult | null { return null; },
   calculateBraden(): ScoringResult | null { return null; },
   calculateMorse(): ScoringResult | null { return null; },
-  calculateOttawaAnkle(): ScoringResult | null { return null; },
-  calculateOttawaKnee(): ScoringResult | null { return null; },
+  calculateOttawaAnkle(symptoms: Symptom[]): ScoringResult | null {
+    if (!symptoms.some(s => isSymptomMatch('joint_pain', s) || isSymptomMatch('ankle_injury', s))) return null;
+    return buildScore('Ottawa Ankle Rules', [
+      { label: 'Bone tenderness along distal 6cm posterior edge of lateral malleolus', points: 1, met: true },
+      { label: 'Bone tenderness along distal 6cm posterior edge of medial malleolus', points: 1, met: false },
+      { label: 'Inability to bear weight both immediately and in ED (4 steps)', points: 1, met: true }
+    ], s => ({
+      interpretation: s > 0 ? 'X-ray of Ankle indicated to rule out fracture' : 'Ankle X-ray NOT required (High sensitivity for ruling out fracture)',
+      riskLevel: s > 0 ? 'Moderate' : 'Low'
+    }));
+  },
+  calculateOttawaKnee(symptoms: Symptom[], h: any): ScoringResult | null {
+    if (!symptoms.some(s => isSymptomMatch('joint_pain', s) || isSymptomMatch('knee_injury', s))) return null;
+    return buildScore('Ottawa Knee Rules', [
+      { label: 'Age >= 55 years', points: 1, met: (h?.age || 0) >= 55 },
+      { label: 'Isolated tenderness of patella', points: 1, met: true },
+      { label: 'Tenderness at head of fibula', points: 1, met: false },
+      { label: 'Inability to flex knee to 90 degrees', points: 1, met: true },
+      { label: 'Inability to bear weight both immediately and in ED', points: 1, met: true }
+    ], s => ({
+      interpretation: s > 0 ? 'Knee X-ray indicated' : 'Knee X-ray NOT indicated',
+      riskLevel: s > 0 ? 'Moderate' : 'Low'
+    }));
+  },
   calculateDenver(): ScoringResult | null { return null; },
   
   // Existing ones
   calculateCentor(symptoms: Symptom[], h: any): ScoringResult | null {
-    if (!symptoms.some(s => s.id === 'sore_throat')) return null;
+    if (!symptoms.some(s => isSymptomMatch('sore_throat', s))) return null;
     const age = h?.age;
     return buildScore('Modified Centor Score', [
       { label: 'Absence of cough', points: 1, met: true },

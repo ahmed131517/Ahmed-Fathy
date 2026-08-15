@@ -38,6 +38,8 @@ export interface PatientRecord {
   surgeries?: string;
   familyHistory?: any; // Replaced JSON string with native array/object support
   familyHistoryNotes?: string;
+  pastTraumaHistory?: any;
+  pastTraumaNotes?: string;
   gynHistory?: any;
   obsHistory?: any;
   photo?: string;
@@ -298,6 +300,9 @@ export interface User {
   email: string;
   role: 'doctor' | 'nurse' | 'pharmacist' | 'receptionist' | 'admin';
   clinicId?: string;
+  status?: string;
+  phone?: string;
+  department?: string;
   lastModified: number;
   isDeleted: number;
   isSynced: number;
@@ -978,24 +983,11 @@ export class AppDatabase extends Dexie {
   // Override open to catch backing store or iframe-sandboxed IndexedDB errors, and retry on the fallback database
   override open(): any {
     return super.open().catch((err: any) => {
-      console.warn('AppDatabase.open() failed:', err);
-      // Handle the case where IndexedDB is completely unusable (e.g. sandboxed or out of space)
-      if (
-        err.name === 'UnknownError' ||
-        err.name === 'SecurityError' ||
-        err.name === 'DatabaseClosedError' ||
-        err.name === 'QuotaExceededError' ||
-        err.message?.includes('backing store') ||
-        err.message?.includes('IndexedDB') ||
-        err.message?.includes('open') ||
-        err.message?.includes('FILE_ERROR_NO_SPACE') ||
-        err.message?.includes('IO error')
-      ) {
-        console.warn('Handling IndexedDB backing store / sandboxing / space failure. Redirecting to fallback in-memory DB...');
-        switchToFake();
-        return activeDbInstance.open();
-      }
-      throw err;
+      console.warn('AppDatabase.open() failed, redirecting to in-memory fallback DB:', err);
+      switchToFake();
+      return activeDbInstance.open().catch((fallbackErr: any) => {
+        console.warn('Fallback in-memory DB open failed:', fallbackErr);
+      });
     });
   }
 }

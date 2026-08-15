@@ -10,7 +10,7 @@ import { SpeakButton } from "../components/SpeakButton";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { ICD10Search } from "../components/ICD10Search";
-import { ICD10Code } from "../data/icd10";
+import { ICD10Code, commonICD10Codes } from "../data/icd10";
 import { usePatient } from "../lib/PatientContext";
 import { useSymptom } from "../lib/SymptomContext";
 import { useUser } from "../lib/UserContext";
@@ -64,13 +64,108 @@ interface ClinicalData {
 
 interface AIDiagnosis {
   condition: string;
+  likelihood?: "Very High" | "High" | "Moderate" | "Low" | "Very Low";
+  evidenceStrength?: "Strong" | "Moderate" | "Weak";
+  supportingFeatures?: string[];
+  contradictingFeatures?: string[];
+  missingFeatures?: string[];
   probability: number;
   icd10: string;
+  validatedIcd10?: ICD10Code;
+  icd10Status?: "validated" | "approximate" | "unvalidated";
   reasoning: string;
   recommendations: string[];
   missingInfo?: string[];
   redFlags?: string[];
   references?: { title: string, url: string }[];
+}
+
+function validateIcd10Code(aiIcd10: string, aiCondition: string): { 
+  validatedIcd10?: ICD10Code; 
+  icd10Status: "validated" | "approximate" | "unvalidated";
+} {
+  if (!aiIcd10) {
+    return { icd10Status: "unvalidated" };
+  }
+
+  const cleanAiCode = aiIcd10.trim().toUpperCase().replace(/\./g, "");
+
+  // 1. Exact Match on Code
+  const exactMatch = commonICD10Codes.find(item => {
+    const cleanItemCode = item.code.trim().toUpperCase().replace(/\./g, "");
+    return cleanItemCode === cleanAiCode;
+  });
+
+  if (exactMatch) {
+    return {
+      validatedIcd10: exactMatch,
+      icd10Status: "validated"
+    };
+  }
+
+  // 2. Partial/Approximate Match on Code (prefix match of first 3 chars)
+  const codePrefix = cleanAiCode.substring(0, 3);
+  if (codePrefix.length >= 3) {
+    const prefixMatches = commonICD10Codes.filter(item => {
+      const cleanItemCode = item.code.trim().toUpperCase().replace(/\./g, "");
+      return cleanItemCode.startsWith(codePrefix);
+    });
+
+    if (prefixMatches.length > 0) {
+      const cleanCondition = aiCondition.toLowerCase();
+      const bestPrefixMatch = prefixMatches.find(item => 
+        cleanCondition.includes(item.description.toLowerCase()) || 
+        item.description.toLowerCase().includes(cleanCondition)
+      ) || prefixMatches[0];
+
+      return {
+        validatedIcd10: bestPrefixMatch,
+        icd10Status: "approximate"
+      };
+    }
+  }
+
+  // 3. Match on Description text
+  const cleanCondition = aiCondition.toLowerCase();
+  const descMatch = commonICD10Codes.find(item => {
+    const desc = item.description.toLowerCase();
+    return desc.includes(cleanCondition) || cleanCondition.includes(desc);
+  });
+
+  if (descMatch) {
+    return {
+      validatedIcd10: descMatch,
+      icd10Status: "approximate"
+    };
+  }
+
+  // 4. Token-based word overlap match as fallback
+  const words = cleanCondition.split(/\s+/).filter(w => w.length > 3);
+  if (words.length > 0) {
+    let bestMatch: ICD10Code | undefined = undefined;
+    let maxOverlap = 0;
+
+    for (const item of commonICD10Codes) {
+      const descWords = item.description.toLowerCase().split(/\s+/);
+      const overlapCount = words.filter(w => descWords.some(dw => dw.includes(w) || w.includes(dw))).length;
+      if (overlapCount > maxOverlap) {
+        maxOverlap = overlapCount;
+        bestMatch = item;
+      }
+    }
+
+    if (maxOverlap >= 1 && bestMatch) {
+      return {
+        validatedIcd10: bestMatch,
+        icd10Status: "approximate"
+      };
+    }
+  }
+
+  // 5. No match found in terminology database
+  return {
+    icd10Status: "unvalidated"
+  };
 }
 
 export function FinalDiagnosis() {
@@ -678,12 +773,36 @@ Keep it professional, compact, and list each section as short bulletin lines.
       const data = parseJsonResponse(responseText, {} as any);
       
       if (data.top_diagnosis) {
+        const normalize = (item: any) => {
+          if (!item) return item;
+          if (item.probability === undefined || item.probability === null || isNaN(item.probability)) {
+            const mapLikelihoodToProb = (lh?: string) => {
+              switch (lh) {
+                case "Very High": return 90;
+                case "High": return 75;
+                case "Moderate": return 50;
+                case "Low": return 25;
+                case "Very Low": return 10;
+                default: return 50;
+              }
+            };
+            item.probability = mapLikelihoodToProb(item.likelihood);
+          }
+
+          // Terminology Service Lookup and Verification
+          const validationResult = validateIcd10Code(item.icd10, item.condition);
+          item.validatedIcd10 = validationResult.validatedIcd10;
+          item.icd10Status = validationResult.icd10Status;
+
+          return item;
+        };
+
         const allSuggestions = [
-          data.top_diagnosis,
-          ...(data.differentials || [])
+          normalize(data.top_diagnosis),
+          ...(data.differentials || []).map(normalize)
         ];
         setSuggestions(allSuggestions);
-        setAiConfidence(data.top_diagnosis.probability);
+        setAiConfidence(allSuggestions[0].probability);
       }
     } catch (error) {
       console.error("AI Analysis failed:", error);
@@ -694,9 +813,12 @@ Keep it professional, compact, and list each section as short bulletin lines.
   };
 
   const handleApplySuggestion = (suggestion: AIDiagnosis) => {
+    const finalCode = suggestion.validatedIcd10?.code || suggestion.icd10 || "CUSTOM";
+    const finalDesc = suggestion.validatedIcd10?.description || suggestion.condition;
+
     const code: ICD10Code = {
-      code: suggestion.icd10,
-      description: suggestion.condition
+      code: finalCode,
+      description: finalDesc
     };
     setSelectedDiagnosis(code);
     setReasoning(suggestion.reasoning);
@@ -821,6 +943,56 @@ Keep it professional, compact, and list each section as short bulletin lines.
     }
   };
 
+  const [isScribeReasoning, setIsScribeReasoning] = useState(false);
+
+  const handleScribeReasoning = async () => {
+    if (!selectedPatient) {
+      toast.error("Please select a patient first.");
+      return;
+    }
+    setIsScribeReasoning(true);
+    try {
+      const p = selectedPatient;
+      const allergies = p.allergies?.map(a => `${a.name}${a.severity ? ` (${a.severity})` : ''}`).join(', ') || 'NKDA';
+      const chronic = p.chronicConditions?.join(', ') || 'None';
+      const meds = p.medications?.map(m => `${m.name}${m.dosage ? ` ${m.dosage}` : ''}`).join(', ') || 'None';
+      const vitals = p.vitalsHistory?.[0] ? `BP ${p.vitalsHistory[0].bloodPressure}, HR ${p.vitalsHistory[0].heartRate}` : 'N/A';
+
+      const prompt = `You are a clinical AI scribe. Auto-draft a concise, professional Clinical Reasoning rationale statement for the medical chart:
+
+PATIENT PROFILE:
+Name: ${p.name}, Age: ${p.age}, Gender: ${p.gender}
+Allergies: ${allergies}
+Chronic Conditions: ${chronic}
+Active Home Meds: ${meds}
+Latest Vitals: ${vitals}
+
+ENCOUNTER FINDINGS:
+Symptoms: ${clinicalData.symptoms.join(", ") || "Unspecified"}
+Exam Findings: ${clinicalData.examFindings.join(", ") || "Unremarkable"}
+Labs: ${clinicalData.labResults.join(", ") || "None"}
+Working Diagnosis: ${selectedDiagnosis ? `${selectedDiagnosis.code} - ${selectedDiagnosis.description}` : "Pending"}
+Existing Draft Rationale: ${reasoning || "None"}
+
+Generate a cohesive 2-3 paragraph clinical reasoning rationale connecting the presenting symptoms and exam findings with the patient's underlying comorbidities, rule-outs, and diagnosis.`;
+
+      const responseText = await clinicalAIRequest(
+        [{ role: "user", content: prompt }],
+        aiSettings
+      );
+
+      if (responseText) {
+        setReasoning(responseText.trim());
+        toast.success("AI Scribe auto-drafted clinical reasoning with patient context!");
+      }
+    } catch (err) {
+      console.error("Scribe reasoning error:", err);
+      toast.error("Failed to auto-draft reasoning.");
+    } finally {
+      setIsScribeReasoning(false);
+    }
+  };
+
   const generateSoapNote = async () => {
     if (!selectedPatient) {
       toast.error("Please select a patient first.");
@@ -828,14 +1000,14 @@ Keep it professional, compact, and list each section as short bulletin lines.
     }
     setIsGeneratingNote(true);
     try {
-      const prompt = getSoapNotePrompt(selectedPatient.name, clinicalData, selectedDiagnosis, reasoning);
+      const prompt = getSoapNotePrompt(selectedPatient, clinicalData, selectedDiagnosis, reasoning);
       const responseText = await clinicalAIRequest(
         [{ role: "user", content: prompt }],
         aiSettings
       );
       const generatedNote = responseText || "No note generated.";
       sessionStorage.setItem('draft_soap_note', generatedNote);
-      toast.success("SOAP note generated successfully");
+      toast.success("SOAP note generated with patient profile context!");
       navigate('/soap-editor');
     } catch (error) {
       console.error("SOAP note generation failed:", error);
@@ -1560,21 +1732,51 @@ Keep it professional, compact, and list each section as short bulletin lines.
               </div>
               <div className="p-6 space-y-6 flex-1 flex flex-col">
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Final Diagnosis</label>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Final Diagnosis</label>
+                    <span className="text-[11px] text-indigo-600 font-medium">Search ICD-10 or Type Custom</span>
+                  </div>
                   <ICD10Search 
                     onSelect={setSelectedDiagnosis} 
-                    initialValue={selectedDiagnosis ? `${selectedDiagnosis.code} - ${selectedDiagnosis.description}` : ""}
+                    initialValue={selectedDiagnosis ? (selectedDiagnosis.code && selectedDiagnosis.code !== 'CUSTOM' ? `${selectedDiagnosis.code} - ${selectedDiagnosis.description}` : selectedDiagnosis.description) : ""}
                   />
+
+                  {selectedDiagnosis ? (
+                    <div className="mt-2.5 p-2.5 rounded-lg border bg-indigo-50/70 border-indigo-100 flex items-center justify-between text-xs animate-in fade-in duration-200">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className={cn(
+                          "px-2 py-0.5 rounded text-[10px] font-bold font-mono uppercase shrink-0",
+                          selectedDiagnosis.code === 'CUSTOM' ? "bg-amber-100 text-amber-800 border border-amber-200" : "bg-indigo-600 text-white"
+                        )}>
+                          {selectedDiagnosis.code === 'CUSTOM' ? 'Free Text' : selectedDiagnosis.code}
+                        </span>
+                        <span className="font-semibold text-slate-800 truncate">{selectedDiagnosis.description}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedDiagnosis(null)}
+                        className="text-slate-400 hover:text-rose-600 font-medium text-xs shrink-0 ml-2"
+                      >
+                        Change
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-slate-400 mt-1.5 italic">
+                      Tip: Type any custom clinical diagnosis name directly in the search box if it's not listed in standard ICD-10 codes.
+                    </p>
+                  )}
                 </div>
                 
                 <div className="flex-1 flex flex-col">
                   <div className="flex justify-between items-center mb-2">
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Clinical Reasoning</label>
                     <button 
-                      onClick={() => toast.info("AI Scribe is listening...")}
-                      className="text-xs text-indigo-600 flex items-center gap-1 hover:text-indigo-700"
+                      onClick={handleScribeReasoning}
+                      disabled={isScribeReasoning}
+                      className="text-xs text-indigo-600 font-bold flex items-center gap-1 hover:text-indigo-700 disabled:opacity-50"
                     >
-                      <Mic className="w-3 h-3" /> AI Scribe
+                      <Sparkles className="w-3 h-3 text-indigo-500 animate-pulse" />
+                      {isScribeReasoning ? "AI Scribing..." : "AI Scribe Auto-Draft"}
                     </button>
                   </div>
                   <Textarea 
@@ -1638,18 +1840,154 @@ Keep it professional, compact, and list each section as short bulletin lines.
                         <h3 className="text-lg font-bold text-slate-900 mb-2">{suggestions[0].condition}</h3>
                         <SpeakButton text={`${suggestions[0].condition}. Confidence: ${suggestions[0].probability}%. ${suggestions[0].reasoning}`} />
                         
-                        <div className="mb-3">
-                          <div className="flex justify-between text-xs mb-1">
-                            <span className="text-slate-500">Confidence</span>
-                            <span className="font-bold text-indigo-600">{suggestions[0].probability}%</span>
+                        <div className="flex flex-wrap gap-2 mb-3 items-center">
+                          <span className={cn(
+                            "px-2.5 py-1 text-xs font-bold rounded-md uppercase tracking-wider",
+                            suggestions[0].likelihood === 'Very High' && "bg-emerald-50 text-emerald-700 border border-emerald-200",
+                            suggestions[0].likelihood === 'High' && "bg-teal-50 text-teal-700 border border-teal-200",
+                            suggestions[0].likelihood === 'Moderate' && "bg-amber-50 text-amber-700 border border-amber-200",
+                            suggestions[0].likelihood === 'Low' && "bg-orange-50 text-orange-700 border border-orange-200",
+                            suggestions[0].likelihood === 'Very Low' && "bg-rose-50 text-rose-700 border border-rose-200",
+                            !suggestions[0].likelihood && "bg-indigo-50 text-indigo-700 border border-indigo-200"
+                          )}>
+                            Likelihood: {suggestions[0].likelihood || 'Uncalibrated'}
+                          </span>
+                          
+                          {suggestions[0].evidenceStrength && (
+                            <span className={cn(
+                              "px-2.5 py-1 text-xs font-bold rounded-md uppercase tracking-wider border",
+                              suggestions[0].evidenceStrength === 'Strong' && "bg-emerald-50 text-emerald-800 border-emerald-300",
+                              suggestions[0].evidenceStrength === 'Moderate' && "bg-blue-50 text-blue-800 border-blue-300",
+                              suggestions[0].evidenceStrength === 'Weak' && "bg-slate-50 text-slate-600 border-slate-300"
+                            )}>
+                              Evidence: {suggestions[0].evidenceStrength}
+                            </span>
+                          )}
+
+                          {suggestions[0].probability !== undefined && (
+                            <span className="text-[11px] font-medium text-slate-400">
+                              (Est. Prob: {suggestions[0].probability}%)
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Terminology Service Validation Block */}
+                        <div className="mb-4 mt-3 p-3 bg-slate-50 border border-slate-100 rounded-lg">
+                          <div className="flex items-center justify-between gap-2 mb-2">
+                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                              <Database className="w-3.5 h-3.5 text-indigo-500" />
+                              EMR Terminology Verification
+                            </span>
+                            {suggestions[0].icd10Status === "validated" && (
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-emerald-100 text-emerald-800 flex items-center gap-1 animate-pulse">
+                                <Shield className="w-2.5 h-2.5 text-emerald-600 fill-emerald-600" /> VALIDATED
+                              </span>
+                            )}
+                            {suggestions[0].icd10Status === "approximate" && (
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-amber-100 text-amber-800 flex items-center gap-1">
+                                <AlertTriangle className="w-2.5 h-2.5 text-amber-600" /> APPROXIMATE MATCH
+                              </span>
+                            )}
+                            {suggestions[0].icd10Status === "unvalidated" && (
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-rose-100 text-rose-800 flex items-center gap-1">
+                                <AlertCircle className="w-2.5 h-2.5 text-rose-600" /> UNVALIDATED
+                              </span>
+                            )}
                           </div>
-                          <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                            <div 
-                              className="h-full bg-indigo-500 rounded-full transition-all duration-1000 ease-out"
-                              style={{ width: `${suggestions[0].probability}%` }}
-                            ></div>
+
+                          <div className="space-y-1.5">
+                            {suggestions[0].icd10Status === "validated" && suggestions[0].validatedIcd10 && (
+                              <div>
+                                <p className="text-xs text-slate-700 leading-tight">
+                                  Standardized Terminology Match found: <span className="font-mono font-bold bg-emerald-50 text-emerald-700 px-1 py-0.5 rounded">{suggestions[0].validatedIcd10.code}</span>
+                                </p>
+                                <p className="text-[11px] text-slate-500 mt-0.5 italic">
+                                  "{suggestions[0].validatedIcd10.description}"
+                                </p>
+                              </div>
+                            )}
+
+                            {suggestions[0].icd10Status === "approximate" && suggestions[0].validatedIcd10 && (
+                              <div>
+                                <p className="text-xs text-slate-700 leading-tight">
+                                  LLM suggested <span className="font-mono bg-slate-100 px-1 py-0.5 rounded">{suggestions[0].icd10}</span>. Terminology service resolved closest match:
+                                </p>
+                                <div className="mt-1.5 p-2 bg-amber-50/60 border border-amber-100/50 rounded flex items-center justify-between">
+                                  <div>
+                                    <span className="font-mono text-xs font-bold text-amber-800 mr-2">{suggestions[0].validatedIcd10.code}</span>
+                                    <span className="text-[11px] text-slate-600">{suggestions[0].validatedIcd10.description}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {suggestions[0].icd10Status === "unvalidated" && (
+                              <div>
+                                <p className="text-xs text-slate-700 leading-tight">
+                                  No direct code matches for <span className="font-mono bg-rose-50 text-rose-700 px-1 py-0.5 rounded">{suggestions[0].icd10 || "None"}</span>.
+                                </p>
+                                <p className="text-[11px] text-slate-500 mt-1">
+                                  Please search for a standard clinical code manually using the search bar on the left.
+                                </p>
+                              </div>
+                            )}
                           </div>
                         </div>
+
+                        {/* Clinical Findings Summary */}
+                        {((suggestions[0].supportingFeatures && suggestions[0].supportingFeatures.length > 0) ||
+                          (suggestions[0].contradictingFeatures && suggestions[0].contradictingFeatures.length > 0) ||
+                          (suggestions[0].missingFeatures && suggestions[0].missingFeatures.length > 0)) && (
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4 p-3 bg-slate-50 border border-slate-100 rounded-lg">
+                            <div>
+                              <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-700 mb-1.5 uppercase tracking-wider">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                Supporting Findings
+                              </div>
+                              {suggestions[0].supportingFeatures && suggestions[0].supportingFeatures.length > 0 ? (
+                                <ul className="space-y-1">
+                                  {suggestions[0].supportingFeatures.map((f, i) => (
+                                    <li key={i} className="text-[11px] text-slate-700 leading-tight">• {f}</li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <span className="text-[11px] text-slate-400 italic">None listed</span>
+                              )}
+                            </div>
+
+                            <div>
+                              <div className="flex items-center gap-1.5 text-[10px] font-bold text-rose-700 mb-1.5 uppercase tracking-wider">
+                                <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                                Conflicting Findings
+                              </div>
+                              {suggestions[0].contradictingFeatures && suggestions[0].contradictingFeatures.length > 0 ? (
+                                <ul className="space-y-1">
+                                  {suggestions[0].contradictingFeatures.map((f, i) => (
+                                    <li key={i} className="text-[11px] text-slate-700 leading-tight">• {f}</li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <span className="text-[11px] text-slate-400 italic">None detected</span>
+                              )}
+                            </div>
+
+                            <div>
+                              <div className="flex items-center gap-1.5 text-[10px] font-bold text-amber-700 mb-1.5 uppercase tracking-wider">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                Missing Evidence
+                              </div>
+                              {suggestions[0].missingFeatures && suggestions[0].missingFeatures.length > 0 ? (
+                                <ul className="space-y-1">
+                                  {suggestions[0].missingFeatures.map((f, i) => (
+                                    <li key={i} className="text-[11px] text-slate-700 leading-tight">• {f}</li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <span className="text-[11px] text-slate-400 italic">None critical</span>
+                              )}
+                            </div>
+                          </div>
+                        )}
 
                         {suggestions[0].redFlags && suggestions[0].redFlags.length > 0 && (
                           <div className="bg-red-50 border border-red-100 rounded p-2 mb-3">
@@ -1748,17 +2086,64 @@ Keep it professional, compact, and list each section as short bulletin lines.
                           <div key={idx} className="bg-white border border-slate-200 rounded-lg p-3 hover:border-indigo-300 transition-colors group">
                             <div className="flex justify-between items-start mb-2">
                               <div className="flex items-center gap-2">
-                                <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center text-xs font-bold">
+                                <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center text-xs font-bold shrink-0">
                                   {idx + 2}
                                 </span>
-                                <span className="font-semibold text-slate-800 text-sm">{suggestion.condition}</span>
+                                <div className="flex flex-col gap-0.5">
+                                  <span className="font-semibold text-slate-800 text-sm">{suggestion.condition}</span>
+                                  <div className="flex flex-wrap gap-1.5 items-center mt-1">
+                                    <span className={cn(
+                                      "px-1.5 py-0.5 text-[9px] font-bold rounded uppercase tracking-wider",
+                                      suggestion.likelihood === 'Very High' && "bg-emerald-50 text-emerald-700 border border-emerald-200",
+                                      suggestion.likelihood === 'High' && "bg-teal-50 text-teal-700 border border-teal-200",
+                                      suggestion.likelihood === 'Moderate' && "bg-amber-50 text-amber-700 border border-amber-200",
+                                      suggestion.likelihood === 'Low' && "bg-orange-50 text-orange-700 border border-orange-200",
+                                      suggestion.likelihood === 'Very Low' && "bg-rose-50 text-rose-700 border border-rose-200",
+                                      !suggestion.likelihood && "bg-indigo-50 text-indigo-700 border border-indigo-200"
+                                    )}>
+                                      {suggestion.likelihood || 'Moderate'} Likelihood
+                                    </span>
+                                    {suggestion.evidenceStrength && (
+                                      <span className={cn(
+                                        "px-1.5 py-0.5 text-[9px] font-bold rounded uppercase tracking-wider border",
+                                        suggestion.evidenceStrength === 'Strong' && "bg-emerald-50 text-emerald-800 border-emerald-300",
+                                        suggestion.evidenceStrength === 'Moderate' && "bg-blue-50 text-blue-800 border-blue-300",
+                                        suggestion.evidenceStrength === 'Weak' && "bg-slate-50 text-slate-600 border-slate-300"
+                                      )}>
+                                        Evid: {suggestion.evidenceStrength}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
                               </div>
-                              <SpeakButton text={`${suggestion.condition}. Probability: ${suggestion.probability}%. ${suggestion.reasoning}`} />
-                              <span className="text-xs font-bold text-slate-500">{suggestion.probability}%</span>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <SpeakButton text={`${suggestion.condition}. Likelihood: ${suggestion.likelihood || 'Moderate'}. Evidence strength: ${suggestion.evidenceStrength || 'Moderate'}. ${suggestion.reasoning}`} />
+                                <span className="text-xs font-bold text-slate-400">({suggestion.probability}%)</span>
+                              </div>
                             </div>
                             <p className="text-xs text-slate-600 mb-2 line-clamp-2 group-hover:line-clamp-none transition-all">
                               {suggestion.reasoning}
                             </p>
+
+                            {/* Small structured features bullet list for the differential on hover/group-hover */}
+                            {((suggestion.supportingFeatures && suggestion.supportingFeatures.length > 0) ||
+                              (suggestion.contradictingFeatures && suggestion.contradictingFeatures.length > 0)) && (
+                              <div className="hidden group-hover:grid grid-cols-2 gap-2 p-2 bg-slate-50 rounded-md border border-slate-100 mb-2 transition-all">
+                                <div>
+                                  <span className="text-[10px] font-bold text-emerald-800 uppercase block mb-0.5">Supporting Features</span>
+                                  <ul className="list-disc pl-3 text-[10px] text-slate-600 space-y-0.5">
+                                    {suggestion.supportingFeatures?.map((f, i) => <li key={i}>{f}</li>)}
+                                  </ul>
+                                </div>
+                                <div>
+                                  <span className="text-[10px] font-bold text-rose-800 uppercase block mb-0.5">Conflicting / Missing</span>
+                                  <ul className="list-disc pl-3 text-[10px] text-slate-600 space-y-0.5">
+                                    {suggestion.contradictingFeatures?.map((f, i) => <li key={i}>{f}</li>)}
+                                    {suggestion.missingFeatures?.map((f, i) => <li key={i}>{f}</li>)}
+                                  </ul>
+                                </div>
+                              </div>
+                            )}
 
                             {suggestion.references && suggestion.references.length > 0 && (
                               <div className="flex flex-wrap gap-1.5 mb-3">
@@ -1776,6 +2161,27 @@ Keep it professional, compact, and list each section as short bulletin lines.
                                 ))}
                               </div>
                             )}
+
+                            {/* Terminology info block for secondary differentials */}
+                            <div className="mt-2 mb-2 p-1.5 rounded bg-slate-50 border border-slate-100 flex items-center justify-between text-[11px]">
+                              <span className="text-slate-500 font-medium flex items-center gap-1">
+                                <Database className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                                ICD-10 Terminology:
+                              </span>
+                              {suggestion.icd10Status === "validated" && suggestion.validatedIcd10 ? (
+                                <span className="font-mono font-bold text-emerald-700 flex items-center gap-1 bg-emerald-50 px-1 py-0.5 rounded">
+                                  <Shield className="w-2.5 h-2.5 text-emerald-600 fill-emerald-600" /> {suggestion.validatedIcd10.code} (Validated)
+                                </span>
+                              ) : suggestion.icd10Status === "approximate" && suggestion.validatedIcd10 ? (
+                                <span className="font-mono text-amber-700 font-medium flex items-center gap-1 bg-amber-50 px-1 py-0.5 rounded">
+                                  <AlertTriangle className="w-2.5 h-2.5 text-amber-500" /> {suggestion.validatedIcd10.code} (Resolved)
+                                </span>
+                              ) : (
+                                <span className="font-mono text-rose-600 flex items-center gap-1 bg-rose-50 px-1 py-0.5 rounded">
+                                  <AlertCircle className="w-2.5 h-2.5 text-rose-400" /> {suggestion.icd10 || "CUSTOM"} (Unvalidated)
+                                </span>
+                              )}
+                            </div>
 
                             <button 
                               onClick={() => handleApplySuggestion(suggestion)}

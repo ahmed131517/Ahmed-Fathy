@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { User, CreditCard, Calendar, Clock, Users, Mail, Phone, MapPin, Shield, FileText, Map, UserCheck, Heart, Activity, Scissors, Plus, X, Camera, Upload, RotateCcw, Check, Eye, QrCode, Image as ImageIcon, Search, ChevronDown, Baby } from "lucide-react";
+import { User, CreditCard, Calendar, Clock, Users, Mail, Phone, MapPin, Shield, FileText, Map, UserCheck, Heart, Activity, Scissors, Plus, X, Camera, Upload, RotateCcw, Check, Eye, QrCode, Image as ImageIcon, Search, ChevronDown, Baby, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import SignatureCanvas from 'react-signature-canvas';
 import { QRCodeSVG } from 'qrcode.react';
@@ -46,6 +46,8 @@ export function NewPatient() {
     otherConditions: "",
     hasMedications: null,
     medications: [{ id: 1, name: "", dosage: "", frequency: "" }],
+    pastTraumaHistory: [{ id: 1, traumaType: "", yearOrAge: "", details: "" }],
+    pastTraumaNotes: "",
     familyHistory: [{ id: 1, relation: "", condition: "", age: "" }],
     surgeries: "",
     familyHistoryText: "",
@@ -193,6 +195,8 @@ export function NewPatient() {
       otherConditions: p.otherConditions || "",
       hasMedications: p.hasMedications || "no",
       medications: parseList(p.medications, [{ id: 1, name: "", dosage: "", frequency: "" }]),
+      pastTraumaHistory: parseList(p.pastTraumaHistory, [{ id: 1, traumaType: "", yearOrAge: "", details: "" }]),
+      pastTraumaNotes: p.pastTraumaNotes || "",
       familyHistory: parseList(p.familyHistory, [{ id: 1, relation: "", condition: "", age: "" }]),
       surgeries: p.surgeries || p.hasSurgeries || "",
       familyHistoryText: p.familyHistoryNotes || "",
@@ -341,7 +345,7 @@ export function NewPatient() {
   };
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto pb-12">
+    <div className="space-y-6 w-full pb-12">
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold text-slate-900">{t('newPatientRegistration')}</h2>
@@ -1418,6 +1422,88 @@ export function NewPatient() {
                   </div>
                 )}
 
+                {/* Past-Trauma History */}
+                <div className="space-y-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+                  <h4 className="text-md font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                    <ShieldAlert className="w-4 h-4 text-amber-500" /> {t('pastTraumaHistory')}
+                  </h4>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">{t('pastTraumaHistoryDesc')}</p>
+                  
+                  <div className="space-y-3 p-4 bg-slate-50 dark:bg-slate-950/20 rounded-xl border border-slate-200 dark:border-slate-800">
+                    {formData.pastTraumaHistory.map((entry: any, index: number) => (
+                      <div key={entry.id} className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+                        <div className="w-full sm:flex-1">
+                          <input 
+                            type="text" 
+                            placeholder={t('traumaType')} 
+                            value={entry.traumaType || ""}
+                            onChange={(e) => {
+                              const newTrauma = [...formData.pastTraumaHistory];
+                              newTrauma[index].traumaType = e.target.value;
+                              updateField('pastTraumaHistory', newTrauma);
+                            }}
+                            className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none text-sm" 
+                          />
+                        </div>
+                        <div className="w-full sm:w-36">
+                          <input 
+                            type="text" 
+                            placeholder={t('yearOrAge')} 
+                            value={entry.yearOrAge || ""}
+                            onChange={(e) => {
+                              const newTrauma = [...formData.pastTraumaHistory];
+                              newTrauma[index].yearOrAge = e.target.value;
+                              updateField('pastTraumaHistory', newTrauma);
+                            }}
+                            className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none text-sm" 
+                          />
+                        </div>
+                        <div className="w-full sm:flex-[2]">
+                          <input 
+                            type="text" 
+                            placeholder={t('traumaDetails')} 
+                            value={entry.details || ""}
+                            onChange={(e) => {
+                              const newTrauma = [...formData.pastTraumaHistory];
+                              newTrauma[index].details = e.target.value;
+                              updateField('pastTraumaHistory', newTrauma);
+                            }}
+                            className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none text-sm" 
+                          />
+                        </div>
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            const newTrauma = formData.pastTraumaHistory.filter((tItem: any) => tItem.id !== entry.id);
+                            updateField('pastTraumaHistory', newTrauma);
+                          }} 
+                          className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition-colors self-end sm:self-auto"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                    <button 
+                      type="button"
+                      onClick={() => updateField('pastTraumaHistory', [...formData.pastTraumaHistory, { id: Date.now(), traumaType: "", yearOrAge: "", details: "" }])} 
+                      className="text-sm font-medium text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 flex items-center gap-1 mt-2"
+                    >
+                      <Plus className="w-4 h-4" /> {t('addTraumaEntry')}
+                    </button>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-slate-600 dark:text-slate-400">{t('additionalTraumaNotes')}</label>
+                    <textarea
+                      rows={2}
+                      placeholder="e.g. Major motor vehicle accident at age 22 with mild concussion and left femur fracture (ORIF performed)."
+                      value={formData.pastTraumaNotes || ""}
+                      onChange={(e) => updateField('pastTraumaNotes', e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none text-xs resize-none"
+                    />
+                  </div>
+                </div>
+
                 {/* Family Medical History */}
                 <div className="space-y-4 pt-4 border-t border-slate-100">
                   <h4 className="text-md font-semibold text-slate-800 flex items-center gap-2">
@@ -1762,6 +1848,13 @@ export function NewPatient() {
                         </div>
                       )}
                       <div>
+                        <p className="text-slate-500 font-medium">{t('pastTraumaHistory')}:</p>
+                        <p>
+                          {formData.pastTraumaHistory?.filter((tItem: any) => tItem.traumaType || tItem.details).map((tItem: any) => `${tItem.traumaType}${tItem.yearOrAge ? ` (${tItem.yearOrAge})` : ''}${tItem.details ? `: ${tItem.details}` : ''}`).join(', ') || 'None documented'}
+                        </p>
+                        {formData.pastTraumaNotes && <p className="mt-1 text-xs italic">{formData.pastTraumaNotes}</p>}
+                      </div>
+                      <div>
                         <p className="text-slate-500 font-medium">{t('familyMedicalHistory')}:</p>
                         <p>{formData.familyHistory.filter(f => f.condition).map(f => `${f.relation}: ${f.condition}`).join(', ') || 'None'}</p>
                         {formData.familyHistoryText && <p className="mt-1 text-xs italic">{formData.familyHistoryText}</p>}
@@ -1888,6 +1981,8 @@ export function NewPatient() {
                         medications: formData.medications,
                         hasSurgeries: formData.surgeries ? 'yes' : 'no',
                         surgeries: formData.surgeries,
+                        pastTraumaHistory: formData.pastTraumaHistory,
+                        pastTraumaNotes: formData.pastTraumaNotes,
                         familyHistory: formData.familyHistory,
                         familyHistoryNotes: formData.familyHistoryText,
                         photo: formData.photo || null,

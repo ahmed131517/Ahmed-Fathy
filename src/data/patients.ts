@@ -21,6 +21,19 @@ export interface Allergy {
   severity: 'Minor' | 'Moderate' | 'Severe';
 }
 
+export type PregnancyStatus = 'unknown' | 'not_pregnant' | 'pregnant' | 'postpartum';
+export type LactationStatus = 'unknown' | 'not_lactating' | 'lactating';
+
+export interface StructuredPregnancyProfile {
+  status: PregnancyStatus;
+  gestationalAgeWeeks?: number;
+  trimester?: 1 | 2 | 3;
+  EDD?: string;
+  lactationStatus?: LactationStatus;
+  pregnancyVerificationSource?: 'Urine HCG' | 'Serum HCG' | 'Ultrasound' | 'Patient Reported' | 'Clinical History' | 'Unverified';
+  verificationDate?: string;
+}
+
 export interface Patient {
   id: string;
   mrn?: string;
@@ -42,7 +55,10 @@ export interface Patient {
   surgeries?: string[];
   familyHistory?: string[];
   familyHistoryNotes?: string;
+  pastTraumaHistory?: any;
+  pastTraumaNotes?: string;
   otherConditions?: string;
+  pregnancyProfile?: StructuredPregnancyProfile;
   gynHistory?: {
     menarcheAge?: string;
     lmp?: string;

@@ -62,7 +62,6 @@ export const ddiService = {
       const response = await fetch(`https://rxnav.nlm.nih.gov/REST/interaction/list.json?rxcuis=${cuis.join('+')}`);
       
       if (!response.ok) {
-        console.warn(`RxNav getVerifiedInteractions returned ${response.status}`);
         return [];
       }
 

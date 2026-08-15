@@ -84,7 +84,7 @@ export const CLINICAL_PATHWAYS: ClinicalPathwayRule[] = [
     title: "Heart Failure Exacerbation",
     description: "Shortness of breath in a patient with known Heart Failure.",
     conditions: {
-      symptomIds: ["lungs_shortness_of_breath"],
+      symptomIds: ["lungs_dyspnea"],
       requiredChronicConditions: ["Heart Failure", "CHF", "Congestive Heart Failure"]
     },
     actions: {
@@ -103,7 +103,7 @@ export const CLINICAL_PATHWAYS: ClinicalPathwayRule[] = [
     title: "Anaphylaxis Alert",
     description: "Sudden onset of respiratory distress with skin symptoms.",
     conditions: {
-      symptomIds: ["lungs_shortness_of_breath", "hives_urticaria"]
+      symptomIds: ["lungs_dyspnea", "hives_urticaria"]
     },
     actions: {
       triageLevel: "high",
@@ -216,7 +216,7 @@ export const CLINICAL_PATHWAYS: ClinicalPathwayRule[] = [
     title: "Pulmonary Embolism (PE) Protocol",
     description: "Sudden shortness of breath and chest pain.",
     conditions: {
-      symptomIds: ["lungs_shortness_of_breath", "heart_chest_pain"],
+      symptomIds: ["lungs_dyspnea", "heart_chest_pain"],
       hasRedFlag: true
     },
     actions: {
@@ -250,7 +250,7 @@ export const CLINICAL_PATHWAYS: ClinicalPathwayRule[] = [
     title: "High-Risk Cardiac Presentation",
     description: "Chest pain and shortness of breath in an older patient.",
     conditions: {
-      symptomIds: ["heart_chest_pain", "lungs_shortness_of_breath"],
+      symptomIds: ["heart_chest_pain", "lungs_dyspnea"],
       patientAgeMin: 50
     },
     actions: {
@@ -288,7 +288,7 @@ export const CLINICAL_PATHWAYS: ClinicalPathwayRule[] = [
     title: "Cauda Equina Syndrome Concern",
     description: "Back pain with neurological deficits or saddle anesthesia.",
     conditions: {
-      symptomIds: ["back_numbness"],
+      symptomIds: ["back_pain"],
       requiredAnalysisData: {
         location: ["buttocks", "legs"]
       },

@@ -2,7 +2,8 @@ import { useState, useEffect } from "react";
 import { 
   Sparkles, Brain, MessageSquare, Zap, Shield, 
   ExternalLink, Volume2, Bot, Trash2, Loader2,
-  Cloud, Server, CheckCircle2, XCircle, Globe, Info
+  Cloud, Server, CheckCircle2, XCircle, Globe, Info,
+  Stethoscope, Lock, Mic, Activity, Cpu, Check, Heart, UserCheck, ShieldCheck
 } from "lucide-react";
 import { useSettings } from "../../lib/SettingsContext";
 import { useAISettings } from "../../lib/AISettingsContext";
@@ -15,10 +16,70 @@ export function AISettings() {
   const { settings: aiSettings, updateSettings: updateAISettings } = useAISettings();
   
   const [autoSummarization, setAutoSummarization] = useState(true);
-  const [predictiveScheduling, setPredictiveScheduling] = useState(false);
+  const [predictiveScheduling, setPredictiveScheduling] = useState(true);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [isClearing, setIsClearing] = useState(false);
   const [isTestingVoice, setIsTestingVoice] = useState(false);
+
+  const clinicalPresets = [
+    {
+      id: 'primary-care',
+      title: 'Primary Care & Dictation',
+      icon: Stethoscope,
+      badge: 'Popular',
+      specialty: 'General Practice',
+      tone: 'professional',
+      model: 'gemini-3.6-flash',
+      phi: true,
+      desc: 'Optimized for fast SOAP note dictation, ICD-10 coding, and general consultations.'
+    },
+    {
+      id: 'cardiology',
+      title: 'Cardiology Specialist',
+      icon: Heart,
+      badge: 'Advanced',
+      specialty: 'Cardiology',
+      tone: 'professional',
+      model: 'gemini-3.1-pro-preview',
+      phi: true,
+      desc: 'Gemini 3.1 Pro multi-symptom differential diagnosis with strict PHI anonymization.'
+    },
+    {
+      id: 'discharge',
+      title: 'Patient Discharge Assistant',
+      icon: UserCheck,
+      badge: 'Patient-Facing',
+      specialty: 'General Practice',
+      tone: 'patient-friendly',
+      model: 'gemini-3.6-flash',
+      phi: true,
+      desc: 'Simplifies complex clinical terminology into clear discharge notes with voice auto-read.'
+    },
+    {
+      id: 'pediatrics',
+      title: 'Pediatrics & Family Care',
+      icon: ShieldCheck,
+      badge: 'Family Focus',
+      specialty: 'Pediatrics',
+      tone: 'patient-friendly',
+      model: 'gemini-3.6-flash',
+      phi: true,
+      desc: 'Pediatric dosage calculators, clear parent communication, and offline brain.js fallback.'
+    }
+  ];
+
+  const applyClinicalPreset = (preset: typeof clinicalPresets[0]) => {
+    updateAISettings({
+      specialty: preset.specialty,
+      clinicalTone: preset.tone as any,
+      anonymizePHI: preset.phi,
+      autoRead: preset.id === 'discharge'
+    });
+    updateGlobalSettings({
+      modelType: preset.model
+    });
+    toast.success(`Applied ${preset.title} workflow preset!`);
+  };
 
   useEffect(() => {
     const loadVoices = () => {
@@ -84,6 +145,63 @@ export function AISettings() {
 
   return (
     <div className="space-y-6">
+      {/* Recommended Clinical Specialty & Persona Presets */}
+      <div className="card-panel p-6 space-y-4 border-indigo-100 dark:border-indigo-900/40 bg-gradient-to-r from-indigo-50/40 via-white to-purple-50/30 dark:from-indigo-950/20 dark:via-slate-900 dark:to-purple-950/10">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-2 bg-indigo-600 text-white rounded-xl shadow-md shadow-indigo-500/20">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white">AI Assistant Clinical Workflow Presets</h2>
+              <p className="text-xs text-slate-500">1-click optimization for specialty diagnostic reasoning, tone, and privacy guardrails</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {clinicalPresets.map(preset => {
+            const Icon = preset.icon;
+            const isCurrent = aiSettings.specialty === preset.specialty && 
+                              (preset.id !== 'discharge' || aiSettings.clinicalTone === 'patient-friendly');
+            return (
+              <button
+                key={preset.id}
+                onClick={() => applyClinicalPreset(preset)}
+                className={cn(
+                  "p-4 rounded-2xl border text-left transition-all space-y-2 flex flex-col justify-between group",
+                  isCurrent 
+                    ? "bg-white dark:bg-slate-900 border-indigo-500 dark:border-indigo-400 ring-2 ring-indigo-500/20 shadow-md"
+                    : "bg-white/80 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-700 hover:bg-white"
+                )}
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="p-2 bg-indigo-50 dark:bg-indigo-950 rounded-xl text-indigo-600 dark:text-indigo-400 group-hover:scale-110 transition-transform">
+                      <Icon className="w-4 h-4" />
+                    </div>
+                    <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/80 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                      {preset.badge}
+                    </span>
+                  </div>
+                  <h3 className="text-xs font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 transition-colors">
+                    {preset.title}
+                  </h3>
+                  <p className="text-[11px] text-slate-500 mt-1 leading-relaxed line-clamp-2">
+                    {preset.desc}
+                  </p>
+                </div>
+
+                <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[10px] font-semibold text-slate-400">
+                  <span>{preset.model.includes('pro') ? 'Gemini 3.1 Pro' : 'Gemini 2.5 Flash'}</span>
+                  {isCurrent && <span className="text-indigo-600 font-bold flex items-center gap-0.5"><Check className="w-3 h-3" /> Active</span>}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Global AI Features */}
       <div className="card-panel p-6">
         <div className="space-y-6">
@@ -136,87 +254,139 @@ export function AISettings() {
           </div>
 
           {/* Cloud Model */}
-          <div className={cn("transition-opacity duration-300", aiProcessingMode !== 'cloud' && "opacity-50 pointer-events-none")}>
-            <h3 className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-3">Cloud Model</h3>
-            <div className="space-y-4">
-              <select 
-                value={modelType} 
-                onChange={(e) => updateGlobalSettings({ modelType: e.target.value })}
-                className="w-full p-3 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-cyan-500 outline-none"
+          <div className={cn("transition-opacity duration-300 space-y-4", aiProcessingMode !== 'cloud' && "opacity-50 pointer-events-none")}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Cloud AI Clinical Model Strategy</h3>
+              <span className="text-[10px] font-mono text-cyan-500 bg-cyan-50 dark:bg-cyan-950/60 px-2 py-0.5 rounded font-bold">
+                Active: {modelType.includes('pro') ? 'Gemini 3.1 Pro' : 'Gemini 2.5 Flash'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => updateGlobalSettings({ modelType: 'gemini-3.6-flash' })}
+                className={cn(
+                  "p-4 rounded-xl border text-left transition-all space-y-2 flex flex-col justify-between cursor-pointer",
+                  modelType === 'gemini-3.6-flash'
+                    ? "bg-cyan-50/60 dark:bg-cyan-950/40 border-cyan-400 shadow-sm ring-2 ring-cyan-500/20"
+                    : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:bg-slate-50"
+                )}
               >
-                <option value="gemini-2.5-flash">Gemini 2.5 Flash (Fast)</option>
-                <option value="gemini-3-flash-preview">Gemini 3 Flash (Preview)</option>
-                <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro (Advanced)</option>
-              </select>
-
-              {/* AI Provider Integration */}
-              <div className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <Globe className="w-4 h-4 text-indigo-500" />
-                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">AI Backend Provider</h4>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-slate-900 dark:text-white">Gemini 2.5 Flash</span>
+                    <span className="text-[9px] font-bold text-cyan-600 dark:text-cyan-400 bg-cyan-100 dark:bg-cyan-900/60 px-2 py-0.5 rounded uppercase">
+                      Ultra Low Latency
+                    </span>
                   </div>
-                  <div className="flex bg-slate-200 dark:bg-slate-800 p-1 rounded-lg">
-                    <button 
-                      onClick={() => updateAISettings({ aiProvider: 'gemini' })}
-                      className={cn(
-                        "px-3 py-1 text-xs font-bold rounded-md transition-all",
-                        aiSettings.aiProvider === 'gemini' 
-                          ? "bg-white dark:bg-slate-700 text-indigo-600 shadow-sm" 
-                          : "text-slate-500"
-                      )}
-                    >
-                      Gemini
-                    </button>
-                    <button 
-                      onClick={() => updateAISettings({ aiProvider: 'openrouter' })}
-                      className={cn(
-                        "px-3 py-1 text-xs font-bold rounded-md transition-all",
-                        aiSettings.aiProvider === 'openrouter' 
-                          ? "bg-white dark:bg-slate-700 text-indigo-600 shadow-sm" 
-                          : "text-slate-500"
-                      )}
-                    >
-                      OpenRouter
-                    </button>
-                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                    Ideal for instant ICD-10 coding lookup, drug interaction checks, voice dictation parsing, and quick chart summaries.
+                  </p>
                 </div>
-
-                {aiSettings.aiProvider === 'openrouter' && (
-                  <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                        OpenRouter API Key
-                      </label>
-                      <input 
-                        type="password" 
-                        value={aiSettings.openRouterApiKey || ''} 
-                        onChange={(e) => updateAISettings({ openRouterApiKey: e.target.value })}
-                        placeholder="sk-or-v1-..."
-                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 dark:text-white outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                        Preferred Model
-                      </label>
-                      <select
-                        value={aiSettings.openRouterModel}
-                        onChange={(e) => updateAISettings({ openRouterModel: e.target.value })}
-                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 dark:text-white outline-none"
-                      >
-                        <option value="openai/gpt-3.5-turbo">GPT-3.5 Turbo</option>
-                        <option value="openai/gpt-4o-mini">GPT-4o Mini</option>
-                        <option value="openai/gpt-4-turbo">GPT-4 Turbo</option>
-                        <option value="anthropic/claude-3-opus">Claude 3 Opus</option>
-                        <option value="anthropic/claude-3-sonnet">Claude 3 Sonnet</option>
-                        <option value="google/gemini-pro-1.5">Gemini Pro 1.5</option>
-                        <option value="mistralai/mixtral-8x7b-instruct">Mixtral 8x7B</option>
-                      </select>
-                    </div>
+                {modelType === 'gemini-3.6-flash' && (
+                  <div className="flex items-center gap-1 text-[11px] font-bold text-cyan-600 dark:text-cyan-400 pt-2 border-t border-cyan-100 dark:border-cyan-900">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Selected Primary
                   </div>
                 )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => updateGlobalSettings({ modelType: 'gemini-3.1-pro-preview' })}
+                className={cn(
+                  "p-4 rounded-xl border text-left transition-all space-y-2 flex flex-col justify-between cursor-pointer",
+                  modelType === 'gemini-3.1-pro-preview'
+                    ? "bg-purple-50/60 dark:bg-purple-950/40 border-purple-400 shadow-sm ring-2 ring-purple-500/20"
+                    : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:bg-slate-50"
+                )}
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-slate-900 dark:text-white">Gemini 3.1 Pro</span>
+                    <span className="text-[9px] font-bold text-purple-600 dark:text-purple-400 bg-purple-100 dark:bg-purple-900/60 px-2 py-0.5 rounded uppercase">
+                      High Reasoning
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                    Ideal for multi-symptom differential diagnosis, complex lab report synthesis, rare disease research, and clinical trials.
+                  </p>
+                </div>
+                {modelType === 'gemini-3.1-pro-preview' && (
+                  <div className="flex items-center gap-1 text-[11px] font-bold text-purple-600 dark:text-purple-400 pt-2 border-t border-purple-100 dark:border-purple-900">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Selected Primary
+                  </div>
+                )}
+              </button>
+            </div>
+
+            {/* AI Provider Integration */}
+            <div className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Globe className="w-4 h-4 text-indigo-500" />
+                  <h4 className="text-sm font-bold text-slate-900 dark:text-white">AI Backend Provider</h4>
+                </div>
+                <div className="flex bg-slate-200 dark:bg-slate-800 p-1 rounded-lg">
+                  <button 
+                    onClick={() => updateAISettings({ aiProvider: 'gemini' })}
+                    className={cn(
+                      "px-3 py-1 text-xs font-bold rounded-md transition-all cursor-pointer",
+                      aiSettings.aiProvider === 'gemini' 
+                        ? "bg-white dark:bg-slate-700 text-indigo-600 shadow-sm" 
+                        : "text-slate-500"
+                    )}
+                  >
+                    Gemini
+                  </button>
+                  <button 
+                    onClick={() => updateAISettings({ aiProvider: 'openrouter' })}
+                    className={cn(
+                      "px-3 py-1 text-xs font-bold rounded-md transition-all cursor-pointer",
+                      aiSettings.aiProvider === 'openrouter' 
+                        ? "bg-white dark:bg-slate-700 text-indigo-600 shadow-sm" 
+                        : "text-slate-500"
+                    )}
+                  >
+                    OpenRouter
+                  </button>
+                </div>
               </div>
+
+              {aiSettings.aiProvider === 'openrouter' && (
+                <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                      OpenRouter API Key
+                    </label>
+                    <input 
+                      type="password" 
+                      value={aiSettings.openRouterApiKey || ''} 
+                      onChange={(e) => updateAISettings({ openRouterApiKey: e.target.value })}
+                      placeholder="sk-or-v1-..."
+                      className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 dark:text-white outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                      Preferred Model
+                    </label>
+                    <select
+                      value={aiSettings.openRouterModel}
+                      onChange={(e) => updateAISettings({ openRouterModel: e.target.value })}
+                      className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 dark:text-white outline-none"
+                    >
+                      <option value="openai/gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                      <option value="openai/gpt-4o-mini">GPT-4o Mini</option>
+                      <option value="openai/gpt-4-turbo">GPT-4 Turbo</option>
+                      <option value="anthropic/claude-3-opus">Claude 3 Opus</option>
+                      <option value="anthropic/claude-3-sonnet">Claude 3 Sonnet</option>
+                      <option value="google/gemini-pro-1.5">Gemini Pro 1.5</option>
+                      <option value="mistralai/mixtral-8x7b-instruct">Mixtral 8x7B</option>
+                    </select>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

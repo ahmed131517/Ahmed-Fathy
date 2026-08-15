@@ -1,9 +1,10 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Symptom } from '@/lib/SymptomContext';
 import { COMMON_DIAGNOSES, Diagnosis } from '@/data/diagnosisMappings';
+import { getCustomDiagnoses } from '@/lib/customDiagnoses';
 import { CLINICAL_PATHWAYS } from '@/data/clinicalPathways';
 import { cn } from '@/lib/utils';
-import { Grid, Info, AlertTriangle, BookOpen, ExternalLink, CheckCircle2, X, Search, ShieldAlert, FileText, TrendingUp, Layers, LayoutGrid, Zap, ChevronDown, ChevronRight, Lightbulb, FlaskConical } from 'lucide-react';
+import { Grid, Info, AlertTriangle, BookOpen, ExternalLink, CheckCircle2, X, Search, ShieldAlert, FileText, TrendingUp, Layers, LayoutGrid, Zap, ChevronDown, ChevronRight, Lightbulb, FlaskConical, Sparkles, Ban, Activity } from 'lucide-react';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from 'recharts';
 import { ChartContainer } from '@/components/ui/ChartContainer';
 import { usePatient } from '@/lib/PatientContext';
@@ -11,14 +12,16 @@ import { useAISettings } from '@/lib/AISettingsContext';
 import { searchPubMed } from '@/services/pubmedService';
 import { checkSafetyAlerts, SafetyAlert } from '@/services/clinicalAI/riskEngine';
 import { generateSoapNote } from '@/services/clinicalAI/soapEngine';
-import { calculateWeightedConfidence } from '@/services/clinicalAI/differentialEngine';
+import { calculateDiagnosticMetrics, calculateWeightedConfidence, getRuleOutImpactsForDiagnosis, isSymptomMatch, getAttributeRiskModifiers, DiagnosticMetrics } from '@/services/clinicalAI/differentialEngine';
 import { PatientTrends } from '@/components/PatientTrends';
+import { PertinentNegativeItem } from '@/data/pertinentNegativesDictionary';
 
 interface DifferentialDiagnosisGridProps {
   symptoms: Symptom[];
+  pertinentNegatives?: PertinentNegativeItem[];
 }
 
-export const DifferentialDiagnosisGrid: React.FC<DifferentialDiagnosisGridProps> = ({ symptoms }) => {
+export const DifferentialDiagnosisGrid: React.FC<DifferentialDiagnosisGridProps> = ({ symptoms, pertinentNegatives = [] }) => {
   const [selectedDiagnoses, setSelectedDiagnoses] = React.useState<Diagnosis[]>([]);
   const [categoryFilter, setCategoryFilter] = React.useState<string>('All');
   const [severityFilter, setSeverityFilter] = React.useState<string>('All');
@@ -70,7 +73,15 @@ export const DifferentialDiagnosisGrid: React.FC<DifferentialDiagnosisGridProps>
     }
   };
 
-  const categories = useMemo(() => ['All', ...Array.from(new Set(COMMON_DIAGNOSES.map(d => d.category)))], []);
+  const activeDiagnoses = useMemo(() => {
+    const custom = getCustomDiagnoses();
+    const map = new Map<string, Diagnosis>();
+    COMMON_DIAGNOSES.forEach(d => map.set(d.id, d));
+    custom.forEach(d => map.set(d.id, d));
+    return Array.from(map.values());
+  }, []);
+
+  const categories = useMemo(() => ['All', ...Array.from(new Set(activeDiagnoses.map(d => d.category)))], [activeDiagnoses]);
   const severities = ['All', 'Mild', 'Moderate', 'Severe'];
   const durations = [
     { label: 'All Durations', value: 'All', days: undefined },
@@ -103,18 +114,18 @@ export const DifferentialDiagnosisGrid: React.FC<DifferentialDiagnosisGridProps>
     return CLINICAL_PATHWAYS.filter(p => p.diagnosisId === selectedDiagnosis.id);
   }, [selectedDiagnosis]);
 
-  const calculateConfidence = (diag: Diagnosis) => {
-    return calculateWeightedConfidence(diag, symptoms, selectedPatient || undefined, currentDurationDays);
+  const calculateConfidence = (diag: Diagnosis): DiagnosticMetrics => {
+    return calculateDiagnosticMetrics(diag, symptoms, selectedPatient || undefined, currentDurationDays, pertinentNegatives);
   };
 
   const filteredDiagnoses = useMemo(() => {
-    let base = COMMON_DIAGNOSES.filter(diag => 
+    let base = activeDiagnoses.filter(diag => 
       (categoryFilter === 'All' || diag.category === categoryFilter) &&
       (severityFilter === 'All' || diag.severity === severityFilter)
-    ).filter(diag => 
-      diag.commonSymptoms.some(sId => symptoms.some(s => s.id === sId))
     ).map(diag => {
-      return { ...diag, matchPercentage: calculateConfidence(diag) };
+      const metrics = calculateConfidence(diag);
+      // We keep matchPercentage for backward compatibility, mapped to bayesianProbability
+      return { ...diag, matchPercentage: metrics.bayesianProbability, metrics };
     });
 
     // Handle "Zebra" mode: filter specifically for rare (low prevalence) or critical cases
@@ -123,13 +134,14 @@ export const DifferentialDiagnosisGrid: React.FC<DifferentialDiagnosisGridProps>
     }
 
     return base.sort((a, b) => {
+      if (b.matchPercentage !== a.matchPercentage) {
+        return b.matchPercentage - a.matchPercentage;
+      }
       const aPriority = a.triagePriority ? (6 - a.triagePriority) : 0;
       const bPriority = b.triagePriority ? (6 - b.triagePriority) : 0;
-      const aScore = a.matchPercentage + (aPriority * 10);
-      const bScore = b.matchPercentage + (bPriority * 10);
-      return bScore - aScore;
+      return bPriority - aPriority;
     });
-  }, [symptoms, categoryFilter, severityFilter, selectedPatient, zebraMode, currentDurationDays]);
+  }, [symptoms, pertinentNegatives, categoryFilter, severityFilter, selectedPatient, zebraMode, currentDurationDays]);
 
   const diagnosesBySystem = useMemo(() => {
     const systems: Record<string, typeof filteredDiagnoses> = {};
@@ -164,7 +176,7 @@ export const DifferentialDiagnosisGrid: React.FC<DifferentialDiagnosisGridProps>
       });
 
       // Also add current patient match for the first selected diagnosis' context
-      data['A'] = symptoms.some(s => s.id === sId) ? 1 : 0;
+      data['A'] = symptoms.some(s => isSymptomMatch(sId, s)) ? 1 : 0;
 
       return data;
     });
@@ -174,12 +186,12 @@ export const DifferentialDiagnosisGrid: React.FC<DifferentialDiagnosisGridProps>
     if (!selectedDiagnosis) return null;
     
     const topLr = selectedDiagnosis.likelihoodRatios?.sort((a, b) => b.lrPositive - a.lrPositive)[0];
-    const matchCount = selectedDiagnosis.commonSymptoms.filter(sId => symptoms.some(s => s.id === sId)).length;
+    const matchCount = selectedDiagnosis.commonSymptoms.filter(sId => symptoms.some(s => isSymptomMatch(sId, s))).length;
     
     if (selectedDiagnosis.matchPercentage > 85) {
       return `Highly probable due to strong alignment with ${matchCount} key clinical markers${topLr ? ` and high LR+ for ${topLr.symptomId.replace(/_/g, ' ')}` : ''}.`;
     }
-    if (topLr && symptoms.some(s => s.id === topLr.symptomId)) {
+    if (topLr && symptoms.some(s => isSymptomMatch(topLr.symptomId, s))) {
       return `Ranked high primarily because the presence of ${topLr.symptomId.replace(/_/g, ' ')} is a strong predictor (LR+ ${topLr.lrPositive}) for this condition.`;
     }
     return `Included in differential based on ${matchCount} matching symptoms and demographic prevalence.`;
@@ -189,7 +201,34 @@ export const DifferentialDiagnosisGrid: React.FC<DifferentialDiagnosisGridProps>
     setCheckedRedFlags(prev => ({ ...prev, [flag]: !prev[flag] }));
   };
 
-  if (filteredDiagnoses.length === 0) return <div className="p-4 text-slate-500">No matching diagnoses found.</div>;
+  if (!symptoms || symptoms.length === 0) {
+    return (
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden p-8 text-center">
+        <div className="max-w-md mx-auto space-y-3">
+          <div className="w-12 h-12 rounded-full bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mx-auto">
+            <Grid className="w-6 h-6" />
+          </div>
+          <h3 className="text-base font-semibold text-slate-800 dark:text-slate-100">
+            No symptoms selected
+          </h3>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            Select symptoms above or start AI Diagnostic Q&A to generate differential diagnoses.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (filteredDiagnoses.length === 0) {
+    return (
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden p-8 text-center">
+        <div className="max-w-md mx-auto space-y-2">
+          <Info className="w-8 h-8 text-slate-400 mx-auto" />
+          <p className="text-sm text-slate-500 dark:text-slate-400">No matching diagnoses found for current filters.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -266,48 +305,117 @@ export const DifferentialDiagnosisGrid: React.FC<DifferentialDiagnosisGridProps>
         {viewMode === 'grid' ? (
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {displayedDiagnoses.map((diag) => (
-                <div 
-                  key={diag.id}
-                  onClick={() => handleToggleDiagnosis(diag)}
-                  className={cn(
-                    "p-3 border rounded-lg cursor-pointer transition-all hover:shadow-md group relative",
-                    selectedDiagnoses.some(d => d.id === diag.id) ? "border-indigo-500 bg-indigo-50/30 ring-1 ring-indigo-500" : "border-slate-100 bg-white hover:border-indigo-300"
-                  )}
-                >
-                  {diag.diagnosticTests && diag.diagnosticTests.length > 0 && (
-                    <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <div className="p-1 bg-white border border-slate-200 rounded text-indigo-600 hover:bg-indigo-600 hover:text-white transition-colors" title={`Order ${diag.diagnosticTests[0]}`}>
-                        <Zap className="w-3 h-3" />
-                      </div>
-                    </div>
-                  )}
-                  <div className="flex justify-between items-start mb-1">
-                    <h4 className="text-xs font-bold text-slate-800 leading-tight group-hover:text-indigo-600 transition-colors uppercase tracking-tight pr-6">{diag.name}</h4>
-                    <div className="flex flex-col items-end">
-                      <span className="text-[9px] font-bold text-indigo-600">{Math.round(diag.matchPercentage)}%</span>
-                      <div className="w-12 h-1 bg-slate-100 rounded-full mt-1 overflow-hidden">
-                        <div 
-                          className={cn("h-full", diag.matchPercentage > 70 ? "bg-indigo-500" : "bg-indigo-300")} 
-                          style={{ width: `${diag.matchPercentage}%` }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex gap-1.5 mb-2">
-                    <span className="text-[8px] font-bold px-1 py-0.5 rounded bg-slate-100 text-slate-500 uppercase">{diag.system || diag.category}</span>
-                    {diag.severity === 'Critical' && <span className="text-[8px] font-bold px-1 py-0.5 rounded bg-red-100 text-red-600 uppercase">Critical</span>}
-                    {selectedPatient?.labResults && diag.associatedLabs?.some(assoc => 
-                      selectedPatient.labResults?.some(l => l.labName === assoc.labName && l.range === assoc.range)
-                    ) && (
-                      <span className="text-[8px] font-bold px-1 py-0.5 rounded bg-emerald-100 text-emerald-700 uppercase flex items-center gap-1">
-                        <FlaskConical className="w-2 h-2" /> Lab Boost
-                      </span>
+              {displayedDiagnoses.map((diag) => {
+                const isSelected = selectedDiagnoses.some(d => d.id === diag.id);
+                // Fallbacks in case metrics aren't populated for any reason
+                const clinicalMatch = diag.metrics?.clinicalMatch ?? Math.round(diag.matchPercentage);
+                const bayesianProbability = diag.metrics?.bayesianProbability ?? Math.round(diag.matchPercentage);
+                const evidenceLevel = diag.metrics?.evidenceLevel ?? (diag.matchPercentage > 80 ? 'Strong' : diag.matchPercentage > 50 ? 'Moderate' : 'Weak');
+
+                return (
+                  <div 
+                    key={diag.id}
+                    onClick={() => handleToggleDiagnosis(diag)}
+                    className={cn(
+                      "p-3 rounded-xl cursor-pointer transition-all duration-300 relative group overflow-hidden border",
+                      isSelected 
+                        ? "border-indigo-400 shadow-[0_0_15px_-3px_rgba(99,102,241,0.2)] bg-gradient-to-br from-indigo-50/80 to-white" 
+                        : "border-slate-200 bg-white hover:border-indigo-300 hover:shadow-md"
                     )}
+                  >
+                    {/* Subtle background glow for high match */}
+                    {bayesianProbability > 80 && !isSelected && (
+                      <div className="absolute -inset-4 bg-gradient-to-r from-emerald-500/5 to-indigo-500/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+                    )}
+                    
+                    {diag.diagnosticTests && diag.diagnosticTests.length > 0 && (
+                      <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="p-1 bg-white border border-slate-200 rounded text-indigo-600 shadow-sm hover:bg-indigo-600 hover:text-white transition-colors" title={`Order ${diag.diagnosticTests[0]}`}>
+                          <Zap className="w-3 h-3" />
+                        </div>
+                      </div>
+                    )}
+                    <div className="flex justify-between items-start mb-2 relative z-10">
+                      <h4 className="text-xs font-bold text-slate-800 leading-tight group-hover:text-indigo-600 transition-colors tracking-tight pr-6">{diag.name}</h4>
+                      <div className="flex flex-col items-end shrink-0">
+                        <span className={cn(
+                          "text-[10px] font-black",
+                          bayesianProbability > 75 ? "text-emerald-600" : bayesianProbability > 40 ? "text-indigo-600" : "text-slate-500"
+                        )}>
+                          {bayesianProbability}%
+                        </span>
+                        <div className="w-14 h-1.5 bg-slate-100 rounded-full mt-1 overflow-hidden shadow-inner">
+                          <div 
+                            className={cn(
+                              "h-full transition-all duration-500", 
+                              bayesianProbability > 75 ? "bg-gradient-to-r from-emerald-400 to-emerald-600" : 
+                              bayesianProbability > 40 ? "bg-gradient-to-r from-indigo-400 to-indigo-600" : 
+                              "bg-gradient-to-r from-slate-300 to-slate-400"
+                            )} 
+                            style={{ width: `${bayesianProbability}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 mb-2 relative z-10">
+                      <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-slate-500 uppercase">{diag.system || diag.category}</span>
+                      
+                      <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-md bg-slate-50 border border-slate-200 text-slate-600 uppercase flex items-center gap-1 shadow-sm">
+                        <Activity className="w-2 h-2" /> Match: {clinicalMatch}%
+                      </span>
+                      
+                      <span className={cn(
+                        "text-[8px] font-bold px-1.5 py-0.5 rounded-md border uppercase flex items-center gap-1 shadow-sm",
+                        evidenceLevel === 'Strong' ? "bg-emerald-50 border-emerald-200 text-emerald-700" :
+                        evidenceLevel === 'Moderate' ? "bg-indigo-50 border-indigo-200 text-indigo-700" :
+                        "bg-slate-50 border-slate-200 text-slate-600"
+                      )}>
+                        <FileText className="w-2 h-2" /> {evidenceLevel} Evidence
+                      </span>
+
+                      {diag.severity === 'Critical' && (
+                        <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-md bg-red-50 border border-red-200 text-red-600 uppercase flex items-center gap-1 shadow-sm">
+                          <AlertTriangle className="w-2 h-2" /> Critical
+                        </span>
+                      )}
+                      {selectedPatient?.labResults && diag.associatedLabs?.some(assoc => 
+                        selectedPatient.labResults?.some(l => l.labName === assoc.labName && l.range === assoc.range)
+                      ) && (
+                        <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-700 uppercase flex items-center gap-1 shadow-sm">
+                          <FlaskConical className="w-2 h-2" /> Lab Match
+                        </span>
+                      )}
+                      {pertinentNegatives.length > 0 && (() => {
+                        const impacts = getRuleOutImpactsForDiagnosis(diag, pertinentNegatives);
+                        if (impacts.length === 0) return null;
+                        return (
+                          <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-md bg-rose-50 border border-rose-200 text-rose-700 uppercase flex items-center gap-1 shadow-sm" title={impacts.map(i => i.explanation).join('; ')}>
+                            <Ban className="w-2 h-2 text-rose-500" /> Ruled Down ({impacts.length})
+                          </span>
+                        );
+                      })()}
+                      {(() => {
+                        const attrImpacts = getAttributeRiskModifiers(diag, symptoms);
+                        if (attrImpacts.length === 0) return null;
+                        const hasIncrease = attrImpacts.some(i => i.rule.modifierValue > 1);
+                        
+                        return (
+                          <span className={cn(
+                            "text-[8px] font-bold px-1.5 py-0.5 rounded-md border uppercase flex items-center gap-1 shadow-sm",
+                            hasIncrease 
+                              ? "bg-amber-50 border-amber-200 text-amber-700" 
+                              : "bg-slate-50 border-slate-200 text-slate-700"
+                          )} title={attrImpacts.map(i => i.rule.explanation).join('; ')}>
+                            {hasIncrease ? <TrendingUp className="w-2 h-2" /> : <TrendingUp className="w-2 h-2 transform rotate-180" />} 
+                            Modifier ({attrImpacts.length})
+                          </span>
+                        );
+                      })()}
+                    </div>
+                    <p className="text-[10px] text-slate-500 line-clamp-2 italic leading-relaxed relative z-10">"{diag.description}"</p>
                   </div>
-                  <p className="text-[10px] text-slate-500 line-clamp-2 italic">"{diag.description}"</p>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {visibleCount < filteredDiagnoses.length && (
@@ -315,7 +423,7 @@ export const DifferentialDiagnosisGrid: React.FC<DifferentialDiagnosisGridProps>
                 onClick={() => setVisibleCount(prev => prev + 6)}
                 className="w-full py-2 flex items-center justify-center gap-2 text-[10px] font-bold text-indigo-600 bg-indigo-50/50 hover:bg-indigo-50 rounded-lg transition-colors border border-dashed border-indigo-200"
               >
-                Show All Matches ({filteredDiagnoses.length - visibleCount} more) <ChevronDown className="w-3 h-3" />
+                Load More Diagnoses ({filteredDiagnoses.length - visibleCount} more) <ChevronDown className="w-3 h-3" />
               </button>
             )}
           </div>
@@ -360,7 +468,7 @@ export const DifferentialDiagnosisGrid: React.FC<DifferentialDiagnosisGridProps>
           </div>
         )}
 
-        {selectedDiagnosis && (
+          {selectedDiagnosis && (
           <div className="mt-6 p-4 bg-slate-50 rounded-xl border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex justify-between items-start mb-3">
               <div>
@@ -381,6 +489,53 @@ export const DifferentialDiagnosisGrid: React.FC<DifferentialDiagnosisGridProps>
             
             <p className="text-xs text-slate-600 leading-relaxed mb-4">{selectedDiagnosis.description}</p>
             
+            {/* AI Next Steps & Suggestions Panel */}
+            <div className="mb-5 p-4 bg-gradient-to-br from-indigo-50 to-white rounded-xl border border-indigo-100 shadow-sm relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-3 opacity-10">
+                <Lightbulb className="w-16 h-16 text-indigo-500" />
+              </div>
+              <h5 className="text-[10px] font-bold text-indigo-700 uppercase tracking-widest mb-3 flex items-center gap-1.5 relative z-10">
+                <Sparkles className="w-3.5 h-3.5 text-indigo-500" /> AI Diagnostic Suggestions
+              </h5>
+              
+              <div className="space-y-4 relative z-10">
+                {selectedDiagnosis.likelihoodRatios && selectedDiagnosis.likelihoodRatios.some(lr => !symptoms.some(s => isSymptomMatch(lr.symptomId, s))) && (
+                  <div>
+                    <h6 className="text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-2">To Rule In/Out, Ask About:</h6>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedDiagnosis.likelihoodRatios
+                        .filter(lr => !symptoms.some(s => isSymptomMatch(lr.symptomId, s)))
+                        .map((lr, i) => (
+                          <div key={i} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-indigo-100 rounded-lg shadow-sm">
+                            <span className="text-[10px] font-medium text-slate-700 capitalize">{lr.symptomId.replace(/_/g, ' ')}</span>
+                            <span className={cn(
+                              "text-[8px] font-bold px-1 rounded",
+                              lr.lrPositive > 5 ? "bg-indigo-100 text-indigo-700" : "bg-slate-100 text-slate-500"
+                            )}>
+                              {lr.lrPositive > 5 ? 'High Value' : 'Standard'}
+                            </span>
+                          </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {selectedDiagnosis.diagnosticTests && selectedDiagnosis.diagnosticTests.length > 0 && (
+                  <div>
+                    <h6 className="text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-2">Recommended Workup:</h6>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedDiagnosis.diagnosticTests.map((test, i) => (
+                        <div key={i} className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-lg">
+                          <FlaskConical className="w-2.5 h-2.5" />
+                          {test}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
             {reasoningExplanation && (
               <div className="mb-4 p-3 bg-indigo-600 rounded-lg shadow-sm border border-indigo-500 flex items-start gap-3">
                 <Lightbulb className="w-4 h-4 text-white shrink-0 mt-0.5" />
@@ -408,55 +563,62 @@ export const DifferentialDiagnosisGrid: React.FC<DifferentialDiagnosisGridProps>
               </div>
             )}
 
-            {/* Rule-Out Logic / Distinguishing Features */}
-            {selectedDiagnosis.likelihoodRatios && (
-              <div className="mb-4">
-                <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1">
-                  <TrendingUp className="w-3 h-3" /> Clinical Reasoning (LR Weights)
-                </h5>
-                <div className="space-y-1.5">
-                  {selectedDiagnosis.likelihoodRatios.map((lr, i) => {
-                    const isPresent = symptoms.some(s => s.id === lr.symptomId);
-                    return (
-                      <div key={i} className="flex items-center justify-between p-2 rounded bg-white border border-slate-100 shadow-sm">
-                        <span className="text-[10px] text-slate-600 font-medium capitalize">{lr.symptomId.replace(/_/g, ' ')}</span>
-                        <div className="flex items-center gap-2">
-                          <span className={cn(
-                            "text-[9px] font-bold px-1.5 py-0.5 rounded",
-                            isPresent ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-400"
-                          )}>
-                            {isPresent ? `Match: +${lr.lrPositive}x` : `Absent: ${lr.lrNegative}x`}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+            {/* Symptom Presentation Match / Clinical Reasoning */}
+            <div className="mb-4">
+              <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1">
+                <TrendingUp className="w-3 h-3" /> Symptom Presentation Match
+              </h5>
+              <div className="space-y-1.5">
+                {Array.from(new Set([
+                  ...selectedDiagnosis.commonSymptoms,
+                  ...(selectedDiagnosis.likelihoodRatios?.map(lr => lr.symptomId) || [])
+                ])).map((sId, i) => {
+                  const isPresent = symptoms.some(s => isSymptomMatch(sId, s));
+                  const lr = selectedDiagnosis.likelihoodRatios?.find(l => l.symptomId === sId);
+                  
+                  const lrPosScore = lr ? Math.min(lr.lrPositive, 10) : null;
+                  const lrNegScore = lr ? Math.min(1 / (lr.lrNegative || 1), 10) : null;
 
-            {/* Rule-Out Checks (Missing likely markers) */}
-            {selectedDiagnosis.likelihoodRatios && selectedDiagnosis.likelihoodRatios.some(lr => !symptoms.some(s => s.id === lr.symptomId)) && (
-              <div className="mb-4">
-                <h5 className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mb-2 flex items-center gap-1">
-                  <BookOpen className="w-3 h-3" /> Rule-Out Checks (Missing)
-                </h5>
-                <div className="bg-emerald-50/30 border border-emerald-100 rounded-lg p-2">
-                  <p className="text-[9px] text-slate-500 mb-2 italic">Information needed to increase confirmation (SPPIN) or rule-out (SNNPIT):</p>
-                  <ul className="space-y-1">
-                    {selectedDiagnosis.likelihoodRatios
-                      .filter(lr => !symptoms.some(s => s.id === lr.symptomId))
-                      .map((lr, i) => (
-                        <li key={i} className="text-[10px] text-slate-700 flex justify-between items-center bg-white p-1.5 rounded border border-slate-100">
-                          <span className="capitalize">{lr.symptomId.replace(/_/g, ' ')}</span>
-                          <span className="text-[8px] font-bold text-indigo-500">LR+ {lr.lrPositive} | LR- {lr.lrNegative}</span>
-                        </li>
-                      ))
-                    }
-                  </ul>
-                </div>
+                  return (
+                    <div key={i} className="flex flex-col gap-1.5 p-2.5 rounded-lg bg-white border border-slate-100 shadow-sm relative overflow-hidden group hover:border-indigo-200 transition-colors">
+                      <div className="flex items-center justify-between z-10">
+                        <span className="text-[10px] text-slate-700 font-bold capitalize">{sId.replace(/_/g, ' ')}</span>
+                        <span className={cn(
+                          "text-[9px] font-black px-1.5 py-0.5 rounded border shadow-sm",
+                          isPresent ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-slate-50 text-slate-500 border-slate-200"
+                        )}>
+                          {isPresent ? (lr ? `Match: +${lr.lrPositive}x` : 'Match') : (lr ? `Absent: ${lr.lrNegative}x` : 'Absent')}
+                        </span>
+                      </div>
+                      
+                      {lr && (
+                        <div className="grid grid-cols-2 gap-2 mt-1 z-10 opacity-70 group-hover:opacity-100 transition-opacity">
+                          {/* Positive predictive value bar */}
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-[7px] text-emerald-600 font-bold uppercase tracking-widest">Rule-In Power (LR+)</span>
+                            <div className="w-full h-1 bg-slate-100 rounded-full overflow-hidden">
+                              <div className="h-full bg-emerald-400 rounded-full" style={{ width: `${(lrPosScore / 10) * 100}%` }} />
+                            </div>
+                          </div>
+                          {/* Negative predictive value bar */}
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-[7px] text-indigo-600 font-bold uppercase tracking-widest">Rule-Out Power (LR-)</span>
+                            <div className="w-full h-1 bg-slate-100 rounded-full overflow-hidden">
+                              <div className="h-full bg-indigo-400 rounded-full" style={{ width: `${(lrNegScore / 10) * 100}%` }} />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Subtle background highlight if matched */}
+                      {isPresent && (
+                        <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/5 to-transparent pointer-events-none" />
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-            )}
+            </div>
 
             {safetyAlerts.length > 0 && (
               <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
@@ -512,6 +674,31 @@ export const DifferentialDiagnosisGrid: React.FC<DifferentialDiagnosisGridProps>
                 </ChartContainer>
               </div>
               <div className="space-y-4">
+                {(() => {
+                  const attrImpacts = getAttributeRiskModifiers(selectedDiagnosis, symptoms);
+                  if (attrImpacts.length > 0) {
+                    return (
+                      <div className="bg-amber-50/50 p-3 rounded-lg border border-amber-100 shadow-sm">
+                        <h5 className="text-[10px] font-bold text-amber-700 uppercase tracking-widest mb-1 flex items-center gap-1">
+                          <TrendingUp className="w-3 h-3" /> Attribute Modifiers Applied
+                        </h5>
+                        <ul className="space-y-1.5 mt-2">
+                          {attrImpacts.map((impact, idx) => (
+                            <li key={idx} className="text-[10px] text-slate-700 bg-white p-2 rounded border border-amber-100/50 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+                              <span className="font-semibold text-slate-900 block mb-0.5">{impact.rule.explanation}</span>
+                              <span className="text-slate-500 flex items-center gap-2">
+                                <span><span className="font-medium">Attribute:</span> {impact.rule.attributeKey}</span>
+                                <span><span className="font-medium">Multiplier:</span> {impact.rule.modifierValue}x</span>
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+                
                 <div className="bg-white p-3 rounded-lg border border-slate-100 shadow-sm">
                   <h5 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Diagnostic Tests</h5>
                   <div className="flex flex-wrap gap-1">

@@ -8,9 +8,8 @@ import { cn } from "../../lib/utils";
 export function Layout() {
   const location = useLocation();
   const { selectedPatient } = usePatient();
-  const isEncounterNote = location.pathname === "/encounter-note";
   const isClinicalOverview = location.pathname === "/clinical-overview";
-  const isSpecialRoute = isEncounterNote || isClinicalOverview;
+  const isSpecialRoute = isClinicalOverview;
 
   return (
     <div className={cn(

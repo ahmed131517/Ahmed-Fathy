@@ -25,106 +25,106 @@ export const TOP_PRESCRIBED_BY_SPECIALTY: Record<string, { label: string; icon: 
     label: 'General Practice',
     icon: '🩺',
     meds: [
-      { id: 'gp_1', name: 'Paracetamol', brandName: 'Panadol Extra', form: '500mg Tablet', specialty: 'gp', badge: 'Top #1', dosage: '1 - 2 tablets', frequency: 'TID (Every 8 hours)', duration: '5 days', instructions: 'Take after meals for fever or pain' },
-      { id: 'gp_2', name: 'Amoxicillin / Clavulanic Acid', brandName: 'Augmentin 1g', form: '1000mg Tablet', specialty: 'gp', badge: '1st Line Antibiotic', dosage: '1 tablet', frequency: 'BID (Every 12 hours)', duration: '7 days', instructions: 'Take at the start of a meal to prevent stomach upset' },
-      { id: 'gp_3', name: 'Ibuprofen', brandName: 'Brufen 400', form: '400mg Tablet', specialty: 'gp', dosage: '1 tablet', frequency: 'TID (Every 8 hours)', duration: '5 days', instructions: 'Take with food or glass of milk' },
-      { id: 'gp_4', name: 'Omeprazole', brandName: 'Losec / Omez', form: '20mg Capsule', specialty: 'gp', dosage: '1 capsule', frequency: 'OD (Once daily in the morning)', duration: '14 days', instructions: 'Take 30 minutes before breakfast' },
-      { id: 'gp_5', name: 'Cetirizine', brandName: 'Zyrtec', form: '10mg Tablet', specialty: 'gp', dosage: '1 tablet', frequency: 'OD (Once daily at bedtime)', duration: '7 days', instructions: 'May cause mild drowsiness' },
-      { id: 'gp_6', name: 'Paracetamol / Pseudoephedrine', brandName: 'Congestal', form: 'Tablet', specialty: 'gp', badge: 'Cold & Flu', dosage: '1 tablet', frequency: 'TID (Every 8 hours)', duration: '5 days', instructions: 'Drink plenty of fluids' },
+      { id: 'gp_1', name: 'Paracetamol', brandName: 'Panadol Extra (Paracetamol)', form: '500mg Tablet', specialty: 'gp', badge: 'Top #1', dosage: '1 - 2 tablets', frequency: 'TID (Every 8 hours)', duration: '5 days', instructions: 'Take after meals for fever or pain' },
+      { id: 'gp_2', name: 'Amoxicillin / Clavulanic Acid', brandName: 'Augmentin 1g (Amoxicillin / Clavulanic Acid)', form: '1000mg Tablet', specialty: 'gp', badge: '1st Line Antibiotic', dosage: '1 tablet', frequency: 'BID (Every 12 hours)', duration: '7 days', instructions: 'Take at the start of a meal to prevent stomach upset' },
+      { id: 'gp_3', name: 'Ibuprofen', brandName: 'Brufen 400 (Ibuprofen)', form: '400mg Tablet', specialty: 'gp', dosage: '1 tablet', frequency: 'TID (Every 8 hours)', duration: '5 days', instructions: 'Take with food or glass of milk' },
+      { id: 'gp_4', name: 'Omeprazole', brandName: 'Losec / Omez (Omeprazole)', form: '20mg Capsule', specialty: 'gp', dosage: '1 capsule', frequency: 'OD (Once daily in the morning)', duration: '14 days', instructions: 'Take 30 minutes before breakfast' },
+      { id: 'gp_5', name: 'Cetirizine', brandName: 'Zyrtec (Cetirizine)', form: '10mg Tablet', specialty: 'gp', dosage: '1 tablet', frequency: 'OD (Once daily at bedtime)', duration: '7 days', instructions: 'May cause mild drowsiness' },
+      { id: 'gp_6', name: 'Paracetamol / Pseudoephedrine', brandName: 'Congestal (Paracetamol / Pseudoephedrine)', form: 'Tablet', specialty: 'gp', badge: 'Cold & Flu', dosage: '1 tablet', frequency: 'TID (Every 8 hours)', duration: '5 days', instructions: 'Drink plenty of fluids' },
     ],
   },
   cardio: {
     label: 'Cardiology',
     icon: '🫀',
     meds: [
-      { id: 'car_1', name: 'Bisoprolol', brandName: 'Concor 5mg', form: '5mg Tablet', specialty: 'cardio', badge: 'Beta Blocker', dosage: '1 tablet', frequency: 'OD (Once daily in the morning)', duration: '30 days', instructions: 'Do not discontinue abruptly without medical advice' },
-      { id: 'car_2', name: 'Atorvastatin', brandName: 'Lipitor 20', form: '20mg Tablet', specialty: 'cardio', badge: 'Lipid Lowering', dosage: '1 tablet', frequency: 'OD (Once daily at bedtime)', duration: '30 days', instructions: 'Take regularly at evening' },
-      { id: 'car_3', name: 'Amlodipine', brandName: 'Norvasc 5', form: '5mg Tablet', specialty: 'cardio', dosage: '1 tablet', frequency: 'OD (Once daily)', duration: '30 days', instructions: 'Monitor blood pressure regularly' },
-      { id: 'car_4', name: 'Valsartan', brandName: 'Tareg / Diovan', form: '80mg Tablet', specialty: 'cardio', dosage: '1 tablet', frequency: 'OD (Once daily)', duration: '30 days', instructions: 'Take with or without food' },
-      { id: 'car_5', name: 'Clopidogrel', brandName: 'Plavix 75', form: '75mg Tablet', specialty: 'cardio', badge: 'Antiplatelet', dosage: '1 tablet', frequency: 'OD (Once daily)', duration: '30 days', instructions: 'Take same time every day' },
-      { id: 'car_6', name: 'Furosemide', brandName: 'Lasix 40', form: '40mg Tablet', specialty: 'cardio', badge: 'Diuretic', dosage: '1 tablet', frequency: 'OD (Once daily in the morning)', duration: '30 days', instructions: 'Take in morning to prevent nighttime urination' },
+      { id: 'car_1', name: 'Bisoprolol', brandName: 'Concor 5mg (Bisoprolol)', form: '5mg Tablet', specialty: 'cardio', badge: 'Beta Blocker', dosage: '1 tablet', frequency: 'OD (Once daily in the morning)', duration: '30 days', instructions: 'Do not discontinue abruptly without medical advice' },
+      { id: 'car_2', name: 'Atorvastatin', brandName: 'Lipitor 20 (Atorvastatin)', form: '20mg Tablet', specialty: 'cardio', badge: 'Lipid Lowering', dosage: '1 tablet', frequency: 'OD (Once daily at bedtime)', duration: '30 days', instructions: 'Take regularly at evening' },
+      { id: 'car_3', name: 'Amlodipine', brandName: 'Norvasc 5 (Amlodipine)', form: '5mg Tablet', specialty: 'cardio', dosage: '1 tablet', frequency: 'OD (Once daily)', duration: '30 days', instructions: 'Monitor blood pressure regularly' },
+      { id: 'car_4', name: 'Valsartan', brandName: 'Tareg / Diovan (Valsartan)', form: '80mg Tablet', specialty: 'cardio', dosage: '1 tablet', frequency: 'OD (Once daily)', duration: '30 days', instructions: 'Take with or without food' },
+      { id: 'car_5', name: 'Clopidogrel', brandName: 'Plavix 75 (Clopidogrel)', form: '75mg Tablet', specialty: 'cardio', badge: 'Antiplatelet', dosage: '1 tablet', frequency: 'OD (Once daily)', duration: '30 days', instructions: 'Take same time every day' },
+      { id: 'car_6', name: 'Furosemide', brandName: 'Lasix 40 (Furosemide)', form: '40mg Tablet', specialty: 'cardio', badge: 'Diuretic', dosage: '1 tablet', frequency: 'OD (Once daily in the morning)', duration: '30 days', instructions: 'Take in morning to prevent nighttime urination' },
     ],
   },
   peds: {
     label: 'Pediatrics',
     icon: '👶',
     meds: [
-      { id: 'ped_1', name: 'Paracetamol Pediatric', brandName: 'Cetal / Panadol Baby', form: '120mg/5ml Syrup', specialty: 'peds', badge: 'Peds Antipyretic', dosage: '5 ml', frequency: 'QID (Every 6 hours as needed)', duration: '3 - 5 days', instructions: 'Calculate exact weight dose before giving' },
-      { id: 'ped_2', name: 'Amoxicillin Pediatric', brandName: 'E-Mox Susp 250', form: '250mg/5ml Liquid', specialty: 'peds', badge: 'Peds Antibiotic', dosage: '5 ml', frequency: 'TID (Every 8 hours)', duration: '7 days', instructions: 'Shake bottle thoroughly before each dose' },
-      { id: 'ped_3', name: 'Salbutamol Syrup', brandName: 'Ventolin Syrup', form: '2mg/5ml Liquid', specialty: 'peds', dosage: '2.5 ml - 5 ml', frequency: 'TID (Every 8 hours)', duration: '5 days', instructions: 'For wheezing or bronchospasm' },
-      { id: 'ped_4', name: 'Domperidone Drops', brandName: 'Gastromotil Drops', form: '10mg/ml Oral Drops', specialty: 'peds', badge: 'Pediatric Antiemetic', dosage: '5 - 10 drops', frequency: 'TID (Every 8 hours before feed)', duration: '3 days', instructions: 'Administer 15 minutes prior to feeding' },
-      { id: 'ped_5', name: 'Zinc Sulfate Syrup', brandName: 'Zincorigin', form: '20mg/5ml Liquid', specialty: 'peds', badge: 'Diarrhea Adjuvant', dosage: '5 ml', frequency: 'OD (Once daily)', duration: '10 - 14 days', instructions: 'Essential oral rehydration therapy adjuvant' },
+      { id: 'ped_1', name: 'Paracetamol Pediatric', brandName: 'Cetal / Panadol Baby (Paracetamol Pediatric)', form: '120mg/5ml Syrup', specialty: 'peds', badge: 'Peds Antipyretic', dosage: '5 ml', frequency: 'QID (Every 6 hours as needed)', duration: '3 - 5 days', instructions: 'Calculate exact weight dose before giving' },
+      { id: 'ped_2', name: 'Amoxicillin Pediatric', brandName: 'E-Mox Susp 250 (Amoxicillin Pediatric)', form: '250mg/5ml Liquid', specialty: 'peds', badge: 'Peds Antibiotic', dosage: '5 ml', frequency: 'TID (Every 8 hours)', duration: '7 days', instructions: 'Shake bottle thoroughly before each dose' },
+      { id: 'ped_3', name: 'Salbutamol Syrup', brandName: 'Ventolin Syrup (Salbutamol Syrup)', form: '2mg/5ml Liquid', specialty: 'peds', dosage: '2.5 ml - 5 ml', frequency: 'TID (Every 8 hours)', duration: '5 days', instructions: 'For wheezing or bronchospasm' },
+      { id: 'ped_4', name: 'Domperidone Drops', brandName: 'Gastromotil Drops (Domperidone Drops)', form: '10mg/ml Oral Drops', specialty: 'peds', badge: 'Pediatric Antiemetic', dosage: '5 - 10 drops', frequency: 'TID (Every 8 hours before feed)', duration: '3 days', instructions: 'Administer 15 minutes prior to feeding' },
+      { id: 'ped_5', name: 'Zinc Sulfate Syrup', brandName: 'Zincorigin (Zinc Sulfate Syrup)', form: '20mg/5ml Liquid', specialty: 'peds', badge: 'Diarrhea Adjuvant', dosage: '5 ml', frequency: 'OD (Once daily)', duration: '10 - 14 days', instructions: 'Essential oral rehydration therapy adjuvant' },
     ],
   },
   gastro: {
     label: 'Gastroenterology',
     icon: '🧪',
     meds: [
-      { id: 'gas_1', name: 'Esomeprazole', brandName: 'Nexium 40', form: '40mg Tablet', specialty: 'gastro', badge: 'Potent PPI', dosage: '1 tablet', frequency: 'OD (Once daily in morning)', duration: '14 days', instructions: 'Swallow whole with liquid 1 hour before meal' },
-      { id: 'gas_2', name: 'Mebeverine HCl', brandName: 'Colona / Duspatalin', form: '135mg Tablet', specialty: 'gastro', badge: 'IBS Antispasmodic', dosage: '1 tablet', frequency: 'TID (Every 8 hours before meals)', duration: '14 days', instructions: 'Take 20 minutes before meals' },
-      { id: 'gas_3', name: 'Metoclopramide', brandName: 'Plasil / Primperan', form: '10mg Tablet', specialty: 'gastro', dosage: '1 tablet', frequency: 'TID (Every 8 hours before meals)', duration: '5 days', instructions: 'Take 30 min before food for nausea' },
-      { id: 'gas_4', name: 'Lactulose', brandName: 'Duphalac', form: '10g/15ml Liquid', specialty: 'gastro', badge: 'Osmotic Laxative', dosage: '15 ml', frequency: 'BID (Every 12 hours)', duration: '7 days', instructions: 'Mix with fruit juice or water if preferred' },
-      { id: 'gas_5', name: 'Probiotic Mixture', brandName: 'Lacteol Fort', form: 'Sachet / Powder', specialty: 'gastro', badge: 'Gut Flora', dosage: '1 sachet in water', frequency: 'BID (Every 12 hours)', duration: '7 days', instructions: 'Dissolve in half glass of room temp water' },
+      { id: 'gas_1', name: 'Esomeprazole', brandName: 'Nexium 40 (Esomeprazole)', form: '40mg Tablet', specialty: 'gastro', badge: 'Potent PPI', dosage: '1 tablet', frequency: 'OD (Once daily in morning)', duration: '14 days', instructions: 'Swallow whole with liquid 1 hour before meal' },
+      { id: 'gas_2', name: 'Mebeverine HCl', brandName: 'Colona / Duspatalin (Mebeverine HCl)', form: '135mg Tablet', specialty: 'gastro', badge: 'IBS Antispasmodic', dosage: '1 tablet', frequency: 'TID (Every 8 hours before meals)', duration: '14 days', instructions: 'Take 20 minutes before meals' },
+      { id: 'gas_3', name: 'Metoclopramide', brandName: 'Plasil / Primperan (Metoclopramide)', form: '10mg Tablet', specialty: 'gastro', dosage: '1 tablet', frequency: 'TID (Every 8 hours before meals)', duration: '5 days', instructions: 'Take 30 min before food for nausea' },
+      { id: 'gas_4', name: 'Lactulose', brandName: 'Duphalac (Lactulose)', form: '10g/15ml Liquid', specialty: 'gastro', badge: 'Osmotic Laxative', dosage: '15 ml', frequency: 'BID (Every 12 hours)', duration: '7 days', instructions: 'Mix with fruit juice or water if preferred' },
+      { id: 'gas_5', name: 'Probiotic Mixture', brandName: 'Lacteol Fort (Probiotic Mixture)', form: 'Sachet / Powder', specialty: 'gastro', badge: 'Gut Flora', dosage: '1 sachet in water', frequency: 'BID (Every 12 hours)', duration: '7 days', instructions: 'Dissolve in half glass of room temp water' },
     ],
   },
   derm: {
     label: 'Dermatology',
     icon: '🧴',
     meds: [
-      { id: 'der_1', name: 'Hydrocortisone 1%', brandName: 'Dermocort', form: 'Topical Cream', specialty: 'derm', badge: 'Mild Steroid', dosage: 'Apply thin layer', frequency: 'BID (Every 12 hours)', duration: '7 days', instructions: 'Gently rub into affected skin area only' },
-      { id: 'der_2', name: 'Fusidic Acid 2%', brandName: 'Fucidin Cream', form: 'Topical Cream', specialty: 'derm', badge: 'Topical Antibiotic', dosage: 'Apply thin layer', frequency: 'TID (Every 8 hours)', duration: '7 days', instructions: 'Cleanse affected area before applying' },
-      { id: 'der_3', name: 'Terbinafine 1%', brandName: 'Lamisil Cream', form: 'Topical Cream', specialty: 'derm', badge: 'Antifungal', dosage: 'Apply thin layer', frequency: 'BID (Every 12 hours)', duration: '14 days', instructions: 'Continue application for full 2 weeks' },
-      { id: 'der_4', name: 'Isotretinoin', brandName: 'Netlook / Roaccutane', form: '20mg Capsule', specialty: 'derm', badge: 'Acne Therapy', dosage: '1 capsule', frequency: 'OD (Once daily with main meal)', duration: '30 days', instructions: 'Strict pregnancy prevention & monitor LFTs' },
+      { id: 'der_1', name: 'Hydrocortisone 1%', brandName: 'Dermocort (Hydrocortisone 1%)', form: 'Topical Cream', specialty: 'derm', badge: 'Mild Steroid', dosage: 'Apply thin layer', frequency: 'BID (Every 12 hours)', duration: '7 days', instructions: 'Gently rub into affected skin area only' },
+      { id: 'der_2', name: 'Fusidic Acid 2%', brandName: 'Fucidin Cream (Fusidic Acid 2%)', form: 'Topical Cream', specialty: 'derm', badge: 'Topical Antibiotic', dosage: 'Apply thin layer', frequency: 'TID (Every 8 hours)', duration: '7 days', instructions: 'Cleanse affected area before applying' },
+      { id: 'der_3', name: 'Terbinafine 1%', brandName: 'Lamisil Cream (Terbinafine 1%)', form: 'Topical Cream', specialty: 'derm', badge: 'Antifungal', dosage: 'Apply thin layer', frequency: 'BID (Every 12 hours)', duration: '14 days', instructions: 'Continue application for full 2 weeks' },
+      { id: 'der_4', name: 'Isotretinoin', brandName: 'Netlook / Roaccutane (Isotretinoin)', form: '20mg Capsule', specialty: 'derm', badge: 'Acne Therapy', dosage: '1 capsule', frequency: 'OD (Once daily with main meal)', duration: '30 days', instructions: 'Strict pregnancy prevention & monitor LFTs' },
     ],
   },
   pulmo: {
     label: 'Pulmonology',
     icon: '🫁',
     meds: [
-      { id: 'pul_1', name: 'Salbutamol Inhaler', brandName: 'Ventolin Evohaler', form: '100mcg/puff Inhaler', specialty: 'pulmo', badge: 'Rescue Inhaler', dosage: '1 - 2 puffs', frequency: 'PRN (As needed for dyspnea)', duration: '30 days', instructions: 'Inhale deeply and hold breath for 10 seconds' },
-      { id: 'pul_2', name: 'Budesonide / Formoterol', brandName: 'Symbicort 160/4.5', form: 'Inhaler / Respiratory', specialty: 'pulmo', badge: 'ICS + LABA', dosage: '1 - 2 puffs', frequency: 'BID (Every 12 hours)', duration: '30 days', instructions: 'Rinse mouth thoroughly with water after use' },
-      { id: 'pul_3', name: 'Acetylcysteine', brandName: 'Fluimucil 600', form: '600mg Sachet', specialty: 'pulmo', badge: 'Mucolytic', dosage: '1 sachet in water', frequency: 'OD (Once daily after lunch)', duration: '7 days', instructions: 'Dissolve in half glass of water' },
-      { id: 'pul_4', name: 'Montelukast', brandName: 'Singulair 10', form: '10mg Tablet', specialty: 'pulmo', badge: 'Leukotriene Blocker', dosage: '1 tablet', frequency: 'OD (Once daily at bedtime)', duration: '30 days', instructions: 'Take in the evening for asthma/allergy control' },
+      { id: 'pul_1', name: 'Salbutamol Inhaler', brandName: 'Ventolin Evohaler (Salbutamol Inhaler)', form: '100mcg/puff Inhaler', specialty: 'pulmo', badge: 'Rescue Inhaler', dosage: '1 - 2 puffs', frequency: 'PRN (As needed for dyspnea)', duration: '30 days', instructions: 'Inhale deeply and hold breath for 10 seconds' },
+      { id: 'pul_2', name: 'Budesonide / Formoterol', brandName: 'Symbicort 160/4.5 (Budesonide / Formoterol)', form: 'Inhaler / Respiratory', specialty: 'pulmo', badge: 'ICS + LABA', dosage: '1 - 2 puffs', frequency: 'BID (Every 12 hours)', duration: '30 days', instructions: 'Rinse mouth thoroughly with water after use' },
+      { id: 'pul_3', name: 'Acetylcysteine', brandName: 'Fluimucil 600 (Acetylcysteine)', form: '600mg Sachet', specialty: 'pulmo', badge: 'Mucolytic', dosage: '1 sachet in water', frequency: 'OD (Once daily after lunch)', duration: '7 days', instructions: 'Dissolve in half glass of water' },
+      { id: 'pul_4', name: 'Montelukast', brandName: 'Singulair 10 (Montelukast)', form: '10mg Tablet', specialty: 'pulmo', badge: 'Leukotriene Blocker', dosage: '1 tablet', frequency: 'OD (Once daily at bedtime)', duration: '30 days', instructions: 'Take in the evening for asthma/allergy control' },
     ],
   },
   neuro: {
     label: 'Neurology',
     icon: '🧠',
     meds: [
-      { id: 'neu_1', name: 'Pregabalin', brandName: 'Lyrica / Lyrolin', form: '75mg Capsule', specialty: 'neuro', badge: 'Neuropathic Pain', dosage: '1 capsule', frequency: 'BID (Every 12 hours)', duration: '30 days', instructions: 'May cause drowsiness; avoid driving initially' },
-      { id: 'neu_2', name: 'Gabapentin', brandName: 'Gabin 300', form: '300mg Capsule', specialty: 'neuro', dosage: '1 capsule', frequency: 'TID (Every 8 hours)', duration: '30 days', instructions: 'Do not discontinue suddenly' },
-      { id: 'neu_3', name: 'Levetiracetam', brandName: 'Keppra 500', form: '500mg Tablet', specialty: 'neuro', badge: 'Antiepileptic', dosage: '1 tablet', frequency: 'BID (Every 12 hours)', duration: '30 days', instructions: 'Maintain consistent 12-hour dosing interval' },
-      { id: 'neu_4', name: 'Amitriptyline', brandName: 'Tryptizol 25', form: '25mg Tablet', specialty: 'neuro', badge: 'Migraine / Pain', dosage: '1 tablet', frequency: 'OD (Once daily at bedtime)', duration: '30 days', instructions: 'Take 1 - 2 hours before sleep' },
+      { id: 'neu_1', name: 'Pregabalin', brandName: 'Lyrica / Lyrolin (Pregabalin)', form: '75mg Capsule', specialty: 'neuro', badge: 'Neuropathic Pain', dosage: '1 capsule', frequency: 'BID (Every 12 hours)', duration: '30 days', instructions: 'May cause drowsiness; avoid driving initially' },
+      { id: 'neu_2', name: 'Gabapentin', brandName: 'Gaptin (Gabapentin)', form: '300mg Capsule', specialty: 'neuro', dosage: '1 capsule', frequency: 'TID (Every 8 hours)', duration: '30 days', instructions: 'Do not discontinue suddenly' },
+      { id: 'neu_3', name: 'Levetiracetam', brandName: 'Keppra 500 (Levetiracetam)', form: '500mg Tablet', specialty: 'neuro', badge: 'Antiepileptic', dosage: '1 tablet', frequency: 'BID (Every 12 hours)', duration: '30 days', instructions: 'Maintain consistent 12-hour dosing interval' },
+      { id: 'neu_4', name: 'Amitriptyline', brandName: 'Tryptizol 25 (Amitriptyline)', form: '25mg Tablet', specialty: 'neuro', badge: 'Migraine / Pain', dosage: '1 tablet', frequency: 'OD (Once daily at bedtime)', duration: '30 days', instructions: 'Take 1 - 2 hours before sleep' },
     ],
   },
   endo: {
     label: 'Endocrinology',
     icon: '🩸',
     meds: [
-      { id: 'end_1', name: 'Metformin', brandName: 'Glucophage 500', form: '500mg Tablet', specialty: 'endo', badge: 'Diabetes 1st Line', dosage: '1 tablet', frequency: 'BID (Every 12 hours with meals)', duration: '30 days', instructions: 'Take with main meals to prevent GI discomfort' },
-      { id: 'end_2', name: 'Levothyroxine', brandName: 'Euthyrox 50', form: '50mcg Tablet', specialty: 'endo', badge: 'Hypothyroidism', dosage: '1 tablet', frequency: 'OD (Once daily on empty stomach)', duration: '30 days', instructions: 'Take 30-60 min before breakfast with water' },
-      { id: 'end_3', name: 'Empagliflozin', brandName: 'Jardiance 10', form: '10mg Tablet', specialty: 'endo', badge: 'SGLT2 Inhibitor', dosage: '1 tablet', frequency: 'OD (Once daily in morning)', duration: '30 days', instructions: 'Maintain adequate fluid hydration' },
-      { id: 'end_4', name: 'Sitagliptin', brandName: 'Januvia 100', form: '100mg Tablet', specialty: 'endo', badge: 'DPP-4 Inhibitor', dosage: '1 tablet', frequency: 'OD (Once daily)', duration: '30 days', instructions: 'Take with or without food' },
+      { id: 'end_1', name: 'Metformin', brandName: 'Glucophage 500 (Metformin)', form: '500mg Tablet', specialty: 'endo', badge: 'Diabetes 1st Line', dosage: '1 tablet', frequency: 'BID (Every 12 hours with meals)', duration: '30 days', instructions: 'Take with main meals to prevent GI discomfort' },
+      { id: 'end_2', name: 'Levothyroxine', brandName: 'Euthyrox 50 (Levothyroxine)', form: '50mcg Tablet', specialty: 'endo', badge: 'Hypothyroidism', dosage: '1 tablet', frequency: 'OD (Once daily on empty stomach)', duration: '30 days', instructions: 'Take 30-60 min before breakfast with water' },
+      { id: 'end_3', name: 'Empagliflozin', brandName: 'Jardiance 10 (Empagliflozin)', form: '10mg Tablet', specialty: 'endo', badge: 'SGLT2 Inhibitor', dosage: '1 tablet', frequency: 'OD (Once daily in morning)', duration: '30 days', instructions: 'Maintain adequate fluid hydration' },
+      { id: 'end_4', name: 'Sitagliptin', brandName: 'Januvia 100 (Sitagliptin)', form: '100mg Tablet', specialty: 'endo', badge: 'DPP-4 Inhibitor', dosage: '1 tablet', frequency: 'OD (Once daily)', duration: '30 days', instructions: 'Take with or without food' },
     ],
   },
   ortho: {
     label: 'Orthopedics',
     icon: '🦴',
     meds: [
-      { id: 'ort_1', name: 'Meloxicam', brandName: 'Mobic 15', form: '15mg Tablet', specialty: 'ortho', badge: 'Joint NSAID', dosage: '1 tablet', frequency: 'OD (Once daily after meal)', duration: '10 days', instructions: 'Take with food and full glass of water' },
-      { id: 'ort_2', name: 'Celecoxib', brandName: 'Celebrex 200', form: '200mg Capsule', specialty: 'ortho', badge: 'COX-2 Selective', dosage: '1 capsule', frequency: 'OD (Once daily after meal)', duration: '14 days', instructions: 'Gentler on stomach; take with food' },
-      { id: 'ort_3', name: 'Glucosamine / Chondroitin', brandName: 'Dorofen / Genuphil', form: 'Tablet', specialty: 'ortho', badge: 'Cartilage Care', dosage: '1 tablet', frequency: 'TID (Every 8 hours after meals)', duration: '30 days', instructions: 'Take regularly for cartilage support' },
-      { id: 'ort_4', name: 'Diclofenac Gel', brandName: 'Voltaren Emulgel', form: 'Topical Gel', specialty: 'ortho', badge: 'Topical Analgesic', dosage: 'Apply thin layer', frequency: 'TID (Every 8 hours)', duration: '10 days', instructions: 'Gently massage onto painful joint' },
+      { id: 'ort_1', name: 'Meloxicam', brandName: 'Mobic 15 (Meloxicam)', form: '15mg Tablet', specialty: 'ortho', badge: 'Joint NSAID', dosage: '1 tablet', frequency: 'OD (Once daily after meal)', duration: '10 days', instructions: 'Take with food and full glass of water' },
+      { id: 'ort_2', name: 'Celecoxib', brandName: 'Celebrex 200 (Celecoxib)', form: '200mg Capsule', specialty: 'ortho', badge: 'COX-2 Selective', dosage: '1 capsule', frequency: 'OD (Once daily after meal)', duration: '14 days', instructions: 'Gentler on stomach; take with food' },
+      { id: 'ort_3', name: 'Glucosamine / Chondroitin', brandName: 'Dorofen / Genuphil (Glucosamine / Chondroitin)', form: 'Tablet', specialty: 'ortho', badge: 'Cartilage Care', dosage: '1 tablet', frequency: 'TID (Every 8 hours after meals)', duration: '30 days', instructions: 'Take regularly for cartilage support' },
+      { id: 'ort_4', name: 'Diclofenac Gel', brandName: 'Voltaren Emulgel (Diclofenac Gel)', form: 'Topical Gel', specialty: 'ortho', badge: 'Topical Analgesic', dosage: 'Apply thin layer', frequency: 'TID (Every 8 hours)', duration: '10 days', instructions: 'Gently massage onto painful joint' },
     ],
   },
   ent: {
     label: 'ENT & Eye',
     icon: '👁️',
     meds: [
-      { id: 'ent_1', name: 'Xylometazoline', brandName: 'Otrivin Adult', form: 'Topical Spray', specialty: 'ent', badge: 'Nasal Decongestant', dosage: '1 - 2 sprays', frequency: 'TID (Every 8 hours)', duration: '3 - 5 days max', instructions: 'Do NOT use for more than 5 consecutive days' },
-      { id: 'ent_2', name: 'Tobramycin / Dexamethasone', brandName: 'Tobradex Drops', form: 'Ophthalmic Drops', specialty: 'ent', badge: 'Antibiotic + Steroid', dosage: '1 - 2 drops', frequency: 'QID (Every 6 hours)', duration: '7 days', instructions: 'Instill into affected eye; keep tip clean' },
-      { id: 'ent_3', name: 'Sodium Hyaluronate', brandName: 'Polyfresh / Tears', form: 'Ophthalmic Drops', specialty: 'ent', badge: 'Artificial Tears', dosage: '1 - 2 drops', frequency: 'PRN (As needed for dry eyes)', duration: '30 days', instructions: 'Instill when experiencing dryness or strain' },
-      { id: 'ent_4', name: 'Ciprofloxacin Otic', brandName: 'Ciprocin Ear Drops', form: 'Ear Drops', specialty: 'ent', badge: 'Otic Antibiotic', dosage: '3 - 4 drops', frequency: 'BID (Every 12 hours)', duration: '7 days', instructions: 'Lie with affected ear up for 2 minutes after drops' },
+      { id: 'ent_1', name: 'Xylometazoline', brandName: 'Otrivin Adult (Xylometazoline)', form: 'Topical Spray', specialty: 'ent', badge: 'Nasal Decongestant', dosage: '1 - 2 sprays', frequency: 'TID (Every 8 hours)', duration: '3 - 5 days max', instructions: 'Do NOT use for more than 5 consecutive days' },
+      { id: 'ent_2', name: 'Tobramycin / Dexamethasone', brandName: 'Tobradex Drops (Tobramycin / Dexamethasone)', form: 'Ophthalmic Drops', specialty: 'ent', badge: 'Antibiotic + Steroid', dosage: '1 - 2 drops', frequency: 'QID (Every 6 hours)', duration: '7 days', instructions: 'Instill into affected eye; keep tip clean' },
+      { id: 'ent_3', name: 'Sodium Hyaluronate', brandName: 'Polyfresh / Tears (Sodium Hyaluronate)', form: 'Ophthalmic Drops', specialty: 'ent', badge: 'Artificial Tears', dosage: '1 - 2 drops', frequency: 'PRN (As needed for dry eyes)', duration: '30 days', instructions: 'Instill when experiencing dryness or strain' },
+      { id: 'ent_4', name: 'Ciprofloxacin Otic', brandName: 'Ciprocin Ear Drops (Ciprofloxacin Otic)', form: 'Ear Drops', specialty: 'ent', badge: 'Otic Antibiotic', dosage: '3 - 4 drops', frequency: 'BID (Every 12 hours)', duration: '7 days', instructions: 'Lie with affected ear up for 2 minutes after drops' },
     ],
   },
 };
@@ -138,7 +138,7 @@ interface FavoritesQuickBarProps {
 }
 
 export function FavoritesQuickBar({ onSelectMedication, className = '' }: FavoritesQuickBarProps) {
-  const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
+  const [isCollapsed, setIsCollapsed] = useState<boolean>(true);
   const [selectedSpecialty, setSelectedSpecialty] = useState<string>('all');
   const [pinnedMedIds, setPinnedMedIds] = useState<string[]>(() => {
     try {
@@ -304,9 +304,6 @@ export function FavoritesQuickBar({ onSelectMedication, className = '' }: Favori
           <div>
             <h4 className="text-xs font-black uppercase tracking-wider text-slate-100 flex items-center gap-1.5 group-hover:text-amber-200 transition-colors">
               Quick-Select Top Prescribed
-              <span className="text-[10px] font-bold px-1.5 py-0.2 bg-indigo-500/40 text-indigo-200 border border-indigo-400/30 rounded-full">
-                By Specialty
-              </span>
             </h4>
             <p className="text-[11px] text-slate-300 font-medium">
               {isCollapsed ? "Collapsed • Click header or arrow to expand quick medication pills" : "Click ⭐ star on any pill to pin it, or add your custom quick drugs!"}

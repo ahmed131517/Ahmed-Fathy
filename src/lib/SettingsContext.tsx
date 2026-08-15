@@ -1,5 +1,19 @@
 import React, { createContext, useContext, useEffect, useState, useMemo, useCallback } from 'react';
 
+export interface ClinicBranch {
+  id: string;
+  name: string;
+  address: string;
+  city: string;
+  state: string;
+  zip: string;
+  phone: string;
+  email?: string;
+  website?: string;
+  type?: 'Physical Clinic' | 'Telehealth' | 'Administration' | 'Hybrid';
+  isDefault?: boolean;
+}
+
 interface SettingsState {
   // General
   compactMode: boolean;
@@ -10,11 +24,28 @@ interface SettingsState {
   practiceState: string;
   practiceZip: string;
   practicePhone: string;
+  practiceNameAr: string;
+  practiceAddressAr: string;
+  practiceMotto: string;
+  practiceMottoAr: string;
+  headerLayoutPreset: 'en-left-ar-right' | 'ar-left-en-right' | 'stacked-en-top' | 'stacked-ar-top' | 'center-logo-split';
   practiceLogo: string;
   practiceLogoShape: 'circle' | 'square' | 'rounded' | 'none';
   practiceLogoSize: number;
   practiceLogoPosition: 'left' | 'center' | 'right';
   patientIdPrefix: string;
+  
+  // Compliance & Security
+  facilityStamp: string;
+  facilityLicenseNo: string;
+  healthAuthorityId: string;
+  taxRegistrationId: string;
+  enableVerificationQRCode: boolean;
+  verificationPortalUrl: string;
+  
+  // Multi-Branch
+  branches: ClinicBranch[];
+  activeBranchId: string;
   
   // Prescription
   doctorName: string;
@@ -32,6 +63,19 @@ interface SettingsState {
   prescriptionBodyFont: string;
   doctorSignature: string;
   
+  // Paper & Print Formatting
+  paperSize: 'a4' | 'a5' | 'letter' | 'thermal80mm';
+  topMargin: number;
+  bottomMargin: number;
+  watermarkOpacity: number;
+  
+  // Clinical Defaults & Unit Preferences
+  tempUnit: 'C' | 'F';
+  weightUnit: 'kg' | 'lbs';
+  heightUnit: 'cm' | 'in';
+  bgUnit: 'mg/dL' | 'mmol/L';
+  defaultApptDuration: number;
+
   // Dispensing Templates
   dispensingTemplates: {
     standard: string;
@@ -109,11 +153,54 @@ const defaultSettings: SettingsState = {
   practiceState: "CA",
   practiceZip: "12345",
   practicePhone: "(555) 123-4567",
+  practiceNameAr: "عيادة روبرتس للعائلة",
+  practiceAddressAr: "١٢٣ المجمع الطبي، شارع المركز الصحي",
+  practiceMotto: "Excellence in Compassionate Patient Care",
+  practiceMottoAr: "التميز والريادة في الرعاية الصحية والمجتمعية",
+  headerLayoutPreset: "en-left-ar-right",
   practiceLogo: "",
   practiceLogoShape: "circle",
   practiceLogoSize: 96,
   practiceLogoPosition: "center",
   patientIdPrefix: "PAT",
+  facilityStamp: "",
+  facilityLicenseNo: "FAC-984210-CA",
+  healthAuthorityId: "NHA-883201-MED",
+  taxRegistrationId: "TAX-300192847",
+  enableVerificationQRCode: true,
+  verificationPortalUrl: "https://rx-verify.healthportal.org/verify",
+  
+  branches: [
+    {
+      id: "branch-main",
+      name: "Main Hospital",
+      address: "123 Medical Center Dr.",
+      city: "Anytown",
+      state: "CA",
+      zip: "12345",
+      phone: "(555) 123-4567",
+      isDefault: true,
+    },
+    {
+      id: "branch-downtown",
+      name: "Downtown Clinic",
+      address: "456 Healthcare Blvd, Suite 200",
+      city: "Metropolis",
+      state: "CA",
+      zip: "12389",
+      phone: "(555) 987-6543",
+    },
+    {
+      id: "branch-telehealth",
+      name: "Telehealth Virtual Branch",
+      address: "Online / Virtual Care Unit",
+      city: "Anytown",
+      state: "CA",
+      zip: "12345",
+      phone: "(555) 555-0199",
+    }
+  ],
+  activeBranchId: "branch-main",
   
   doctorName: "DR. AHMED FATHY ALI",
   doctorQualifications: "MBBS, CCD, CCC, CMJ",
@@ -130,6 +217,17 @@ const defaultSettings: SettingsState = {
   prescriptionBodyFont: "inter",
   doctorSignature: "",
   
+  paperSize: "a4",
+  topMargin: 15,
+  bottomMargin: 15,
+  watermarkOpacity: 30,
+  
+  tempUnit: 'C',
+  weightUnit: 'kg',
+  heightUnit: 'cm',
+  bgUnit: 'mg/dL',
+  defaultApptDuration: 15,
+
   dispensingTemplates: {
     standard: "Standard prescription format...",
     controlled: "Controlled substance format...",
@@ -170,7 +268,7 @@ const defaultSettings: SettingsState = {
   currencySymbol: '$',
   
   aiProcessingMode: 'cloud',
-  modelType: 'gemini-2.5-flash',
+  modelType: 'gemini-3.6-flash',
   aiTemperature: 0.7,
   aiMaxTokens: 2048,
   
@@ -305,6 +403,21 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       },
       amber: {
         50: '#fffbeb', 100: '#fef3c7', 200: '#fde68a', 300: '#fcd34d', 400: '#fbbf24', 500: '#f59e0b', 600: '#d97706', 700: '#b45309', 800: '#92400e', 900: '#78350f', 950: '#451a03'
+      },
+      violet: {
+        50: '#f5f3ff', 100: '#ede9fe', 200: '#ddd6fe', 300: '#c4b5fd', 400: '#a78bfa', 500: '#8b5cf6', 600: '#7c3aed', 700: '#6d28d9', 800: '#5b21b6', 900: '#4c1d95', 950: '#2e1065'
+      },
+      cyan: {
+        50: '#ecfeff', 100: '#cffafe', 200: '#a5f3fc', 300: '#67e8f9', 400: '#22d3ee', 500: '#06b6d4', 600: '#0891b2', 700: '#0e7490', 800: '#155e75', 900: '#164e63', 950: '#083344'
+      },
+      teal: {
+        50: '#f0fdfa', 100: '#ccfbf1', 200: '#99f6e4', 300: '#5eead4', 400: '#2dd4bf', 500: '#14b8a6', 600: '#0d9488', 700: '#0f766e', 800: '#115e59', 900: '#134e4a', 950: '#042f2e'
+      },
+      fuchsia: {
+        50: '#fdf4ff', 100: '#fae8ff', 200: '#f5d0fe', 300: '#f0abfc', 400: '#e879f9', 500: '#d946ef', 600: '#c026d3', 700: '#a21caf', 800: '#86198f', 900: '#701a75', 950: '#4a044e'
+      },
+      slate: {
+        50: '#f8fafc', 100: '#f1f5f9', 200: '#e2e8f0', 300: '#cbd5e1', 400: '#94a3b8', 500: '#64748b', 600: '#475569', 700: '#334155', 800: '#1e293b', 900: '#0f172a', 950: '#020617'
       }
     };
 
